@@ -1,4 +1,4 @@
-Last updated: Jun 12, 2004
+Last updated: Jun 28, 2004
 
 Index
 -------
@@ -159,6 +159,20 @@ APPENDIX A: Typical configuration without virtual hosts
               SetHandler mono
       </Location>
 
+  If you prefer to .webapp configuration  file(s)  (see  manual  page
+  of xsp), you can change MonoApplications in the above samples by:
+
+      MonoApplicationsConfigFile "/var/www/applications.webapp"
+
+  replacing the path to the file with yours.
+
+  If you want to use several .webapp files, use this instead:
+
+      MonoApplicationsConfigDir "/var/www/webapp"
+
+  and  all  the .webapp files found in the directory /var/www/webapp
+  will be loaded.
+
   If you don't want mod-mono-server to handle all the files, but only
   ASP.NET ones, you can replace the 'SetHandler mono' by:
 
@@ -216,6 +230,24 @@ APPENDIX B: Configuration directives for mod_mono
     Value passed in --root argument when running mod-mono-server. This
     tells mod-mono-server to change the directory to the value specified
     before doing anything else.
+
+  MonoMaxCPUTime
+
+    If MonoRunXSP is True, CPU time limit in seconds allowed for the
+    spawned mono process. Beyond that, it will be restarted. If this
+    capability is not available on your system, the directive will be
+    ignored.
+    Default value: system default
+
+  MonoMaxMemory
+
+    If MonoRunXSP is True, the maximum size of the process's virtual
+    memory (address space) in bytes allowed for the spawned mono process.
+    It will be restarted when the limit is reached. If this capability
+    is not available on your system, the directive will be ignored.
+    Default value: system default
+    Note: under MacOS, this directive limits the resident segment size
+    (RSS) instead of the address space.
 
   MonoApplications (used only when MonoRunXSP is True)
   

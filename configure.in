@@ -273,7 +273,7 @@ AC_C_BIGENDIAN
 AC_CHECK_FUNCS([setenv putenv setrlimit])
 
 found_apr_socket_connect=no
-AC_CHECK_LIB(apr-0, apr_socket_connect, found_apr_socket_connect=yes)
+AC_CHECK_LIB(apr, apr_socket_connect, found_apr_socket_connect=yes)
 if test x$found_apr_socket_connect = xyes ; then
 	AC_DEFINE([HAVE_APR_SOCKET_CONNECT],,[apr_socket_connect is present])
 fi

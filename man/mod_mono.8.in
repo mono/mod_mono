@@ -9,7 +9,7 @@
 .if n .sp
 ..
 
-.TH mod_mono "8" "10 Jul 2004" "mod_mono @VERSION@" "ASP.NET Support for Apache"
+.TH mod_mono "8" "28 Jul 2004" "mod_mono @VERSION@" "ASP.NET Support for Apache"
 .SH NAME
 mod_mono \- apache module that enables ASP.NET pages. Works together with mod-mono-server.exe
 .SH DESCRIPTION
@@ -65,6 +65,22 @@ Default value: "/tmp"
 .I "MonoDocumentRootDir (used only when MonoRunXSP is True)"
 The directory passed in --root argument when launching mod-mono-server.
 .TP
+.I "MonoMaxCPUTime"
+If MonoRunXSP is True, CPU time limit in seconds allowed for the
+spawned mono process. Beyond that, it will be restarted. If this
+capability is not available on your system, the directive will be
+ignored.
+Default value: system default
+.TP
+.I "MonoMaxMemory"
+If MonoRunXSP is True, the maximum size of the process's virtual
+memory (address space) in bytes allowed for the spawned mono process.
+It will be restarted when the limit is reached. If this capability
+is not available on your system, the directive will be ignored.
+Default value: system default
+Note: under MacOS, this directive limits the resident segment size
+(RSS) instead of the address space.
+.TP
 .I "MonoApplications (used only when MonoRunXSP is True)"
 This value will be passed to mod-mono-server.exe in the
 --applications option. See xsp(1) manual page for details.
@@ -98,12 +114,25 @@ prefix=/usr:
 For Apache 2.0, with mod-mono-server.exe from package xsp installed in
 prefix=/usr:
 .nf
+
       LoadModule mono_module modules/libmod_mono.so
       Alias /mono "/usr/share/doc/xsp/test"
       MonoApplications "/mono:/usr/share/doc/xsp/test"
       <Directory /usr/share/doc/xsp/test>
               SetHandler mono
       </Directory>
+.fi
+.PP
+or the preferred:
+.nf
+
+      LoadModule mono_module modules/libmod_mono.so
+      Alias /demo "/usr/share/doc/xsp/test"
+      MonoApplications "/demo:/usr/share/doc/xsp/test"
+      <Location /demo>
+              SetHandler mono
+      </Location>
+
 .fi
 .PP
 If you prefer to .webapp configuration file(s)
@@ -135,9 +164,9 @@ httpd.conf
 mod_mono was written by Daniel Ridruejo (daniel rawbyte com) and Gonzalo
 Paniagua Javier (gonzalo@ximian.com).
 .SH MAILING LISTS
-Visit http://mail.ximian.com/mailman/mono-list for details.
+See http://mail.ximian.com/mailman/mono-list for details.
 .SH WEB SITE
-Visit: http://www.go-mono.com for details
+Visit http://www.go-mono.com for details.
 .SH SEE ALSO
 .BR xsp (1), mod-mono-server (1), mono (1), mcs (1)
 

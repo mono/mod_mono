@@ -1,3 +1,11 @@
+2004-07-28 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* configure.in: s/apr-0/apr/
+
+	* INSTALL:
+	* man/mod_mono.8.in: documented MonoMaxMemory and MonoMaxCPUTime and
+	other minor updates.
+
 2004-07-14 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: set filename and listen_address defaults in the
