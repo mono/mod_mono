@@ -1,6 +1,10 @@
 2003-01-18  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
 	* INSTALL: Updated install instructions to cover --with-apxs
 	* configure.in: Check in /usr/sbin/apxs
+	* src/mod_mono.c: Expose function to help remove prefix
+	* src/Request.cs: RemovePrefix helper function to remove app virtual path
+	before using MapPath
+	* src/ApacheWorkerRequest.cs: MS docs seem to be wrong and GetFilePath returns uri path
 	
 2003-01-18  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
 	Submitted by Alp Toker <alp@atoker.com> :

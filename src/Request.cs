@@ -120,12 +120,35 @@ namespace Apache.Web
 			return GetRequestHeaderInternal (request, name);
 		}
 
+		// AliasMatches and RemovePrefix works for now but this should
+		// not be done here, but fully in C# in ApacheWorkerRequest.MapPath --daniel
+		[MethodImplAttribute(MethodImplOptions.InternalCall)]
+		extern static int AliasMatches (string uri, string fakeName);
+
+		public string RemovePrefix (string uri, string appPrefix)
+		{
+		  int l = AliasMatches(uri, appPrefix);
+		  if (l < 0) {
+		    return uri;
+		  } else {
+		    return uri.Substring(l + 1);
+		  }
+		}
+
 		[MethodImplAttribute(MethodImplOptions.InternalCall)]
 		extern static string GetServerVariableInternal (IntPtr request, string name);		
 
 		public string GetServerVariable (string name)
 		{
 			return GetServerVariableInternal (request, name);
+		}
+
+		[MethodImplAttribute(MethodImplOptions.InternalCall)]
+		extern static string GetUriInternal (IntPtr request);		
+
+		public string GetUri ()
+		{
+			return GetUriInternal (request);
 		}
 
 		[MethodImplAttribute(MethodImplOptions.InternalCall)]

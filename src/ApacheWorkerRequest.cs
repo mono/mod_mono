@@ -186,17 +186,23 @@ namespace Apache.Web
 			return true;
 		}
 
+		public override string GetUriPath () {
+		  return request.GetUri();
+		}
+
 		public override string GetFilePath ()
 		{
-			if (path == null)
-				path = request.GetFileName ();
-
-			return path;
+		  //Docs say it is physical path, but it seems it is the virtual path
+			return GetUriPath();
 		}
 		
 		// Until we fix MonoWorkerRequest Map()
 		public override string GetFilePathTranslated () {
 		  return request.GetFileName();
+		}
+
+		public override string MapPath (string path) {
+		  return base.MapPath(request.RemovePrefix(path, appHost.VPath));
 		}
 
 		public override string GetRemoteName ()

@@ -278,6 +278,7 @@ void register_wrappers () {
   mono_add_internal_call("Apache.Web.Request::GetClientBlockInternal", mono_apache_get_client_block);
   mono_add_internal_call("Apache.Web.Request::SetStatusLineInternal", mono_apache_request_set_status_line);
   mono_add_internal_call("Apache.Web.Request::SetStatusCodeInternal", mono_apache_request_set_status_code);
+  mono_add_internal_call("Apache.Web.Request::AliasMatches", alias_matches);
 }
 
 static MonoObject *
