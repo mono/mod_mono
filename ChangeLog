@@ -1,3 +1,7 @@
+2004-05-14  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/Makefile.am: added -module flag to libtool to fix the PPC install.
+
 2004-04-19  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* NEWS:
