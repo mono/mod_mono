@@ -122,7 +122,6 @@ apr_socket_recv (apr_socket_t *sock, char *buf, apr_size_t *len);
 #include <util_script.h>
 #include <apr_strings.h>
 #include <apr_support.h>
-#include <apr_env.h>
 /* End Apache 2 only */
 #endif
 
