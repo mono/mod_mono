@@ -6,20 +6,68 @@ AM_CONFIG_HEADER(include/mod_mono_config.h:config.in)
 AC_PROG_CC
 AM_PROG_LIBTOOL
 
-AC_MSG_CHECKING(for Apache 2)
-AC_ARG_WITH(apache2,   [  --with-apache2 Specify path to apache2 installation directory ],
+# check for --with-apxs
+AC_MSG_CHECKING(for --with-apxs)
+AC_ARG_WITH(apxs, [  --with-apxs=PATH        Path to apxs],
 [
-	header="$withval/include/httpd.h"
-	if test -f $header ; then
-		APACHE2_DIR=`cd $withval; pwd`
-		CFLAGS="$CFLAGS -I$APACHE2_DIR/include"
-	else
-		AC_MSG_ERROR($header not found)
-	fi
-        AC_MSG_RESULT(found $APACHE2_DIR)
-],[
-	AC_MSG_ERROR(--with-apache2 not given)
-])
+  if test -x "$withval"
+  then
+    AC_MSG_RESULT([$withval executable, good])
+    APXS=$withval
+  else
+    echo
+    AC_MSG_ERROR([$withval not found or not executable])
+  fi
+],
+AC_MSG_RESULT(no))
+
+# if no apxs found yet, check /usr/local/apache/sbin
+# since it's the default Apache location
+if test -z "$APXS"; then
+  AC_MSG_CHECKING(for apxs in /usr/local/apache/sbin)
+  if test -x /usr/local/apache/sbin/apxs; then
+    APXS=/usr/local/apache/sbin/apxs
+    AC_MSG_RESULT([found, we'll use this. Use --with-apxs to specify another.])
+  else
+    AC_MSG_RESULT(no)
+  fi
+fi
+
+if test -z "$APXS"; then
+  AC_MSG_CHECKING(for apxs in /usr/local/apache2/bin)
+  if test -x /usr/local/apache2/bin/apxs; then
+    APXS=/usr/local/apache2/bin/apxs
+    AC_MSG_RESULT([found, we'll use this. Use --with-apxs to specify another.])
+  else
+    AC_MSG_RESULT(no)
+  fi
+fi
+
+# last resort
+if test -z "$APXS"; then
+  AC_MSG_CHECKING(for apxs in your PATH)
+  AC_PATH_PROG(APXS, apxs)
+  if test -n "$APXS"; then
+    AC_MSG_RESULT([found $APXS, we'll use this. Use --with-apxs to specify another.])
+  fi
+fi
+
+if test -z "$APXS"; then
+  AC_MSG_ERROR([**** apxs was not found, DSO compilation will not be available.])
+fi
+
+# determine LIBEXEC
+AC_MSG_CHECKING(for Apache libexec directory)
+LIBEXECDIR=`${APXS} -q LIBEXECDIR`
+AC_MSG_RESULT($LIBEXECDIR)
+
+# determine INCLUDES
+AC_MSG_CHECKING([for Apache include directory])
+AP_INCLUDES="-I`${APXS} -q INCLUDEDIR`"
+AC_MSG_RESULT($AP_INCLUDES)
+
+CFLAGS="$CFLAGS $AP_INCLUDES"
+
 AC_PATH_PROG(PKG_CONFIG, pkg-config, no)
 if test "x$PKG_CONFIG" = "xno"; then
         AC_MSG_ERROR([You need to install pkg-config])
@@ -45,7 +93,8 @@ MODMONO_BUILDDIR='pwd'
 CFLAGS="$CFLAGS -I$MODMONO_BUILDDIR/include"
 
 AC_SUBST(MODMONO_BUILDDIR)
-AC_SUBST(APACHE2_DIR)
+AC_SUBST(LIBEXECDIR)
+AC_SUBST(AP_INCLUDES)
 AC_SUBST(CFLAGS)
 AC_SUBST(MONO_LIBS)
 

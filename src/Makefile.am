@@ -18,4 +18,5 @@ lib_LTLIBRARIES = libmod_mono.la
 make_so:
 	@if test ! -L libmod_mono.so ; then ln -s .libs/libmod_mono.so . ; fi
 
-
+install:
+	$(INSTALL) -m 644 .libs/libmod_mono.so $(LIBEXECDIR)/mod_mono.so

@@ -1,5 +1,9 @@
-2003-01-14  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+2003-01-18  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
+	Submitted by Alp Toker <alp@atoker.com> :
+	* configure.in: Use --with-apxs instead of --with-apache2 
+	* src/Makefile.am: Install target
 
+2003-01-14  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 	* src/ApacheWorkerRequest.cs: added FIXME.
 	* src/MonoWorkerRequest.cs: synched with the one in xsp.
 
