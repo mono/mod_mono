@@ -544,7 +544,7 @@ set_process_limits (int max_cpu_time, int max_memory)
 		limit.rlim_cur = max_memory;
 		limit.rlim_max = max_memory;
 		DEBUG_PRINT (1, "Setting memory limit to %d", max_memory);
-		(void) setrlimit (RLIMIT_AS, &limit);
+		(void) setrlimit (RLIMIT_DATA, &limit);
 	}
 #endif
 }
@@ -1048,16 +1048,16 @@ MAKE_CMD (MonoApplicationsConfigDir, appconfig_dir,
 
 #ifndef HAVE_SETRLIMIT
 MAKE_CMD (MonoMaxMemory, max_memory,
-	"If MonoRunXSP is True, the maximum size of the process's virtual memory "
-	"(address space) in bytes allowed for the spawned mono process. It will "
+	"If MonoRunXSP is True, the maximum size of the process's data segment "
+	"(data size) in bytes allowed for the spawned mono process. It will "
 	"be restarted when the limit is reached.  .. but your system doesn't "
 	"support setrlimit. Sorry, this feature will not be available. "
 	"Default value: system default"
 	),
 #else
 MAKE_CMD (MonoMaxMemory, max_memory,
-	"If MonoRunXSP is True, the maximum size of the process's virtual "
-	"memory (address space) in bytes allowed "
+	"If MonoRunXSP is True, the maximum size of the process's data "
+	"segment (data size) in bytes allowed "
 	"for the spawned mono process. It will be restarted when the limit "
 	"is reached."
 	" Default value: system default"

@@ -73,13 +73,11 @@ ignored.
 Default value: system default
 .TP
 .I "MonoMaxMemory"
-If MonoRunXSP is True, the maximum size of the process's virtual
-memory (address space) in bytes allowed for the spawned mono process.
+If MonoRunXSP is True, the maximum size of the process's data
+segment (data size) in bytes allowed for the spawned mono process.
 It will be restarted when the limit is reached. If this capability
 is not available on your system, the directive will be ignored.
 Default value: system default
-Note: under MacOS, this directive limits the resident segment size
-(RSS) instead of the address space.
 .TP
 .I "MonoApplications (used only when MonoRunXSP is True)"
 This value will be passed to mod-mono-server.exe in the
