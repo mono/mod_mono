@@ -1,5 +1,10 @@
 2004-07-14 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
+	* src/mod_mono.c: use RLIMIT_AS instead of RLIMIT_DATA. gcc 3.2 doesn't
+	like #ifdef inside macro parameters.
+
+2004-07-14 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
 	* configure.in: check for setrlimit.
 	* src/mod_mono.c: added MonoMaxMemory and MonoMaxCPUTime directives. If
 	set and setlimit is available, mod_mono will set those limits when

@@ -547,7 +547,7 @@ set_process_limits (int max_cpu_time, int max_memory)
 		limit.rlim_cur = max_memory;
 		limit.rlim_max = max_memory;
 		DEBUG_PRINT (1, "Setting memory limit to %d", max_memory);
-		(void) setrlimit (RLIMIT_DATA, &limit);
+		(void) setrlimit (RLIMIT_AS, &limit);
 	}
 #endif
 }
@@ -1041,27 +1041,39 @@ MAKE_CMD (MonoApplicationsConfigDir, appconfig_dir,
 	"Default value: \"\""
 	),
 
-MAKE_CMD (MonoMaxMemory, max_memory,
-	"If MonoRunXSP is True, the maximum size of the process's data "
-	"segment (initialized data, uninitialized data, and heap) allowed "
-	"for the spawned mono process. It will be restarted if when limit "
-	"is reached."
 #ifndef HAVE_SETRLIMIT
-	".. but your system doesn't support setrlimit. Sorry, this feature "
-	"will not be available."
-#endif
+MAKE_CMD (MonoMaxMemory, max_memory,
+	"If MonoRunXSP is True, the maximum size of the process's virtual memory "
+	"(address space) in bytes allowed for the spawned mono process. It will "
+	"be restarted when the limit is reached.  .. but your system doesn't "
+	"support setrlimit. Sorry, this feature will not be available. "
+	"Default value: system default"
+	),
+#else
+MAKE_CMD (MonoMaxMemory, max_memory,
+	"If MonoRunXSP is True, the maximum size of the process's virtual "
+	"memory (address space) in bytes allowed "
+	"for the spawned mono process. It will be restarted when the limit "
+	"is reached."
 	" Default value: system default"
 	),
+#endif
 
+#ifndef HAVE_SETRLIMIT
 MAKE_CMD (MonoMaxCPUTime, max_cpu_time,
 	"If MonoRunXSP is True, CPU time limit in seconds allowed for "
-	"the spawned mono process. After that, it will be restarted."
-#ifndef HAVE_SETRLIMIT
+	"the spawned mono process. Beyond that, it will be restarted."
 	".. but your system doesn't support setrlimit. Sorry, this feature "
 	"will not be available."
-#endif
 	" Default value: system default"
 	),
+#else
+MAKE_CMD (MonoMaxCPUTime, max_cpu_time,
+	"If MonoRunXSP is True, CPU time limit in seconds allowed for "
+	"the spawned mono process. Beyond that, it will be restarted."
+	" Default value: system default"
+	),
+#endif
 NULL
 };
 
