@@ -1,4 +1,4 @@
 
-EXTRA_DIST = FAQ.txt packaging/redhat/mod_mono.spec packaging/redhat/mono.conf
+EXTRA_DIST = packaging/redhat/mod_mono.spec packaging/redhat/mono.conf
 
 SUBDIRS = src
