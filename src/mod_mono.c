@@ -66,6 +66,7 @@ typedef struct xsp_data {
 	char *max_cpu_time;
 	char *max_memory;
 	char *debug;
+	char *env_vars;
 	char status; /* One of the FORK_* in the enum above.
 		      * Don't care if run_xsp is "false" */
 	char is_virtual; /* is the server virtual? */
@@ -144,6 +145,7 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->max_cpu_time = NULL;
 	server->max_memory = NULL;
 	server->debug = "False";
+	server->env_vars = NULL;
 	server->status = FORK_NONE;
 	server->is_virtual = is_virtual;
 
@@ -758,6 +760,35 @@ setenv_to_putenv (apr_pool_t *pool, char *name, char *value)
 #endif
 
 static void
+set_environment_variables (apr_pool_t *pool, char *environment_variables)
+{
+	char *tmp;
+	char *name;
+	char *value;
+
+	/* were any environment_variables specified? */
+	if (environment_variables == NULL)
+		return;
+
+	name = environment_variables;
+	tmp = strchr (environment_variables, '=');
+	while (tmp != NULL) {
+		*tmp = '\0';
+		value = tmp + 1;
+		tmp = strchr (value, ';');
+		if (tmp != NULL)
+			*tmp = '\0';
+
+		SETENV (pool, name, value);
+		if (tmp == NULL)
+			break;
+
+		name = tmp + 1;
+		tmp = strchr (name, '=');
+	}
+}
+
+static void
 set_process_limits (int max_cpu_time, int max_memory)
 {
 #ifdef HAVE_SETRLIMIT
@@ -843,6 +874,8 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 
 	if (config->max_cpu_time != NULL)
 		max_cpu_time = atoi (config->max_cpu_time);
+
+	set_environment_variables (pool, config->env_vars);
 
 	pid = fork ();
 	if (pid > 0) {
@@ -1444,6 +1477,13 @@ MAKE_CMD12 (MonoMaxCPUTime, max_cpu_time,
 MAKE_CMD12 (MonoDebug, debug,
        "If MonoDebug is true, mono will be run in debug mode."
        " Default value: False"
+       ),
+
+MAKE_CMD12 (MonoSetEnv, env_vars,
+	"A string of name=value pairs separated by semicolons."
+	"For each pair, setenv(name, value) is called before running "
+	"mod-mono-server."
+	" Default value: Default: \"\""
        ),
 
 MAKE_CMD_ITERATE2 (AddMonoApplications, applications,

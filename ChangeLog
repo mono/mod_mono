@@ -1,3 +1,8 @@
+2005-03-11 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: added MonoSetEnv directive. From a patch by Joel
+	Reed to 1.0.6.
+
 2005-03-05 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: try to connect to mod-mono-server before forking.
