@@ -1,6 +1,6 @@
 CLEANFILES = .libs/libmod_mono.so *~
 
-EXTRA_DIST = ApacheApplicatinHost.cs \
+EXTRA_DIST = ApacheApplicationHost.cs \
              IApplicationHost.cs \
 	     Request.cs \
 	     ApacheWorkerRequest.cs \

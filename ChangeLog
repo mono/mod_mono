@@ -1,3 +1,8 @@
+2002-12-31  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
+	* INSTALL: Added reference to machine.config
+	* configure.in: Update version to 0.2
+	* src/Makefile.am: Fix typo so 'make dist' works
+
 2002-12-30  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
 	* src/mod_mono.c: Fix ApacheApplicationHost creation:
 	Method signature uses intptr and method to invoke is static.

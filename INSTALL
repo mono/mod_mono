@@ -101,6 +101,10 @@ CONFIGURING APACHE
 
 Copy the file /home/user/mono/mod_mono/src/.libs/libmod_mono.so to /home/user/mono/install/apache2/lib/
 Copy ModMono.dll to /home/user/mono/xsp/server/test/ModMono.dll
+The step above is important, due to a few glitches still being worked out, ModMono.dll needs to be
+copied to the same directory the ASP pages are being served from. If a machine.config is not installed in your path,
+which normally occurs during Mono installation, you may need to create a ModMono.exe.config. 
+You can find an example for the contents of this file in the data/machine.config subdirectory of the Mono distribution.
 
 Edit /home/user/mono/install/apache2/conf/httpd.conf :
 
