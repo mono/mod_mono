@@ -273,7 +273,7 @@ request_get_path_translated (request_rec *r)
 static char *
 request_get_query_string (request_rec *r)
 {
-	return r->parsed_uri.query ? r->parsed_uri.query : "";
+	return r->args  ? r->args : "";
 }
 
 static int

@@ -1,5 +1,10 @@
 2003-12-10  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
+	* src/mod_mono.c: make query string work. mod_rewrite for apache 1.3
+	and 2.0 uses ->args instead of parsed_uri.
+
+2003-12-10  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
 	* configure.in: use single quotes inside AC_ARG_WITH. Moved apache 1.3
 	CFLAGS modification to a better place.
 	
