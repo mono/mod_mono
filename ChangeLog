@@ -1,3 +1,7 @@
+2003-02-17  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/MonoWorkerRequest.cs: updated from xsp.
+
 2003-02-06  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/MonoWorkerRequest.cs: fixed buglet in GetAppPath.
