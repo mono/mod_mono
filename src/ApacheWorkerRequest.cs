@@ -191,6 +191,11 @@ namespace Apache.Web
 
 			return path;
 		}
+		
+		// Until we fix MonoWorkerRequest Map()
+		public override string GetFilePathTranslated () {
+		  return request.GetFileName();
+		}
 
 		public override string GetRemoteName ()
 		{

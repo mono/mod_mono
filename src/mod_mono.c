@@ -202,22 +202,18 @@ modmono_create_application_host (MonoDomain *domain, MonoAssembly *assembly)
   MonoClass *class;
   MonoMethod *method;
   gpointer params[2];
-  MonoObject *objekt;
 
   class = mono_class_from_name (assembly->image, "Apache.Web", "ApacheApplicationHost");
   if (class == NULL)
     return NULL;
 
-  objekt = mono_object_new (domain, class);
   desc = mono_method_desc_new ("::CreateApplicationHost(string,string)", 0);
-
   method = mono_method_desc_search_in_class (desc, class);
+
   params[0] = mono_string_new (domain, "/"); /* FIXME: this path should be configurable */
   params[1] = mono_string_new (domain, assembly->basedir); /* FIXME: this path should be configurable */;
 
-  mono_runtime_invoke (method, objekt, params, NULL);
-
-  return objekt;
+  return mono_runtime_invoke (method, NULL, params, NULL);
 }
 
 static MonoAssembly *
@@ -266,13 +262,13 @@ create_application_host (request_rec *r)
   }
   assembly = modmono_assembly_setup(domain, file);
   if (assembly == NULL) {
-    ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_mono: Could not open assembly");
+    ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_mono: Could not initialize assembly: %s", file);
     return HTTP_INTERNAL_SERVER_ERROR;
   }
 
   ApacheApplicationHost = modmono_create_application_host (domain, assembly);
   if (ApacheApplicationHost == NULL) {
-    ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_mono: Could not locate ApacheWorkerRequest");
+    ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_mono: Could not create ApacheApplicationHost");
     return HTTP_INTERNAL_SERVER_ERROR;
   }
 
@@ -298,10 +294,12 @@ int modmono_execute_request(MonoObject *ApacheApplicationHost, request_rec *r) {
   MonoMethodDesc *desc;
   MonoClass *class;
   MonoMethod *processRequestMethod;
-  gpointer *args [1];
+  gpointer args [1];
   gchar *cwd;
+  MonoClass *mclass;
 
-  desc = mono_method_desc_new ("::ProcessRequest(IntPtr)", 0);
+  desc = mono_method_desc_new ("::ProcessRequest(intptr)", 0);
+  
   processRequestMethod = mono_method_desc_search_in_class(desc, mono_object_class(ApacheApplicationHost));
 
   /* xxx Hack because of the tmp*.dll files, which are created in the current current directory.*/
@@ -312,6 +310,7 @@ int modmono_execute_request(MonoObject *ApacheApplicationHost, request_rec *r) {
     return HTTP_INTERNAL_SERVER_ERROR;
   }
   chdir (ApacheApplicationHost->vtable->klass->image->assembly->basedir); /* weird, huh? */
+  args[0] = &r;
   mono_runtime_invoke (processRequestMethod, ApacheApplicationHost, args, NULL);
   chdir(cwd);
   g_free(cwd);
@@ -321,18 +320,12 @@ int modmono_execute_request(MonoObject *ApacheApplicationHost, request_rec *r) {
 
 int modmono_request_handler (request_rec* r) {
   MonoDomain *domain;
-  MonoAssembly *assembly;
   gchar *str;
   modmono_server_rec *server_conf;
   const char *file;
   int retval = 5;
   int result;
   
-  if (assembly == NULL) {
-    ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_mono: Could not open assembly");
-    return HTTP_INTERNAL_SERVER_ERROR;
-  }
-
   if (ApacheApplicationHost == NULL) {
     ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_mono: cannot get ApacheApplicationHost");
     return HTTP_INTERNAL_SERVER_ERROR;

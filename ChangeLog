@@ -1,3 +1,10 @@
+2002-12-30  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
+	* src/mod_mono.c: Fix ApacheApplicationHost creation:
+	Method signature uses intptr and method to invoke is static.
+	Pass request to ProcessRequest()	
+	* src/ApacheWorkerRequest.cs: Add GetFilePathTranslated, since
+	is not mapping correctly in MonoWorkerRequest
+
 2002-12-30  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* AUTHORS: added myself.
