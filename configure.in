@@ -150,7 +150,7 @@ AC_MSG_RESULT($AP_INCLUDES)
 CFLAGS="$CFLAGS $AP_INCLUDES"
 
 AC_MSG_CHECKING([Apache version])
-AC_TRY_COMPILE([#include <apr.h>], [
+AC_TRY_COMPILE([#include <mpm.h> #include <apr.h>], [
 	apr_byte_t b;
 ], [
 	APACHE_VER=2.0
@@ -161,7 +161,7 @@ AC_TRY_COMPILE([#include <apr.h>], [
 # Try apr-config
 if test "$APACHE_VER" = "1.3" -a -x "$APRCONFIG"; then
 	CFLAGS="$CFLAGS `$APRCONFIG --includes`"
-	AC_TRY_COMPILE([#include <apr.h>], [
+	AC_TRY_COMPILE([#include <mpm.h> #include <apr.h>], [
 		apr_byte_t b;
 	], [
 		APACHE_VER=2.0
