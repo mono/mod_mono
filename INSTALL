@@ -1,4 +1,4 @@
-Last updated: October 20, 2003
+Last updated: April 8, 2004
 
 INSTALLING mod_mono
 --------------------
@@ -8,28 +8,34 @@ INSTALLING mod_mono
   serve ASP.NET pages.
 
   You will need:
+
     * mono (http://www.go-mono.com)
     * apache 1.3 or 2 and its development package. Usually called
     apache2-dev, apache-dev... If you want to install this from source
     see Appendix A.
     * Latest xsp and mod_mono tarballs (http://go-mono.com/download.html)
 
-  Then follow these steps to install everything in /usr:
+  Then follow these steps to install everything in /usr. Notice that You
+  will need to be root to do 'make install' in this directory:
 
-    1. Install xsp.
+  1. Install xsp.
     
-       tar -xzvf xsp-X.X.tar.gz
-       ./configure --prefix=/usr
-       make
-       make install
+             tar -xzvf xsp-X.Y.Z.tar.gz
+             cd xsp-X.Y.Z
+             ./configure --prefix=/usr
+             make
+             make install
 
-    2. Install mod_mono.
+       This will install xsp.exe and mod-mono-server.exe in /usr/bin and a
+       few samples in /usr/share/doc/xsp/test.
 
-       tar xvfz mod_mono*.tgz
-       cd mod_mono*
-   (*) ./configure --prefix=/usr
-       make
-       make install
+  2. Install mod_mono.
+
+             tar xvfz mod_mono-X.Y.Z.tgz
+             cd mod_mono-X.Y.Z
+   (*)       ./configure --prefix=/usr
+             make
+             make install
 
        (*) If it complains about not finding apxs because you installed
        apache in a non-common directory, use the --with-apxs argument.
@@ -37,80 +43,88 @@ INSTALLING mod_mono
 
          ./configure --prefix=/usr --with-apxs=/home/user/httpd/bin/apxs
 
-       (Apache 2 only) If the you get errors while compiling due to
-       apr.h header not found, you'll need to use the --with-apr-config
-       option and provide the full path to 'apr-config':
+       (Apache 2 only) If you get errors while compiling due to apr.h
+       header not found, you'll need to use the --with-apr-config option
+       and provide the full path to 'apr-config':
 
          ./configure --prefix=/usr --with-apr-config=/usr/bin/apr-config
 
-    3. Configure apache.
+       After this step, the module is installed in the proper location and
+       the apache configuration file has been updated to load the module.
 
-       Edit your httpd.conf adding these lines:
+  3. Configure apache.
 
-AddType application/x-asp-net .aspx .ashx .asmx .ascx .asax .config .ascx
-LoadModule mono_module /home/gpanjav/apache2/modules/mod_mono.so
-MonoUnixSocket /tmp/mod_mono_server
+       We're going to configure apache so that we can browse the samples
+       that we installed in step 1 under /usr/share/doc/xsp/test.
 
-       If you want to test the xsp samples (and you *want* :), add:
+       Edit your httpd.conf file, which should be in /etc/httpd,
+       /etc/apache, /etc/apache2...
+
+       Add the following line:
 
             Alias /mono "/usr/share/doc/xsp/test"
 
-    so that apache redirects requests from, for example, /mono to /mono/ .
+       so that apache redirects requests from /mono to /mono/ and looks
+       for everything requested as /mono/xxx under
+       /usr/share/doc/xsp/test/xxx.
+
+       For Apache 1.3 and, optionally, for Apache 2.0, add these lines:
+
+            <Directory /usr/share/doc/xsp/test>
+	           SetHandler mono
+                   <IfModule mod_dir.c>
+                         DirectoryIndex index.aspx
+                   </IfModule>
+            </Directory>
+
+       If you are using Apache 2.0, you can use get the same results with
+       this:
+
+            <Location /mono>
+	          SetHandler mono
+            </Location>
     
-    The parameter of MonoUnixSocket is the unix socket filename that will
-    be set up by mod-mono-server. You can use any valid file name here.  Just
-    use the same file in httpd.conf and in mod-mono-server.exe (--file argument
-    or UnixSocketFileName in mod-mono-server.exe.config <appSettings>).
+  4. Run mod-mono-server.
 
-    Additionally, if you want to make apache listen on port 8080, which
-    is also used as default port by xsp, add this line:
+       Run these two commands:
 
-           Listen 8080
-
-    to your httpd.conf.
-    
-    
-    IMPORTANT:
-    
-	Make sure that both apache and mod-mono-server have write
-	permission to that file.
-	
-	You can achieve this by running mod-mono-server under the same
-	user as apache or changing the permissions of the socket file
-	(/tmp/mod_mono_server by default) to 666, ie., run "chmod 666
-	/tmp/mod_mono_server", *after* mod-mono-server is started.
-
-
-    4. Run mod-mono-server.
-    
-       We're gonna test now the set of samples included in xsp. They
-       should be, after step 1, in /usr/share/doc/xsp/test.
-
-        cd /usr/share/doc/xsp/test
-	mono /usr/bin/mod-mono-server.exe --root . --applications /mono:.
+         cd /usr/share/doc/xsp/test
+	 mono /usr/bin/mod-mono-server.exe --root . --applications /mono:.
 
        The --root argument tells mod-mono-server to change the directory
        to this one before anything else.
 
        The --applications argument makes mod-mono-server set up an
-       application that will be seen from apache as if it was in
-       /mono/ virtual directory.
+       application that will be rooted on /mono/ virtual directory.
 
-     5. Restart apache.
-     6. Point your browser to http://127.0.0.1:8080/mono/index.aspx (if
-     you used the Listen 8080 directive) or just
-     http://127.0.0.1/mono/index.aspx.
-     
-   And that's all.
+       Once you're running this, a file is created in
+       /tmp/mod_mono_server. This is the default file name and location.
+
+       Make sure that both apache and mod-mono-server have write
+       permission to that file.
+	
+       One way of achieving this by running mod-mono-server under the same
+       user as apache or changing the permissions of the file to 666, ie.,
+       run:
+       
+               chmod 666 /tmp/mod_mono_server
+
+	*AFTER* mod-mono-server is started.
+
+  5. Restart apache.
+
+  6. Point your browser to http://127.0.0.1/mono/index.aspx
+
+  Nice, huh?
 
        
 APPENDIX A: installing Apache from source
 ------------------------------------------
 
-    Go to http://www.apache.org and download Apache 2, the filename will
-    be something like httpd-2.0.43.tar.gz
+  Go to http://www.apache.org and download Apache 2, the filename will
+  be something like httpd-2.0.43.tar.gz
 
-    Unpack it:
+  Unpack it:
 
       tar xvfz httpd-2.0.43.tar.gz
       cd httpd-2.0.43
@@ -118,6 +132,38 @@ APPENDIX A: installing Apache from source
       make 
       make install
 
+APPENDIX B: Typical configuration
+-------------------------------------------------
+
+  In Apache 1.3 you will end up with something like:
+
+      LoadModule mono_module /usr/lib/apache/1.3/libmod_mono.so
+      AddModule mod_mono.c
+      Alias /mono "/usr/share/doc/xsp/test"
+      <Directory /usr/share/doc/xsp/test>
+              SetHandler mono
+              <IfModule mod_dir.c>
+                    DirectoryIndex index.aspx
+              </IfModule>
+      </Directory>
+
+  With Apache 2.0 you will have something like:
+
+      LoadModule mono_module modules/libmod_mono.so
+      Alias /mono "/usr/share/doc/xsp/test"
+      <Directory /usr/share/doc/xsp/test>
+              SetHandler mono
+      </Directory>
+
+  or like:
+
+      LoadModule mono_module modules/libmod_mono.so
+      Alias /mono "/usr/share/doc/xsp/test"
+      <Location /mono>
+              SetHandler mono
+      </Location>
+
+  
 CREDITS
 --------
 

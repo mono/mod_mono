@@ -1,4 +1,3 @@
-MKINSTALLDIRS=$(top_builddir)/mkinstalldirs
 CLEANFILES = .libs/libmod_mono.so .libs/libmod_mono_old.so *~
 
 EXTRA_DIST = ApacheApplicationHost.cs \
@@ -8,34 +7,32 @@ EXTRA_DIST = ApacheApplicationHost.cs \
 	     ApacheWorkerRequest.cs \
 	     MonoWorkerRequest.cs
 
-libmod_mono_la_SOURCES = mod_mono.c
+EXTRA_libmod_mono_old_la_SOURCES = mod_mono_old.c
 
 if BUILD_OLD_MODULE
+lib_LTLIBRARIES = libmod_mono.la libmod_mono_old.la
 libmod_mono_old_la_SOURCES = $(EXTRA_libmod_mono_old_la_SOURCES)
 else
+lib_LTLIBRARIES = libmod_mono.la
 libmod_mono_old_la_SOURCES =
 endif
 
-EXTRA_libmod_mono_old_la_SOURCES = mod_mono_old.c
+libmod_mono_la_SOURCES = mod_mono.c
 libmod_mono_old_la_LIBADD = $(MONO_LIBS)
 
-INCLUDES=$(MONO_CFLAGS)
+INCLUDES = $(MONO_CFLAGS)
+
+
+install: $(lib_LTLIBRARIES)
+if APACHE2
+	$(APXS) -i -a -n mono libmod_mono.la
 if BUILD_OLD_MODULE
-lib_LTLIBRARIES = libmod_mono.la libmod_mono_old.la
+	$(APXS) -i -a -n mono_old libmod_mono_old.la
+endif
 else
-lib_LTLIBRARIES = libmod_mono.la
-endif
-
-make_so:
-	@if test ! -L mod_mono.so ; then ln -s .libs/libmod_mono.so mod_mono.so ; fi
+	$(APXS) -i -a -n mono .libs/libmod_mono.so
 if BUILD_OLD_MODULE
-	@if test ! -L mod_mono_old.so ; then ln -s .libs/libmod_mono_old.so mod_mono_old.so ; fi
+	$(APXS) -i -a -n mono_old .libs/libmod_mono_old.so
 endif
-
-install:
-	$(MKINSTALLDIRS) $(DESTDIR)$(LIBEXECDIR)
-	$(INSTALL) -m 644 .libs/libmod_mono.so $(DESTDIR)$(LIBEXECDIR)/mod_mono.so
-if BUILD_OLD_MODULE
-	$(INSTALL) -m 644 .libs/libmod_mono_old.so $(DESTDIR)$(LIBEXECDIR)/mod_mono_old.so
 endif
 

@@ -2,7 +2,6 @@ AC_INIT(src/mod_mono.c)
 AM_INIT_AUTOMAKE(mod_mono, 0.7.99)
 AM_CONFIG_HEADER(include/mod_mono_config.h:config.in)
 
-
 AC_PROG_CC
 AM_PROG_LIBTOOL
 
@@ -238,7 +237,13 @@ if test "yes" = "$enable_old_module" ; then
 		AC_MSG_ERROR([Building old module requested but no mono.pc found. $MONO_PKG_ERRORS])
 	fi
 fi
+
 AM_CONDITIONAL(BUILD_OLD_MODULE, test "yes" = "$enable_old_module")
+AM_CONDITIONAL(APACHE2, test "$APACHE_VER" = "2.0")
+if test "$APACHE_VER" = "2.0" ; then
+dnl Sources are recompiled if we change the target version
+	AC_DEFINE([APACHE2],,[Compiling for Apache 2.0])
+fi
 
 AC_SUBST(LIBEXECDIR)
 AC_SUBST(AP_INCLUDES)

@@ -46,7 +46,7 @@ case $CC in
 esac
 aclocal
 
-(autoheader --version)  < /dev/null > /dev/null 2>&1 && autoheader
+(autoheader --version)  < /dev/null > /dev/null 2>&1 && autoheader || exit 1
 libtoolize --force --copy
 automake -a $am_opt
 autoconf
@@ -55,5 +55,5 @@ cd $ORIGDIR
 $srcdir/configure "$@"
 
 echo 
-echo "Now type 'gmake' to compile $PROJECT."
+echo "Now type 'make' to compile $PROJECT."
 

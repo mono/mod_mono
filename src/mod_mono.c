@@ -7,6 +7,7 @@
  * 	
  * Copyright (c) 2002 Daniel Lopez Ridruejo.
  *           (c) 2002,2003 Ximian, Inc.
+ *           (c) 2004 Novell, Inc.
  *           All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -55,8 +56,9 @@
 
 #include <httpd.h>
 #include <http_config.h>
-#ifdef APACHE13
 
+#ifdef APACHE13
+/* Apache 1.3 only */
 /* Functions needed for making Apache 1.3 module as similar
 as possible to Apache 2 module, reducing ifdefs in the code itself*/
 
@@ -81,10 +83,13 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #define APR_SUCCESS 0
 
 #include <ap_alloc.h>
+/* End Apache 1.3 only */
 #else
+/* Apache 2 only */
 #define STATUS_AND_SERVER 0, NULL
 #include <http_protocol.h>
 #include <apr_strings.h>
+/* End Apache 2 only */
 #endif
 
 #include <http_core.h>
@@ -92,6 +97,22 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #include <mod_mono_config.h>
 #include <sys/un.h>
 #include <sys/select.h>
+
+/* define this to get tons of messages in the log */
+#undef DEBUG
+
+#define DEBUG_LEVEL 0
+
+#ifdef DEBUG
+#define PRINT(a,...) if (a >= DEBUG_LEVEL) \
+				ap_log_error (APLOG_MARK, APLOG_WARNING, STATUS_AND_SERVER, __VA_ARGS__)
+#else
+#define PRINT dummy_print
+static void
+dummy_print (int a, ...)
+{
+}
+#endif
 
 enum Cmd {
 	FIRST_COMMAND,
@@ -163,6 +184,7 @@ modmono_application_directive (cmd_parms *cmd,
 			ap_get_module_config (cmd->server->module_config, &mono_module);
 
 	server_rec->filename = filename;
+	PRINT (0, "File name: %s\n", filename == NULL ? "(null)" : filename);
 	return NULL;
 }
 
@@ -170,6 +192,7 @@ modmono_application_directive (cmd_parms *cmd,
 static void *
 create_modmono_server_config (apr_pool_t *p, server_rec *s)
 {
+	PRINT (0, "create_modmono_server_config");
 	return apr_pcalloc (p, sizeof (modmono_server_rec));
 }
 
@@ -549,6 +572,7 @@ send_headers (request_rec *r, int fd)
 	const apr_table_entry_t *t_end;
 
 	elts = apr_table_elts (r->headers_in);
+	PRINT (3, "Elements: %d", (int) elts->nelts);
 	write_data_no_prefix (fd, &elts->nelts, sizeof (int));
 	if (elts->nelts == 0)
 		return TRUE;
@@ -557,6 +581,7 @@ send_headers (request_rec *r, int fd)
 	t_end = t_elt + elts->nelts;
 
 	do {
+		PRINT (3, "%s: %s", t_elt->key, t_elt->val);
 		if (write_data_string_no_prefix (fd, t_elt->key) <= 0)
 			return FALSE;
 		if (write_data_string_no_prefix (fd, t_elt->val) < 0)
@@ -581,23 +606,32 @@ modmono_execute_request (request_rec *r)
 	modmono_server_rec *server_conf;
 
 	server_conf = ap_get_module_config (r->server->module_config, &mono_module);
+	PRINT (2, "Tengo server conf: %X %X\n", server_conf, server_conf->filename);
+	if (server_conf->filename == NULL)
+		server_conf->filename = "/tmp/mod_mono_server";
 
 	fd = setup_socket (server_conf->filename);
+	PRINT (2, "After setup_socket\n");
 	if (fd == -1)
 		return HTTP_SERVICE_UNAVAILABLE;
 
+	PRINT (2, "Writing method: %s\n", r->method);
 	if (write_data_string_no_prefix (fd, r->method) <= 0)
 		return HTTP_SERVICE_UNAVAILABLE;
 
+	PRINT (2, "Writing uri: %s\n", r->uri);
 	if (write_data_string_no_prefix (fd, r->uri) <= 0)
 		return HTTP_SERVICE_UNAVAILABLE;
 
+	PRINT (2, "Writing query string: %s\n", request_get_query_string (r));
 	if (write_data_string_no_prefix (fd, request_get_query_string (r)) < 0)
 		return HTTP_SERVICE_UNAVAILABLE;
 
+	PRINT (2, "Writing protocol: %s\n", r->protocol);
 	if (write_data_string_no_prefix (fd, r->protocol) <= 0)
 		return HTTP_SERVICE_UNAVAILABLE;
 	
+	PRINT (2, "Sending headers\n");
 	if (!send_headers (r, fd))
 		return HTTP_SERVICE_UNAVAILABLE;
 		
@@ -611,15 +645,17 @@ modmono_execute_request (request_rec *r)
 	if (input <= 0)
 		status = HTTP_INTERNAL_SERVER_ERROR;
 
+	PRINT (2, "Done. Status: %d\n", status);
 	return status;
 }
 
 static int
 modmono_handler (request_rec *r)
 {
-	if (!r->content_type || strcmp (r->content_type, "application/x-asp-net"))
+	if (strcmp (r->handler, "mono"))
 		return DECLINED;
 
+	PRINT (1, "handler: %s\n", r->handler);
 	return modmono_execute_request (r);
 }
 
@@ -627,6 +663,7 @@ modmono_handler (request_rec *r)
 static void
 modmono_init_handler (server_rec *s, pool *p)
 {
+	PRINT (0, "Initializing handler\n");
 	ap_add_version_component ("mod_mono/" VERSION);
 }
 #else
@@ -636,23 +673,23 @@ modmono_init_handler (apr_pool_t *p,
 		      apr_pool_t *ptemp,
 		      server_rec *s)
 {
-  ap_add_version_component (p, "mod_mono/" VERSION);
-  return OK;
+	PRINT (0, "Initializing handler\n");
+	ap_add_version_component (p, "mod_mono/" VERSION);
+	return OK;
 }
 #endif
 
 #ifdef APACHE13
-static const handler_rec modmono_handlers[] =
-  {
-    {"application/x-asp-net", modmono_handler},
-    {NULL}
-  };
+static const handler_rec modmono_handlers [] = {
+	{ "mono-handler", modmono_handler },
+	{ NULL }
+};
 #else
 static void
 register_modmono_hooks (apr_pool_t * p)
 {
-  ap_hook_handler (modmono_handler, NULL, NULL, APR_HOOK_FIRST);
-  ap_hook_post_config (modmono_init_handler, NULL, NULL, APR_HOOK_MIDDLE);
+	ap_hook_handler (modmono_handler, NULL, NULL, APR_HOOK_FIRST);
+	ap_hook_post_config (modmono_init_handler, NULL, NULL, APR_HOOK_MIDDLE);
 }
 #endif
 

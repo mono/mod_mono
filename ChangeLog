@@ -1,3 +1,20 @@
+2004-04-08  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* NEWS: updated.
+	* INSTALL: details on the *NEW* setup for mod_mono. Existing
+	installations will break. Added sample configurations.
+
+	* autogen.sh: check for error when running autoheader.
+	* configure.in: created a new conditional (APACHE2) and added a new
+	AC_DEFINE with the same name so that mod_mono_config.h is updated if
+	we change the target apache version and the sources are recompiled.
+
+	* src/Makefile.am: use apxs to install the modules. It adds the
+	LoadModule line automatically to the apache configuration file.
+
+	* src/mod_mono.c: added some debug help. The request is accepted based
+	on the handler name, not the content type.
+
 2004-03-30  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* NEWS: old stuff here.

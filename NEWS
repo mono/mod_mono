@@ -1,3 +1,10 @@
+April 8, 2004 - Gonzalo Paniagua
+---------------------------------------
+The changes today will break existing installations.  Check out the
+INSTALL file for details on the new setup. It's easier.
+
+
+....
 December 2, 2003 - Gonzalo Paniagua
 ---------------------------------------
 
@@ -7,8 +14,9 @@ November 24, 2003 - Gonzalo Paniagua
 ---------------------------------------
 
 0.6 is near.
-There have been several fixes to POST+body handling and building mod_mono_old
-is now optional. This way, you don't need mono-dev package to build mod_mono.
+There have been several fixes to POST+body handling and building
+mod_mono_old is now optional. This way, you don't need mono-dev package
+to build mod_mono.
 
 
 October 2, 2003 - Gonzalo Paniagua
@@ -21,13 +29,14 @@ Renamed:
 	* mod_mono to mod_mono_old
 	* mod_mono_unix to mod_mono
 
-The FAQ and INSTALL for the old mod_mono are in FAQ-old.txt and INSTALL-old.
+The FAQ and INSTALL for the old mod_mono are in FAQ-old.txt and
+INSTALL-old.
 
 September 18, 2003 - Gonzalo Paniagua
 ---------------------------------------
 
-From now on, mod_mono_unix uses content_type to determine if it will process
-a request or not. You *MUST* use the AddType directive in your apache
-configuration file. More info in the INSTALL file.
+From now on, mod_mono_unix uses content_type to determine if it will
+process a request or not. You *MUST* use the AddType directive in your
+apache configuration file. More info in the INSTALL file.
 
 
