@@ -1,3 +1,9 @@
+2003-11-25  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* configure.in:
+	* src/Makefile.am: made compilation of mod_mono_old optional and
+	disabled by default. You need --enable-old-module to build it.
+
 2003-11-20  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: return a 503 (Temporarily Unavailable) when the unix

@@ -1,3 +1,11 @@
+November 24, 2003 - Gonzalo Paniagua
+---------------------------------------
+
+0.6 is near.
+There have been several fixes to POST+body handling and building mod_mono_old
+is now optional. This way, you don't need mono-dev package to build mod_mono.
+
+
 October 2, 2003 - Gonzalo Paniagua
 ---------------------------------------
 
