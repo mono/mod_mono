@@ -347,6 +347,7 @@ create_application_host (request_rec *r)
     return HTTP_INTERNAL_SERVER_ERROR;
   }
   register_wrappers();
+  mono_config_parse (NULL);
   domain = mono_jit_init (app_base_dir);
   mono_thread_attach(domain);
 
