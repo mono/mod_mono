@@ -1,4 +1,4 @@
-Last updated: October 2, 2003
+Last updated: October 20, 2003
 
 INSTALLING mod_mono
 --------------------
@@ -37,6 +37,12 @@ INSTALLING mod_mono
 
          ./configure --prefix=/usr --with-apxs=/home/user/httpd/bin/apxs
 
+       (Apache 2 only) If the you get errors while compiling due to
+       apr.h header not found, you'll need to use the --with-apr-config
+       option and provide the full path to 'apr-config':
+
+         ./configure --prefix=/usr --with-apr-config=/usr/bin/apr-config
+
     3. Configure apache.
 
        Edit your httpd.conf adding these lines:
@@ -68,6 +74,11 @@ MonoUnixSocket /tmp/mod_mono_server
     
 	Make sure that both apache and mod-mono-server have write
 	permission to that file.
+	
+	You can achieve this by running mod-mono-server under the same
+	user as apache or changing the permissions of the socket file
+	(/tmp/mod_mono_server by default) to 666, ie., run "chmod 666
+	/tmp/mod_mono_server", *after* mod-mono-server is started.
 
 
     4. Run mod-mono-server.
