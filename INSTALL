@@ -208,15 +208,6 @@ CONFIGURING APACHE
       LoadModule mono_unix_module /home/user/mono/install/apache2/modules/mod_mono_unix.so
       MonoApplicationUnix /tmp/mod_mono_server
 
-    You must add the following directive:
-
-      <Location /mono>
-          SetHandler modmono-handler
-      </Location>
-
-    where /mono is the directory where the ASP.NET files are located
-    or the alias that you can add. See next issue.
-
     You may also want to add an Alias like:
 
       Alias /mono "home/user/xsp/server/test"
@@ -227,7 +218,7 @@ CONFIGURING APACHE
     be set up by mod-mono-server. You can use any valid file name here.  Just
     use the same file in httpd.conf and in mod-mono-server.exe (--file argument
     or UnixSocketFileName in mod-mono-server.exe.config <appSettings>). Be sure
-    that both apache and mod-mono-server has write permission to the socket.
+    that both apache and mod-mono-server have write permission to the socket.
 
     When running mod-mono-server.exe, you must  use '--applications /mono:.'
     command line argument too.

@@ -1,3 +1,8 @@
+2003-09-20  Pedro Martínez Juliá  <yoros@wanadoo.es>
+
+	* INSTALL: Remove the doc lines related to <Location> directive
+	because they are not needed since the last change.
+
 2003-09-19  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* configure.in: set version to 0.4.99.
