@@ -1,10 +1,10 @@
 %define pkg_version 0.3
-%define xsp_version 0.2
+%define xsp_version 0.3
 %define module_path /usr/lib/httpd/modules
 
 Summary: Mono module for Apache 2
 Name: mod_mono
-Version: 0.3.4
+Version: 0.3.5
 Release: 1
 License: The Apache License
 Group: System Environment/Daemons

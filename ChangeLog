@@ -4,6 +4,7 @@
 	* src/ApacheApplicationHost.cs: Add an internal method so the call will
 	be made in the right domain, as suggested by Dietmar. This can be done from C, but was added after 
 	Mono 0.20. It also required a serialization constructor for IntPtr that Gonzalo promptly added, thanks!
+	* packaging/redhat/mod_mono.spec: Update for latest versions
 	
 2003-02-17  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
