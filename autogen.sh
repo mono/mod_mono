@@ -54,6 +54,7 @@ cd $ORIGDIR
 
 $srcdir/configure "$@"
 
-echo 
-echo "Now type 'make' to compile $PROJECT."
+if [ $? -eq 0 ] ; then
+	echo "Now type 'make' to compile $PROJECT."
+fi
 

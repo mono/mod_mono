@@ -56,6 +56,8 @@
 
 #include <httpd.h>
 #include <http_config.h>
+#include <errno.h>
+#include <sys/wait.h>
 
 #ifdef APACHE13
 /* Apache 1.3 only */
@@ -104,15 +106,30 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #define DEBUG_LEVEL 0
 
 #ifdef DEBUG
-#define PRINT(a,...) if (a >= DEBUG_LEVEL) \
-				ap_log_error (APLOG_MARK, APLOG_WARNING, STATUS_AND_SERVER, __VA_ARGS__)
+#define DEBUG_PRINT(a,...) if (a >= DEBUG_LEVEL) { \
+				errno = 0; \
+				ap_log_error (APLOG_MARK, APLOG_WARNING, STATUS_AND_SERVER, __VA_ARGS__); \
+			}
 #else
-#define PRINT dummy_print
+#define DEBUG_PRINT dummy_print
 static void
 dummy_print (int a, ...)
 {
 }
 #endif
+
+#define CONFIG_FUNCTION_NAME(directive) mono_config_ ##directive
+#define CONFIG_FUNCTION(directive, field) static const char *\
+			mono_config_ ##directive (cmd_parms *cmd, void *config, const char *parm) \
+			{ \
+				mono_server_rec *sr; \
+				sr = (mono_server_rec *) \
+					ap_get_module_config (cmd->server->module_config, &mono_module); \
+ 			\
+				sr->field = (char *) parm; \
+				DEBUG_PRINT (0, #directive ": %s", parm == NULL ? "(null)" : parm); \
+				return NULL; \
+			}
 
 enum Cmd {
 	FIRST_COMMAND,
@@ -140,7 +157,7 @@ enum Cmd {
 	LAST_COMMAND
 };
 
-char *cmdNames [] = {
+static char *cmdNames [] = {
 	"GET_REQUEST_LINE",
 	"SEND_FROM_MEMORY",
 	"GET_PATH_INFO",
@@ -171,29 +188,40 @@ module AP_MODULE_DECLARE_DATA mono_module;
 #endif
 
 typedef struct {
-	const char *filename;
-} modmono_server_rec;
+	char *filename;
+	char *run_xsp;
+	char *executable_path;
+	char *path;
+	char *server_path;
+	char *applications;
+	char *wapidir;
+} mono_server_rec;
 
-
-static const char *
-modmono_application_directive (cmd_parms *cmd,
-			       void *config,
-			       const char *filename)
-{
-	modmono_server_rec *server_rec = (modmono_server_rec *)
-			ap_get_module_config (cmd->server->module_config, &mono_module);
-
-	server_rec->filename = filename;
-	PRINT (0, "File name: %s\n", filename == NULL ? "(null)" : filename);
-	return NULL;
-}
-
+CONFIG_FUNCTION (unix_socket, filename)
+CONFIG_FUNCTION (run_xsp, run_xsp)
+CONFIG_FUNCTION (executable_path, executable_path)
+CONFIG_FUNCTION (path, path)
+CONFIG_FUNCTION (server_path, server_path)
+CONFIG_FUNCTION (applications, applications)
+CONFIG_FUNCTION (wapidir, wapidir)
 
 static void *
-create_modmono_server_config (apr_pool_t *p, server_rec *s)
+create_mono_server_config (apr_pool_t *p, server_rec *s)
 {
-	PRINT (0, "create_modmono_server_config");
-	return apr_pcalloc (p, sizeof (modmono_server_rec));
+	mono_server_rec *server;
+
+	DEBUG_PRINT (1, "create_mono_server_config");
+
+	server = apr_pcalloc (p, sizeof (mono_server_rec));
+	server->filename = "/tmp/mod_mono_server";
+	server->run_xsp = "True";
+	server->executable_path = "/usr/bin/mono";
+	server->path = "/usr/lib";
+	server->server_path = "/usr/bin/mod-mono-server.exe";
+	server->applications = NULL;
+	server->wapidir = "/tmp";
+
+	return server;
 }
 
 static void
@@ -296,23 +324,16 @@ request_get_path_translated (request_rec *r)
 static char *
 request_get_query_string (request_rec *r)
 {
-	return r->args  ? r->args : "";
+	return r->args ? r->args : "";
 }
 
 static int
 setup_client_block (request_rec *r)
 {
-	if (r->read_length) {
-	  return APR_SUCCESS;
-	} else {
-		return ap_setup_client_block (r, REQUEST_CHUNKED_ERROR);
-	}
-}
+	if (r->read_length)
+		return APR_SUCCESS;
 
-static int
-write_data_no_prefix (int fd, const void *str, int size)
-{
-	return write (fd, str, size);
+	return ap_setup_client_block (r, REQUEST_CHUNKED_ERROR);
 }
 
 static int
@@ -329,7 +350,7 @@ write_data (int fd, const void *str, int size)
 	if (write_ok (fd) == -1)
 		return -1;
 
-	return write_data_no_prefix (fd, str, size);
+	return write (fd, str, size);
 }
 
 static int
@@ -496,7 +517,7 @@ do_command (int command, int fd, request_rec *r, int *result)
 		str = apr_pcalloc (r->pool, i);
 		i = ap_get_client_block (r, str, i);
 		status = write_data (fd, &i, sizeof (int));
-		status = write_data_no_prefix (fd, str, i);
+		status = write (fd, str, i);
 		break;
 	case SET_STATUS_LINE:
 		if (read_data_string (r->pool, fd, &str, NULL) == NULL) {
@@ -533,11 +554,157 @@ do_command (int command, int fd, request_rec *r, int *result)
 }
 
 static int
-setup_socket (const char *filename)
+try_connect (const char *filename, int fd)
+{
+	char *error;
+	struct sockaddr_un address;
+	struct sockaddr *ptradd;
+
+	ptradd = (struct sockaddr *) &address;
+	address.sun_family = PF_UNIX;
+	memcpy (address.sun_path, filename, strlen (filename) + 1);
+	if (connect (fd, ptradd, sizeof (address)) != -1)
+		return fd;
+
+	switch (errno) {
+	case ENOENT:
+	case ECONNREFUSED:
+		return -1; /* Can try to launch mod-mono-server */
+	case EPERM:
+		error = strerror (errno);
+		ap_log_error (APLOG_MARK,
+			      APLOG_ERR,
+			      STATUS_AND_SERVER,
+			      "mod_mono: file %s exists, but wrong permissions.", filename);
+
+		close (fd);
+		return -2; /* Unrecoverable */
+	default:
+		error = strerror (errno);
+		ap_log_error (APLOG_MARK,
+			      APLOG_ERR,
+			      STATUS_AND_SERVER,
+			      "mod_mono: connect error (%s). File: %s", error, filename);
+
+		close (fd);
+		return -2; /* Unrecoverable */
+	}
+}
+
+static char *
+get_directory (apr_pool_t *pool, const char *filepath)
+{
+	char *sep;
+	char *result;
+
+	sep = strrchr (filepath, '/');
+	if (sep == NULL || sep == filepath)
+		return "/";
+	
+	result = apr_pcalloc (pool, sep - filepath + 1);
+	strncpy (result, filepath, sep - filepath);
+	return result;
+}
+
+	pid_t pid;
+	int status;
+
+	
+static void
+fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
+{
+	pid_t pid;
+	int status;
+	int i;
+	char *argv [8];
+	char *path;
+	char *tmp;
+	char *monodir;
+	char *serverdir;
+	char *wapidir;
+
+	pid = fork ();
+	if (pid > 0) {
+		wait (&status);
+		return;
+	}
+
+	pid = fork ();
+	if (pid > 0) {
+		exit (0);
+	}
+
+	setsid ();
+	chdir ("/");
+	DEBUG_PRINT (1, "child started");
+	
+	for (i = getdtablesize () - 1; i >= 3; i--)
+		close (i);
+
+	tmp = getenv ("PATH");
+	DEBUG_PRINT (1, "PATH: %s", tmp);
+	if (tmp == NULL)
+		tmp = "";
+
+	monodir = get_directory (pool, server_conf->executable_path);
+	DEBUG_PRINT (1, "monodir: %s", monodir);
+	serverdir = get_directory (pool, server_conf->server_path);
+	DEBUG_PRINT (1, "serverdir: %s", serverdir);
+	if (strcmp (monodir, serverdir)) {
+		path = apr_pcalloc (pool, strlen (tmp) + 1 +
+					  strlen (monodir) + 1 +
+					  strlen (serverdir) + 1);
+		sprintf (path, "%s:%s:%s", monodir, serverdir, tmp);
+	} else {
+		path = apr_pcalloc (pool, strlen (tmp) + 1 +
+					  strlen (monodir) + 1);
+
+		sprintf (path, "%s:%s", monodir, tmp);
+	}
+
+	DEBUG_PRINT (1, "PATH after: %s", path);
+	setsid ();
+	chdir ("/");
+	umask (0077);
+	setenv ("PATH", path, 1);
+	setenv ("MONO_PATH", server_conf->path, 1);
+	wapidir = apr_pcalloc (pool, strlen (server_conf->wapidir) + 5 + 2);
+	sprintf (wapidir, "%s/%s", server_conf->wapidir, ".wapi");
+	mkdir (wapidir, 0700);
+	chmod (wapidir, 0700);
+	setenv ("MONO_SHARED_DIR", server_conf->wapidir, 1);
+	argv [0] = server_conf->executable_path;
+	argv [1] = server_conf->server_path;
+	argv [2] = "--filename";
+	argv [3] = server_conf->filename;
+	argv [4] = "--applications";
+	argv [5] = server_conf->applications;
+	argv [6] = "--nonstop";
+	argv [7] = NULL;
+
+	ap_log_error (APLOG_MARK, APLOG_DEBUG,
+		      STATUS_AND_SERVER,
+		      "running '%s %s %s %s %s %s %s'",
+		      argv [0], argv [1], argv [2], argv [3], argv [4], argv [5], argv [6]);
+	execv (argv [0], argv);
+	ap_log_error (APLOG_MARK, APLOG_ERR,
+		      STATUS_AND_SERVER,
+		      "Failed running '%s %s %s %s %s %s %s'. Reason: %s",
+		      argv [0], argv [1], argv [2], argv [3], argv [4], argv [5], argv [6],
+		      strerror (errno));
+	exit (1);
+}
+
+static int
+setup_socket (apr_pool_t *pool, mono_server_rec *server_conf)
 {
 	int fd;
-	struct sockaddr_un address;
-
+	int result;
+	char *filename;
+	pid_t pid;
+	int status;
+	int i;
+	
 	fd = socket (PF_UNIX, SOCK_STREAM, 0);
 	if (fd == -1) {
 		ap_log_error (APLOG_MARK,
@@ -548,20 +715,47 @@ setup_socket (const char *filename)
 		return -1;
 	}
 
-	address.sun_family = PF_UNIX;
-	memcpy (address.sun_path, filename, strlen (filename) + 1);
-	if (connect (fd, (struct sockaddr *) &address, sizeof (struct sockaddr_un)) == -1) {
-		char *s = strerror (errno);
-		ap_log_error (APLOG_MARK,
-			      APLOG_DEBUG,
-			      STATUS_AND_SERVER,
-			      "mod_mono: connect error (%s). File: %s", s, filename);
+	result = try_connect (server_conf->filename, fd);
+	DEBUG_PRINT (1, "try_connect: %d", (void *) result);
+	if (result > 0)
+		return fd;
 
-		close (fd);
+	if (result == -2)
+		return -1;
+
+	/* Running mod-mono-server not requested */
+	if (!strcasecmp (server_conf->run_xsp, "false")) {
+		DEBUG_PRINT (1, "Not running mod-mono-server: %s", server_conf->run_xsp);
+		ap_log_error (APLOG_MARK, APLOG_DEBUG,
+			      STATUS_AND_SERVER,
+			      "Not running mod-mono-server.exe");
 		return -1;
 	}
 
-	return fd;
+	/* MonoApplications is mandatory when running mod-mono-server */
+	DEBUG_PRINT (1, "Applications: %s", server_conf->applications);
+	if (server_conf->applications == NULL) {
+		ap_log_error (APLOG_MARK, APLOG_ERR,
+			      STATUS_AND_SERVER,
+			      "Not running mod-mono-server.exe because no "
+			      "MonoApplications specified.");
+		return -1;
+	}
+
+	fork_mod_mono_server (pool, server_conf);
+	DEBUG_PRINT (1, "parent waiting");
+	for (i = 0; i < 3; i++) {
+		sleep (1);
+		DEBUG_PRINT (1, "try_connect %d", i);
+		result = try_connect (server_conf->filename, fd);
+		if (result > 0)
+			return fd;
+	}
+
+	ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+		      "Failed connecting and child didn't exit!");
+
+	return -1;
 }
 
 static int
@@ -572,8 +766,8 @@ send_headers (request_rec *r, int fd)
 	const apr_table_entry_t *t_end;
 
 	elts = apr_table_elts (r->headers_in);
-	PRINT (3, "Elements: %d", (int) elts->nelts);
-	write_data_no_prefix (fd, &elts->nelts, sizeof (int));
+	DEBUG_PRINT (3, "Elements: %d", (int) elts->nelts);
+	write (fd, &elts->nelts, sizeof (int));
 	if (elts->nelts == 0)
 		return TRUE;
 
@@ -581,7 +775,7 @@ send_headers (request_rec *r, int fd)
 	t_end = t_elt + elts->nelts;
 
 	do {
-		PRINT (3, "%s: %s", t_elt->key, t_elt->val);
+		DEBUG_PRINT (3, "%s: %s", t_elt->key, t_elt->val);
 		if (write_data_string_no_prefix (fd, t_elt->key) <= 0)
 			return FALSE;
 		if (write_data_string_no_prefix (fd, t_elt->val) < 0)
@@ -595,7 +789,7 @@ send_headers (request_rec *r, int fd)
 }
 
 static int
-modmono_execute_request (request_rec *r)
+mono_execute_request (request_rec *r)
 {
 	int fd;
 	int command;
@@ -603,37 +797,45 @@ modmono_execute_request (request_rec *r)
 	int input;
 	int status;
 	char *str;
-	modmono_server_rec *server_conf;
+	mono_server_rec *server_conf;
 
 	server_conf = ap_get_module_config (r->server->module_config, &mono_module);
-	PRINT (2, "Tengo server conf: %X %X\n", server_conf, server_conf->filename);
-	if (server_conf->filename == NULL)
-		server_conf->filename = "/tmp/mod_mono_server";
+	DEBUG_PRINT (2, "Tengo server conf: %X %X", server_conf, server_conf->filename);
 
-	fd = setup_socket (server_conf->filename);
-	PRINT (2, "After setup_socket\n");
+	fd = setup_socket (r->pool, server_conf);
+	DEBUG_PRINT (2, "After setup_socket");
 	if (fd == -1)
 		return HTTP_SERVICE_UNAVAILABLE;
 
-	PRINT (2, "Writing method: %s\n", r->method);
-	if (write_data_string_no_prefix (fd, r->method) <= 0)
+	DEBUG_PRINT (2, "Writing method: %s", r->method);
+	if (write_data_string_no_prefix (fd, r->method) <= 0) {
+		close (fd);
 		return HTTP_SERVICE_UNAVAILABLE;
+	}
 
-	PRINT (2, "Writing uri: %s\n", r->uri);
-	if (write_data_string_no_prefix (fd, r->uri) <= 0)
+	DEBUG_PRINT (2, "Writing uri: %s", r->uri);
+	if (write_data_string_no_prefix (fd, r->uri) <= 0) {
+		close (fd);
 		return HTTP_SERVICE_UNAVAILABLE;
+	}
 
-	PRINT (2, "Writing query string: %s\n", request_get_query_string (r));
-	if (write_data_string_no_prefix (fd, request_get_query_string (r)) < 0)
+	DEBUG_PRINT (2, "Writing query string: %s", request_get_query_string (r));
+	if (write_data_string_no_prefix (fd, request_get_query_string (r)) < 0) {
+		close (fd);
 		return HTTP_SERVICE_UNAVAILABLE;
+	}
 
-	PRINT (2, "Writing protocol: %s\n", r->protocol);
-	if (write_data_string_no_prefix (fd, r->protocol) <= 0)
+	DEBUG_PRINT (2, "Writing protocol: %s", r->protocol);
+	if (write_data_string_no_prefix (fd, r->protocol) <= 0) {
+		close (fd);
 		return HTTP_SERVICE_UNAVAILABLE;
+	}
 	
-	PRINT (2, "Sending headers\n");
-	if (!send_headers (r, fd))
+	DEBUG_PRINT (2, "Sending headers");
+	if (!send_headers (r, fd)) {
+		close (fd);
 		return HTTP_SERVICE_UNAVAILABLE;
+	}
 		
 	do {
 		input = read (fd, &command, sizeof (int));
@@ -645,65 +847,114 @@ modmono_execute_request (request_rec *r)
 	if (input <= 0)
 		status = HTTP_INTERNAL_SERVER_ERROR;
 
-	PRINT (2, "Done. Status: %d\n", status);
+	DEBUG_PRINT (2, "Done. Status: %d", status);
 	return status;
 }
 
 static int
-modmono_handler (request_rec *r)
+mono_handler (request_rec *r)
 {
 	if (strcmp (r->handler, "mono"))
 		return DECLINED;
 
-	PRINT (1, "handler: %s\n", r->handler);
-	return modmono_execute_request (r);
+	DEBUG_PRINT (1, "handler: %s", r->handler);
+	return mono_execute_request (r);
 }
 
 #ifdef APACHE13
 static void
-modmono_init_handler (server_rec *s, pool *p)
+mono_init_handler (server_rec *s, pool *p)
 {
-	PRINT (0, "Initializing handler\n");
+	DEBUG_PRINT (0, "Initializing handler");
 	ap_add_version_component ("mod_mono/" VERSION);
 }
 #else
 static int
-modmono_init_handler (apr_pool_t *p,
+mono_init_handler (apr_pool_t *p,
 		      apr_pool_t *plog,
 		      apr_pool_t *ptemp,
 		      server_rec *s)
 {
-	PRINT (0, "Initializing handler\n");
+	DEBUG_PRINT (0, "Initializing handler");
 	ap_add_version_component (p, "mod_mono/" VERSION);
 	return OK;
 }
 #endif
 
 #ifdef APACHE13
-static const handler_rec modmono_handlers [] = {
-	{ "mono-handler", modmono_handler },
+static const handler_rec mono_handlers [] = {
+	{ "mono", mono_handler },
 	{ NULL }
 };
 #else
 static void
-register_modmono_hooks (apr_pool_t * p)
+mono_register_hooks (apr_pool_t * p)
 {
-	ap_hook_handler (modmono_handler, NULL, NULL, APR_HOOK_FIRST);
-	ap_hook_post_config (modmono_init_handler, NULL, NULL, APR_HOOK_MIDDLE);
+	ap_hook_handler (mono_handler, NULL, NULL, APR_HOOK_FIRST);
+	ap_hook_post_config (mono_init_handler, NULL, NULL, APR_HOOK_MIDDLE);
 }
 #endif
 
 #ifdef APACHE13
-static const command_rec
-modmono_cmds [] =
-{
+static const command_rec mono_cmds [] = {
 	{"MonoUnixSocket",
-	 modmono_application_directive,
-	 NULL,
-	 RSRC_CONF,
-	 TAKE1,
-	 "Create a Mono Application. The unique argument "
-	 "is the unix socket file name."
+	CONFIG_FUNCTION_NAME(unix_socket),
+	NULL,
+	RSRC_CONF,
+	TAKE1,
+	"Named pipe file name. Default: /tmp/mod_mono_server"
+	},
+
+	{"MonoRunXSP",
+	CONFIG_FUNCTION_NAME(run_xsp),
+	NULL,
+	RSRC_CONF,
+	TAKE1,
+	"It can be False or True. If it is True, asks the module to "
+	"start mod-mono-server.exe if it's not already there. Default: False"
+	},
+
+	{"MonoExecutablePath",
+	CONFIG_FUNCTION_NAME(executable_path),
+	NULL,
+	RSRC_CONF,
+	TAKE1,
+	"If MonoRunXSP is True, this is the full path where mono is located. "
+	"Default: /usr/bin/mono"
+	},
+
+	{"MonoPath",
+	CONFIG_FUNCTION_NAME(path),
+	NULL,
+	RSRC_CONF,
+	TAKE1,
+	"If MonoRunXSP is True, this will be the content of MONO_PATH "
+	"environment variable. Default: \"\""
+	},
+
+	{"MonoServerPath",
+	CONFIG_FUNCTION_NAME(server_path),
+	NULL,
+	RSRC_CONF,
+	TAKE1,
+	"If MonoRunXSP is True, this is the full path to mod-mono-server.exe. "
+	"Default: /usr/bin/mod-mono-server.exe"
+	},
+
+	{"MonoApplications",
+	CONFIG_FUNCTION_NAME(applications),
+	NULL,
+	RSRC_CONF,
+	TAKE1,
+	"Comma separated list with virtual directories and real directories. "
+	"One ASP.NET application will be created for each pair. Default: \"\" "
+	},
+	{"MonoWapiDir",
+	CONFIG_FUNCTION_NAME (wapidir),
+	NULL,
+	RSRC_CONF,
+	TAKE1,
+	"See MONO_SHARED_DIR in the mono manual page. Default: \"/tmp\""
 	},
 	{NULL}
 };
@@ -711,13 +962,13 @@ modmono_cmds [] =
 module MODULE_VAR_EXPORT mono_module =
   {
     STANDARD_MODULE_STUFF,
-    modmono_init_handler,       /* initializer */
+    mono_init_handler,       /* initializer */
     NULL,      /* dir config creater */
     NULL,      /* dir merger --- default is to override */
-    create_modmono_server_config,	/* server config */
+    create_mono_server_config,	/* server config */
     NULL,                       /* merge server configs */
-    modmono_cmds,            /* command table */
-    modmono_handlers,         /* handlers */
+    mono_cmds,            /* command table */
+    mono_handlers,         /* handlers */
     NULL,                       /* filename translation */
     NULL,                       /* check_user_id */
     NULL,                       /* check auth */
@@ -731,30 +982,67 @@ module MODULE_VAR_EXPORT mono_module =
     NULL                        /* post read-request */
   };
 #else
-static const command_rec
-modmono_cmds [] =
-  {
+static const command_rec mono_cmds [] =
+{
     AP_INIT_TAKE1 ("MonoUnixSocket",
-		   modmono_application_directive,
+		   CONFIG_FUNCTION_NAME(unix_socket),
 		   NULL,
 		   RSRC_CONF,
-		   "Create a Mono Application. The unique argument "
-		   "is the unix socket file name."
+		   "Named pipe file name. Default: /tmp/mod_mono_server"
+		  ),
+    AP_INIT_TAKE1 ("MonoRunXSP",
+		   CONFIG_FUNCTION_NAME(run_xsp),
+		   NULL,
+		   RSRC_CONF,
+		   "It can be False or True. If it is True, asks the module to "
+		   "start mod-mono-server.exe if it's not already there. Default: False"
+		  ),
+    AP_INIT_TAKE1 ("MonoExecutablePath",
+		   CONFIG_FUNCTION_NAME (executable_path),
+		   NULL,
+		   RSRC_CONF,
+		   "If MonoRunXSP is True, this is the full path where mono is located. "
+		   "Default: /usr/bin/mono"
+		  ),
+    AP_INIT_TAKE1 ("MonoPath",
+		   CONFIG_FUNCTION_NAME (path),
+		   NULL,
+		   RSRC_CONF,
+		   "If MonoRunXSP is True, this will be the content of MONO_PATH "
+		   "environment variable. Default: \"\""
+		  ),
+    AP_INIT_TAKE1 ("MonoServerPath",
+		   CONFIG_FUNCTION_NAME (server_path),
+		   NULL,
+		   RSRC_CONF,
+		   "If MonoRunXSP is True, this is the full path to mod-mono-server.exe. "
+		   "Default: /usr/bin/mod-mono-server.exe"
+		  ),
+    AP_INIT_TAKE1 ("MonoApplications",
+		   CONFIG_FUNCTION_NAME (applications),
+		   NULL,
+		   RSRC_CONF,
+		   "Comma separated list with virtual directories and real directories. "
+		   "One ASP.NET application will be created for each pair. Default: \"\" "
+		  ),
+    AP_INIT_TAKE1 ("MonoWapiDir",
+		   CONFIG_FUNCTION_NAME (wapidir),
+		   NULL,
+		   RSRC_CONF,
+		   "See MONO_SHARED_DIR in the mono manual page. Default: \"/tmp\""
 		  ),
     NULL
+};
 
-  };
-
-module AP_MODULE_DECLARE_DATA mono_module =
-  {
-    STANDARD20_MODULE_STUFF,
-    NULL,/* dir config creater */
-    NULL,/* dir merger --- default is to override */
-    create_modmono_server_config,/* server config */
-    NULL,/* merge server configs */
-    modmono_cmds,/* command apr_table_t */
-    register_modmono_hooks/* register hooks */
-  };
+module AP_MODULE_DECLARE_DATA mono_module = {
+	STANDARD20_MODULE_STUFF,
+	NULL,				/* dir config creater */
+	NULL,				/* dir merger --- default is to override */
+	create_mono_server_config,	/* server config */
+	NULL,				/* merge server configs */
+	mono_cmds,			/* command apr_table_t */
+	mono_register_hooks		/* register hooks */
+};
 #endif
 
 
