@@ -72,8 +72,7 @@ It will tell you about duplication, but it will compile.
 The ModMono.cs file is located in the src/ directory
 This is the command I use to build ModMono.dll:
 
-mcs ModMono.cs -target:library -reference:/home/user/mono/install/lib/System.Web.dll
-
+make -f makedll.mak
 
 INSTALLING BINARIES
 ========================

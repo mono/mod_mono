@@ -1,8 +1,9 @@
 /* ====================================================================
  * The Apache Software License, Version 1.1
  *
- * Copyright (c) 2002 Daniel Lopez Ridruejo.  All rights
- * reserved.
+ * Copyright (c) 2002 Daniel Lopez Ridruejo.
+ *           (c) 2002 Ximian, Inc.
+ *           All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -19,7 +20,8 @@
  * 3. The end-user documentation included with the redistribution,
  *    if any, must include the following acknowledgment:
  *       "This product includes software developed by 
- *        Daniel Lopez Ridruejo (daniel@rawbyte.com)."
+ *        Daniel Lopez Ridruejo (daniel@rawbyte.com) and
+ *        Ximian Inc. (http://www.ximian.com)"
  *    Alternately, this acknowledgment may appear in the software itself,
  *    if and wherever such third-party acknowledgments normally appear.
  *
@@ -29,7 +31,7 @@
  *
  * 5. Products derived from this software may not be called "mod_mono",
  *    nor may "mod_mono" appear in their name, without prior written
- *    permission of Daniel Lopez Ridruejo.
+ *    permission of Daniel Lopez Ridruejo and Ximian Inc.
  *
  * THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
  * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
@@ -46,7 +48,6 @@
  * ====================================================================
  *
  */
-
 
 #include <httpd.h>
 #include <http_core.h>
@@ -91,6 +92,8 @@ typedef struct {
   const char *modmono_dll;
 } modmono_server_rec;
 
+
+static MonoObject *ApacheApplicationHost;
 
 static const char *load_modmono_dll(cmd_parms *cmd, void *config,
                                         const char *name)
@@ -170,100 +173,78 @@ static MonoString *mono_apache_request_get_query_string(request_rec *r) {
   return mono_string_new(mono_domain_get(), r->parsed_uri.query);
 }
 void register_wrappers () {
-  mono_add_internal_call("Apache.Web.Request::GetProtocol", mono_apache_request_get_protocol);
-  mono_add_internal_call("Apache.Web.Request::GetHttpVersion", mono_apache_request_get_protocol);
-  mono_add_internal_call("Apache.Web.Request::GetHttpVerbName", mono_apache_request_get_method);
-  mono_add_internal_call("Apache.Web.Request::SendResponseFromMemory", mono_apache_request_send_response_from_memory);
-  mono_add_internal_call("Apache.Web.Request::GetConnection", mono_apache_request_get_connection);
-  mono_add_internal_call("Apache.Web.Request::GetPathInfo", mono_apache_request_get_path_info);
-  mono_add_internal_call("Apache.Web.Request::GetServerVariable", mono_apache_request_get_server_variable);
-  mono_add_internal_call("Apache.Web.Request::GetAppPathTranslated", mono_apache_request_get_path_translated);
-  mono_add_internal_call("Apache.Web.Request::GetServerPort", mono_apache_request_get_server_port);
-  mono_add_internal_call("Apache.Web.Request::SetResponseHeader", mono_apache_request_set_response_header);
-  mono_add_internal_call("Apache.Web.Request::GetRequestHeader", mono_apache_request_get_request_header);
-  mono_add_internal_call("Apache.Web.Request::GetFileName", mono_apache_request_get_filename);
-  mono_add_internal_call("Apache.Web.Request::GetUnparsedUri", mono_apache_request_get_unparsed_uri);
-  mono_add_internal_call("Apache.Web.Request::GetUri", mono_apache_request_get_uri);
-  mono_add_internal_call("Apache.Web.Request::GetQueryString", mono_apache_request_get_query_string);
-  mono_add_internal_call("Apache.Web.Connection::GetRemoteAddress", mono_apache_connection_get_remote_address);
-  mono_add_internal_call("Apache.Web.Connection::GetLocalAddress", mono_apache_connection_get_local_address);
-  mono_add_internal_call("Apache.Web.Connection::GetRemotePort", mono_apache_connection_get_remote_port);
-  mono_add_internal_call("Apache.Web.Connection::GetLocalPort", mono_apache_connection_get_local_port);
-  mono_add_internal_call("Apache.Web.Connection::GetRemoteName", mono_apache_connection_get_remote_name);
-  mono_add_internal_call("Apache.Web.Connection::Flush", mono_apache_connection_flush);
-  mono_add_internal_call("Apache.Web.Connection::Close", mono_apache_connection_close);
+  mono_add_internal_call("Apache.Web.Request::GetHttpVersionInternal", mono_apache_request_get_protocol);
+  mono_add_internal_call("Apache.Web.Request::GetHttpVerbNameInternal", mono_apache_request_get_method);
+  mono_add_internal_call("Apache.Web.Request::SendResponseFromMemoryInternal", mono_apache_request_send_response_from_memory);
+  mono_add_internal_call("Apache.Web.Request::GetConnectionInternal", mono_apache_request_get_connection);
+  mono_add_internal_call("Apache.Web.Request::GetPathInfoInternal", mono_apache_request_get_path_info);
+  mono_add_internal_call("Apache.Web.Request::GetServerVariableInternal", mono_apache_request_get_server_variable);
+  mono_add_internal_call("Apache.Web.Request::GetAppPathTranslatedInternal", mono_apache_request_get_path_translated);
+  mono_add_internal_call("Apache.Web.Request::GetServerPortInternal", mono_apache_request_get_server_port);
+  mono_add_internal_call("Apache.Web.Request::SetResponseHeaderInternal", mono_apache_request_set_response_header);
+  mono_add_internal_call("Apache.Web.Request::GetRequestHeaderInternal", mono_apache_request_get_request_header);
+  mono_add_internal_call("Apache.Web.Request::GetFileNameInternal", mono_apache_request_get_filename);
+  mono_add_internal_call("Apache.Web.Request::GetUriInternal", mono_apache_request_get_uri);
+  mono_add_internal_call("Apache.Web.Request::GetQueryStringInternal", mono_apache_request_get_query_string);
+  mono_add_internal_call("Apache.Web.Request::GetRemoteAddressInternal", mono_apache_connection_get_remote_address);
+  mono_add_internal_call("Apache.Web.Request::GetLocalAddressInternal", mono_apache_connection_get_local_address);
+  mono_add_internal_call("Apache.Web.Request::GetRemotePortInternal", mono_apache_connection_get_remote_port);
+  mono_add_internal_call("Apache.Web.Request::GetLocalPortInternal", mono_apache_connection_get_local_port);
+  mono_add_internal_call("Apache.Web.Request::GetRemoteNameInternal", mono_apache_connection_get_remote_name);
+  mono_add_internal_call("Apache.Web.Request::FlushInternal", mono_apache_connection_flush);
+  mono_add_internal_call("Apache.Web.Request::CloseInternal", mono_apache_connection_close);
 }
 
-int modmono_handler (request_rec* r) {
-    if (strcmp(r->handler,MODMONO_MAGIC_TYPE)) {
-      return DECLINED;
-    } else {
-      return modmono_request_handler(r);
-    }
+static MonoObject *
+modmono_create_application_host (MonoDomain *domain, MonoAssembly *assembly)
+{
+  MonoMethodDesc *desc;
+  MonoClass *class;
+  MonoMethod *method;
+  gpointer params[2];
+  MonoObject *objekt;
+
+  class = mono_class_from_name (assembly->image, "Apache.Web", "ApacheApplicationHost");
+  if (class == NULL)
+    return NULL;
+
+  objekt = mono_object_new (domain, class);
+  desc = mono_method_desc_new ("::CreateApplicationHost(string,string)", 0);
+
+  method = mono_method_desc_search_in_class (desc, class);
+  params[0] = mono_string_new (domain, "/"); /* FIXME: this path should be configurable */
+  params[1] = mono_string_new (domain, assembly->basedir); /* FIXME: this path should be configurable */;
+
+  mono_runtime_invoke (method, objekt, params, NULL);
+
+  return objekt;
 }
 
-MonoAssembly * modmono_assembly_setup (MonoDomain *domain, const char *file) {
+static MonoAssembly *
+modmono_assembly_setup (MonoDomain *domain, const char *file) {
   MonoAssembly *assembly;
-  gchar *str;
+  gchar *path;
+  gchar *with_extension;
+
   if ((assembly = mono_domain_assembly_open(domain, file)) == NULL) {
     return NULL;
   }
   /* See object.c, usually setup when executing assembly, necesary because vpath will be obtained from there*/
   domain->entry_assembly = assembly;
   domain->setup->application_base = mono_string_new (domain, assembly->basedir);
-  str = g_strconcat (assembly->basedir, assembly->aname.name,
-		     ".exe.config", NULL);
-  domain->setup->configuration_file = mono_string_new (domain, str);
-  g_free (str);
+  path = g_build_path (assembly->basedir, assembly->aname.name, NULL);
+  with_extension = g_strconcat (path, ".exe.config", NULL);
+  domain->setup->configuration_file = mono_string_new (domain, with_extension);
+  g_free (with_extension);
+  g_free (path);
   return assembly;
 }
 
-MonoObject * modmono_create_apache_worker_request(MonoDomain *domain, MonoAssembly *assembly, request_rec *r) {
-  MonoMethodDesc *desc;
-  MonoObject *ApacheWorkerRequest;
-  MonoClass *class;
-  MonoMethod *constructorMethod;
-  gpointer params[1];
-
-  class = mono_class_from_name (assembly->image, "Apache.Web", "ApacheWorkerRequest");
-  if (class == NULL) {
-    return NULL;
-  }
-  ApacheWorkerRequest = mono_object_new(domain, class);
-  desc = mono_method_desc_new("::.ctor(intptr)",0);
-  constructorMethod = mono_method_desc_search_in_class(desc, class);
-  params[0] = &r;
-  mono_runtime_invoke (constructorMethod, ApacheWorkerRequest, params, NULL);
-  return ApacheWorkerRequest;
-}
-
-int modmono_execute_request(MonoObject *ApacheWorkerRequest, gchar *basedir) {
-  MonoMethodDesc *desc;
-  MonoClass *class;
-  MonoMethod *processRequestMethod;
-  gchar *cwd;
-
-  desc = mono_method_desc_new ("::ProcessRequest", 0);
-  processRequestMethod = mono_method_desc_search_in_class(desc, mono_object_class(ApacheWorkerRequest));
-
-  /* xxx Hack because of the tmp*.dll files, which are created in the current current directory.*/
-  cwd = g_malloc(APR_PATH_MAX);
-  getcwd(cwd, APR_PATH_MAX);
-  if(cwd == NULL) {
-    ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_mono: Could not get current working directory");
-    return HTTP_INTERNAL_SERVER_ERROR;
-  }
-  chdir(basedir);
-  mono_runtime_invoke (processRequestMethod, ApacheWorkerRequest, NULL, NULL);
-  chdir(cwd);
-  g_free(cwd);
-  return OK;
-
-}
-int modmono_request_handler (request_rec* r) {
+static int
+create_application_host (request_rec *r)
+{
   MonoDomain *domain;
   MonoAssembly *assembly;
-  MonoObject *ApacheWorkerRequest;
   gchar *str;
   modmono_server_rec *server_conf;
   const char *file;
@@ -289,14 +270,76 @@ int modmono_request_handler (request_rec* r) {
     return HTTP_INTERNAL_SERVER_ERROR;
   }
 
-  ApacheWorkerRequest = modmono_create_apache_worker_request(domain, assembly, r);
-  if (ApacheWorkerRequest == NULL) {
+  ApacheApplicationHost = modmono_create_application_host (domain, assembly);
+  if (ApacheApplicationHost == NULL) {
     ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_mono: Could not locate ApacheWorkerRequest");
     return HTTP_INTERNAL_SERVER_ERROR;
   }
 
-  r->content_type = "text/html";
-  result = modmono_execute_request(ApacheWorkerRequest, assembly->basedir);
+  return OK;
+}
+
+int modmono_handler (request_rec* r) {
+    if (strcmp(r->handler,MODMONO_MAGIC_TYPE)) {
+      return DECLINED;
+    } else {
+      if (ApacheApplicationHost == NULL) { /* TODO: locking */
+	      int res;
+	      res = create_application_host (r);
+	      if (res != OK)
+		      return res;
+	}
+
+      return modmono_request_handler(r);
+    }
+}
+
+int modmono_execute_request(MonoObject *ApacheApplicationHost, request_rec *r) {
+  MonoMethodDesc *desc;
+  MonoClass *class;
+  MonoMethod *processRequestMethod;
+  gpointer *args [1];
+  gchar *cwd;
+
+  desc = mono_method_desc_new ("::ProcessRequest(IntPtr)", 0);
+  processRequestMethod = mono_method_desc_search_in_class(desc, mono_object_class(ApacheApplicationHost));
+
+  /* xxx Hack because of the tmp*.dll files, which are created in the current current directory.*/
+  cwd = g_malloc(APR_PATH_MAX);
+  getcwd(cwd, APR_PATH_MAX);
+  if(cwd == NULL) {
+    ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_mono: Could not get current working directory");
+    return HTTP_INTERNAL_SERVER_ERROR;
+  }
+  chdir (ApacheApplicationHost->vtable->klass->image->assembly->basedir); /* weird, huh? */
+  mono_runtime_invoke (processRequestMethod, ApacheApplicationHost, args, NULL);
+  chdir(cwd);
+  g_free(cwd);
+  return OK;
+
+}
+
+int modmono_request_handler (request_rec* r) {
+  MonoDomain *domain;
+  MonoAssembly *assembly;
+  gchar *str;
+  modmono_server_rec *server_conf;
+  const char *file;
+  int retval = 5;
+  int result;
+  
+  if (assembly == NULL) {
+    ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_mono: Could not open assembly");
+    return HTTP_INTERNAL_SERVER_ERROR;
+  }
+
+  if (ApacheApplicationHost == NULL) {
+    ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_mono: cannot get ApacheApplicationHost");
+    return HTTP_INTERNAL_SERVER_ERROR;
+  }
+
+  r->content_type = "text/html"; /* FIXME: we should make SendHeader treat the case when the header to be sent is Content-Type */
+  result = modmono_execute_request(ApacheApplicationHost, r);
   /*mono_jit_cleanup(domain); Goes in infinite loop*/
   return result;
 }

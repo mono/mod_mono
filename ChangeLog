@@ -1,3 +1,25 @@
+2002-12-30  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* AUTHORS: added myself.
+	* INSTALL: changed instructions on how to build ModMono.dll.
+	* src/IApplicationHost.cs: interface to be implemented by asp.net
+	application hosts.
+	* src/MonoWorkerRequest.cs: base class that will be shared between
+	mod_mono and xsp server.
+	* src/Request.cs: merged previous Connection and Request classes. Made
+	all methods non-static. Store results from calling internal calls in
+	private fields.
+	* src/ApacheApplicationHost.cs: application host for mod_mono.
+	* src/ApacheWorkerRequest.cs: it derives now from MonoWorkerRequest.
+
+	* src/mod_mono.c: it now creates an ApacheApplicationHost and then call
+	ProcessRequest on every request.
+
+	* src/Makefile.am: added MONO_CFLAGS and new source files.
+	* src/makedll.mak: use this to build ModMono.dll.
+
+	* src/ModMono.cs: Removed file. It's been splitted.
+
 2002-12-14  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
 	
 	* Initial release
