@@ -1187,6 +1187,9 @@ terminate_xsp (void *data)
 static void
 mono_init_handler (server_rec *s, pool *p)
 {
+	if (ap_standalone && ap_restart_time == 0)
+		return;
+
 	DEBUG_PRINT (0, "Initializing handler");
 	ap_add_version_component ("mod_mono/" VERSION);
 	pconf = p;

@@ -113,6 +113,9 @@ apr_socket_send (apr_socket_t *sock, const char *buf, apr_size_t *len);
 static apr_status_t
 apr_socket_recv (apr_socket_t *sock, char *buf, apr_size_t *len);
 
+extern int ap_standalone;
+extern time_t ap_restart_time;
+
 #include <ap_alloc.h>
 /* End Apache 1.3 only */
 #else
