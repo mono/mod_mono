@@ -63,9 +63,11 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #define TRUE 1
 #define FALSE 0
 
-#define apr_pool_t pool
-#define apr_pcalloc_t ap_pcalloc
+#define apr_pool_t ap_pool
+#define apr_pcalloc_t ap_pcalloc_t
+#define apr_pcalloc ap_pcalloc
 #define apr_table_setn ap_table_setn
+#define apr_table_get ap_table_get
 #define APR_SUCCESS 0
 
 #else
@@ -192,20 +194,17 @@ connection_get_remote_port (conn_rec *c)
   
 }
 
-#ifdef APACHE13  
 static int
 connection_get_local_port (request_rec *r)
 {
+#ifdef APACHE13  
   return ap_get_server_port(r);
-}
 #else
-static int
-connection_get_local_port (conn_rec *c) {
   apr_port_t port;
-  apr_sockaddr_port_get (&port, c->local_addr);
+  apr_sockaddr_port_get (&port, r->connection->local_addr);
   return port;  
-}
 #endif
+}
 
 static const char *
 connection_get_remote_name (request_rec *r)
@@ -218,9 +217,13 @@ connection_get_remote_name (request_rec *r)
 }
 
 static void
-connection_flush (conn_rec *c)
+connection_flush (request_rec *r)
 {
-  ap_flush_conn (c);
+#ifdef APACHE13
+	ap_rflush (r);
+#else
+	ap_flush_conn (r->connection);
+#endif
 }
 
 static void
@@ -420,11 +423,7 @@ do_command (int command, int fd, request_rec *r, int *result)
 		break;
 	case GET_LOCAL_PORT:
 		write_ok (fd);
-#ifdef APACHE13		
 		i = connection_get_local_port (r);
-#else
-		i = connection_get_local_port (r->connection);
-#endif
 		write_data (fd, &i, sizeof (int));
 		break;
 	case GET_REMOTE_NAME:
@@ -433,7 +432,7 @@ do_command (int command, int fd, request_rec *r, int *result)
 		write_data_string (fd, str);
 		break;
 	case FLUSH:
-		connection_flush (r->connection);
+		connection_flush (r);
 		write_ok (fd);
 		break;
 	case CLOSE:
