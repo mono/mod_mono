@@ -77,7 +77,6 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #include <mod_mono_config.h>
 #include <sys/un.h>
 #include <sys/select.h>
-//#include <httpd/apr_network_io.h>
 
 enum Cmd {
 	FIRST_COMMAND,
@@ -105,7 +104,7 @@ enum Cmd {
 	GET_CLIENT_BLOCK,
 	SET_STATUS_LINE,
 	SET_STATUS_CODE,
-	ALIAS_MATCHES,
+	DECLINE_REQUEST,
 	LAST_COMMAND
 };
 
@@ -134,7 +133,7 @@ char *cmdNames [] = {
 	"GET_CLIENT_BLOCK",
 	"SET_STATUS_LINE",
 	"SET_STATUS_CODE",
-	"ALIAS_MATCHES"
+	"DECLINE_REQUEST"
 };
 
 #ifdef APACHE13
@@ -144,63 +143,18 @@ module AP_MODULE_DECLARE_DATA mono_unix_module;
 #endif
 
 typedef struct {
-	const char *virtual;
 	const char *filename;
 } modmono_server_rec;
 
-/* From mod_alias */
-static int
-alias_matches (const char *uri, const char *alias_fakename)
-{
-	const char *aliasp = alias_fakename, *urip = uri;
 
-	while (*aliasp) {
-		if (*aliasp == '/') {
-			/* any number of '/' in the alias matches any number in
-			* the supplied URI, but there must be at least one...
-			*/
-			if (*urip != '/')
-				return 0;
-
-			while (*(++aliasp) == '/');
-			while (*(++urip) == '/');
-		} else {
-			/* Other characters are compared literally */
-			if (*urip++ != *aliasp++)
-				return 0;
-		}
-	}
-
-	/* Check last alias path component matched all the way */
-	if (aliasp[-1] != '/' && *urip != '\0' && *urip != '/')
-		return 0;
-
-	/* Return number of characters from URI which matched (may be
-	* greater than length of alias, since we may have matched
-	* doubled slashes)
-	*/
-
-	return urip - uri;
-}
-
-static int
-alias_matches_managed (const char *uri, const char *alias_fakename)
-{
-	return alias_matches (uri, alias_fakename);
-}
-
-/* For now we only allow one application domain */
 static const char *
 modmono_application_directive (cmd_parms *cmd,
 			       void *config,
-			       const char *virtual,
 			       const char *filename)
 {
 	modmono_server_rec *server_rec = (modmono_server_rec *)
 			ap_get_module_config (cmd->server->module_config, &mono_unix_module);
 
-	/* TODO: Check they are sensible, they exist, etc. */
-	server_rec->virtual = virtual;
 	server_rec->filename = filename;
 	return NULL;
 }
@@ -514,13 +468,10 @@ do_command (int command, int fd, request_rec *r, int *result)
 		r->status = i;
 		write_ok (fd);
 		break;
-	case ALIAS_MATCHES:
-		read_data_string (r->pool, fd, &str, NULL);
-		read_data_string (r->pool, fd, &str2, NULL);
-		i = alias_matches_managed (str, str2);
+	case DECLINE_REQUEST:
 		write_ok (fd);
-		write_data (fd, &i, sizeof (int));
-		break;
+		*result = DECLINED;
+		return FALSE;
 	default:
 		*result = HTTP_INTERNAL_SERVER_ERROR;
 		write_err (fd);
@@ -597,14 +548,6 @@ modmono_execute_request (request_rec *r)
 static int
 modmono_handler (request_rec *r)
 {
-	modmono_server_rec *server_conf = ap_get_module_config (r->server->module_config, &mono_unix_module);
-	int l = alias_matches (r->uri, server_conf->virtual);
-	char *path;
-
-	/* Does the request match the application virtual path? */
-	if (server_conf->virtual == NULL || l == 0)
-		return DECLINED;
-
 	return modmono_execute_request (r);
 }
 
@@ -649,9 +592,10 @@ modmono_cmds [] =
 	 modmono_application_directive,
 	 NULL,
 	 RSRC_CONF,
-	 TAKE2,
-	 "Create a Mono Application. The first argument is the virtual "
-	 "path and the second the directory on disk."},
+	 TAKE1,
+	 "Create a Mono Application. The unique argument "
+	 "is the unix socket file name."
+	},
 	{NULL}
 };
 
@@ -681,12 +625,13 @@ module MODULE_VAR_EXPORT mono_unix_module =
 static const command_rec
 modmono_cmds [] =
   {
-    AP_INIT_TAKE2 ("MonoApplicationUnix",
+    AP_INIT_TAKE1 ("MonoApplicationUnix",
 		   modmono_application_directive,
 		   NULL,
 		   RSRC_CONF,
-		   "Create a Mono Application. The first argument is the virtual "
-		   "path and the second the directory on disk."),
+		   "Create a Mono Application. The unique argument "
+		   "is the unix socket file name."
+		  ),
     NULL
 
   };

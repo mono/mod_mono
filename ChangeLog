@@ -1,3 +1,11 @@
+2003-08-25  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* INSTALL: updated. MonoApplicationUnix now only takes 1 argument.
+	* src/mod_mono_unix.c: removed alias matching code, added new
+	DECLINE_REQUEST command and take only 1 argument, the unix socket
+	file name. From now on, it lets mod-mono-server to choose if the request
+	is processed or declined based on the applications configured.
+
 2003-08-12  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* configure.in: fixed apache version detection. It was looking for

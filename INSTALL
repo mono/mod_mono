@@ -171,7 +171,7 @@ CONFIGURING APACHE
     Edit /home/user/mono/install/apache2/conf/httpd.conf :
 
       Listen 8080   
-      LoadModule mono_module /home/user/mono/install/apache2/lib/libmod_mono.so
+      LoadModule mono_module /home/user/mono/install/apache2/modules/mod_mono.so
       MonoApplication /mono /home/user/mono/install/xsp/server/test
 
     The MonoApplication directive takes two arguments. The first one is
@@ -194,17 +194,15 @@ CONFIGURING APACHE
     Edit /home/user/mono/install/apache2/conf/httpd.conf:
 
       Listen 8080   
-      LoadModule mono_unix_module /home/user/mono/install/apache2/lib/libmod_mono_unix.so
-      MonoApplicationUnix /mono /tmp/mod_mono_server
+      LoadModule mono_unix_module /home/user/mono/install/apache2/modules/mod_mono_unix.so
+      MonoApplicationUnix /tmp/mod_mono_server
 
-    The first parameter of MonoApplicationUnix is the same as for
-    mod_mono. The second one is the unix socket filename that will be
-    set up by mod-mono-server. You can use any valid file name here.
-    Just use the same file in httpd.conf and in mod-mono-server.exe
-    (--file argument or FileNameUnix in mod-mono-server.exe.config
-    <appSettings>).
+    The parameter of MonoApplicationUnix is the unix socket filename that will
+    be set up by mod-mono-server. You can use any valid file name here.  Just
+    use the same file in httpd.conf and in mod-mono-server.exe (--file argument
+    or UnixSocketFileName in mod-mono-server.exe.config <appSettings>).
 
-    When running mod-mono-server.exe for testing, use '--virtual mono'
+    When running mod-mono-server.exe for testing, use '--applications /mono:.'
     command line argument too.
 
   You can now start Apache with 
