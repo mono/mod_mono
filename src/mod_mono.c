@@ -144,13 +144,8 @@ enum Cmd {
 	FIRST_COMMAND,
 	SEND_FROM_MEMORY = 0,
 	GET_SERVER_VARIABLE,
-	GET_SERVER_PORT,
 	SET_RESPONSE_HEADER,
-	GET_REMOTE_ADDRESS,
-	GET_LOCAL_ADDRESS,
-	GET_REMOTE_PORT,
 	GET_LOCAL_PORT,
-	GET_REMOTE_NAME,
 	FLUSH,
 	CLOSE,
 	SHOULD_CLIENT_BLOCK,
@@ -164,13 +159,8 @@ enum Cmd {
 static char *cmdNames [] = {
 	"SEND_FROM_MEMORY",
 	"GET_SERVER_VARIABLE",
-	"GET_SERVER_PORT",
 	"SET_RESPONSE_HEADER",
-	"GET_REMOTE_ADDRESS",
-	"GET_LOCAL_ADDRESS",
-	"GET_REMOTE_PORT",
 	"GET_LOCAL_PORT",
-	"GET_REMOTE_NAME",
 	"FLUSH",
 	"CLOSE",
 	"SHOULD_CLIENT_BLOCK",
@@ -423,11 +413,6 @@ do_command (int command, int fd, request_rec *r, int *result)
 		str = (char *) request_get_server_variable (r, str);
 		status = write_data_string (fd, str);
 		break;
-	case GET_SERVER_PORT:
-		i = request_get_server_port (r);
-		i = LE_FROM_INT (i);
-		status = write_data (fd, &i, sizeof (int));
-		break;
 	case SET_RESPONSE_HEADER:
 		if (read_data_string (r->pool, fd, &str, NULL) == NULL) {
 			status = -1;
@@ -439,25 +424,10 @@ do_command (int command, int fd, request_rec *r, int *result)
 		}
 		set_response_header (r, str, str2);
 		break;
-	case GET_REMOTE_ADDRESS:
-		status = write_data_string (fd, r->connection->remote_ip);
-		break;
-	case GET_LOCAL_ADDRESS:
-		status = write_data_string (fd, r->connection->local_ip);
-		break;
-	case GET_REMOTE_PORT:
-		i = connection_get_remote_port (r->connection);
-		i = LE_FROM_INT (i);
-		status = write_data (fd, &i, sizeof (int));
-		break;
 	case GET_LOCAL_PORT:
 		i = connection_get_local_port (r);
 		i = LE_FROM_INT (i);
 		status = write_data (fd, &i, sizeof (int));
-		break;
-	case GET_REMOTE_NAME:
-		str = (char *) connection_get_remote_name (r);
-		status = write_data_string (fd, str);
 		break;
 	case FLUSH:
 		connection_flush (r);
@@ -827,6 +797,60 @@ send_headers (request_rec *r, int fd)
 }
 
 static int
+send_initial_data (request_rec *r, int fd)
+{
+	int i;
+	char *str;
+
+	DEBUG_PRINT (2, "Writing method: %s", r->method);
+	if (write_data_string_no_prefix (fd, r->method) <= 0)
+		return -1;
+
+	DEBUG_PRINT (2, "Writing uri: %s", r->uri);
+	if (write_data_string_no_prefix (fd, r->uri) <= 0)
+		return -1;
+
+	DEBUG_PRINT (2, "Writing query string: %s", request_get_query_string (r));
+	if (write_data_string_no_prefix (fd, request_get_query_string (r)) < 0)
+		return -1;
+
+	DEBUG_PRINT (2, "Writing protocol: %s", r->protocol);
+	if (write_data_string_no_prefix (fd, r->protocol) <= 0)
+		return -1;
+	
+	DEBUG_PRINT (2, "Sending headers");
+	if (!send_headers (r, fd))
+		return -1;
+
+	DEBUG_PRINT (2, "Sending local address");
+	if (write_data_string (fd, r->connection->local_ip) < 0)
+		return -1;
+
+	DEBUG_PRINT (2, "Sending server port");
+	i = request_get_server_port (r);
+	i = LE_FROM_INT (i);
+	if (write_data (fd, &i, sizeof (int)) != sizeof (int))
+		return -1;
+
+	DEBUG_PRINT (2, "Sending remote address");
+	if (write_data_string (fd, r->connection->remote_ip) < 0)
+		return -1;
+
+	DEBUG_PRINT (2, "Sending remote port");
+	i = connection_get_remote_port (r->connection);
+	i = LE_FROM_INT (i);
+	if (write_data (fd, &i, sizeof (int)) != sizeof (int))
+		return -1;
+
+	DEBUG_PRINT (2, "Sending remote name");
+	str = (char *) connection_get_remote_name (r);
+	if (write_data_string (fd, str) < 0)
+		return -1;
+
+	return 0;
+}
+
+static int
 mono_execute_request (request_rec *r)
 {
 	apr_socket_t *sock;
@@ -850,36 +874,11 @@ mono_execute_request (request_rec *r)
 		return HTTP_SERVICE_UNAVAILABLE;
 
 	apr_os_sock_get (&fd, sock);
-	DEBUG_PRINT (2, "Writing method: %s", r->method);
-	if (write_data_string_no_prefix (fd, r->method) <= 0) {
-		apr_socket_close (sock);
-		return HTTP_SERVICE_UNAVAILABLE;
-	}
-
-	DEBUG_PRINT (2, "Writing uri: %s", r->uri);
-	if (write_data_string_no_prefix (fd, r->uri) <= 0) {
-		apr_socket_close (sock);
-		return HTTP_SERVICE_UNAVAILABLE;
-	}
-
-	DEBUG_PRINT (2, "Writing query string: %s", request_get_query_string (r));
-	if (write_data_string_no_prefix (fd, request_get_query_string (r)) < 0) {
-		apr_socket_close (sock);
-		return HTTP_SERVICE_UNAVAILABLE;
-	}
-
-	DEBUG_PRINT (2, "Writing protocol: %s", r->protocol);
-	if (write_data_string_no_prefix (fd, r->protocol) <= 0) {
+	if (send_initial_data (r, fd) != 0) {
 		apr_socket_close (sock);
 		return HTTP_SERVICE_UNAVAILABLE;
 	}
 	
-	DEBUG_PRINT (2, "Sending headers");
-	if (!send_headers (r, fd)) {
-		apr_socket_close (sock);
-		return HTTP_SERVICE_UNAVAILABLE;
-	}
-		
 	do {
 		input = read (fd, &command, sizeof (int));
 		if (input > 0) {

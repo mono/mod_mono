@@ -1,3 +1,8 @@
+2004-07-08 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: removed more commands and send their data upon
+	connection.
+
 2004-07-07 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: removed the mutex stuff that prevented multiple forks
