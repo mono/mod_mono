@@ -1,3 +1,19 @@
+2004-07-06 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* COPYING:
+	* src/ApacheApplicationHost.cs:
+	* src/ApacheWorkerRequest.cs:
+	* src/IApplicationHost.cs:
+	* src/MonoWorkerRequest.cs:
+	* src/Request.cs:
+	* src/mod_mono.c:
+	* src/mod_mono_old.c: relicensed under apache license version 2.0.
+	Agreed with Daniel.
+
+2004-06-30 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* Released 1.0
+
 2004-06-12 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* INSTALL:
