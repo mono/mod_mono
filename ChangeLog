@@ -1,3 +1,13 @@
+2004-04-19  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* NEWS:
+	* man/.cvsignore:
+	* src/.cvsignore: updated.
+	
+	* src/Makefile.am:
+	* src/mod_mono.c: the default prefix is the one set with --prefix, not
+	/usr always.
+
 2004-04-16  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* INSTALL: small update on PathInfo.

@@ -100,6 +100,16 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #include <sys/un.h>
 #include <sys/select.h>
 
+#ifndef PREFIX
+#define PREFIX "/usr"
+#endif
+
+#define EXECUTABLE_PATH 	PREFIX "/bin/mono"
+#define MONO_PATH		PREFIX "/lib"
+#define MODMONO_SERVER_PATH 	PREFIX "/bin/mod-mono-server.exe"
+#define WAPIDIR				"/tmp"
+#define SOCKET_FILE		"/tmp/mod_mono_server"
+
 /* define this to get tons of messages in the log */
 #undef DEBUG
 
@@ -213,13 +223,13 @@ create_mono_server_config (apr_pool_t *p, server_rec *s)
 	DEBUG_PRINT (1, "create_mono_server_config");
 
 	server = apr_pcalloc (p, sizeof (mono_server_rec));
-	server->filename = "/tmp/mod_mono_server";
+	server->filename = SOCKET_FILE;
 	server->run_xsp = "True";
-	server->executable_path = "/usr/bin/mono";
-	server->path = "/usr/lib";
-	server->server_path = "/usr/bin/mod-mono-server.exe";
+	server->executable_path = EXECUTABLE_PATH;
+	server->path = MONO_PATH;
+	server->server_path = MODMONO_SERVER_PATH;
 	server->applications = NULL;
-	server->wapidir = "/tmp";
+	server->wapidir = WAPIDIR;
 
 	return server;
 }

@@ -20,7 +20,7 @@ endif
 libmod_mono_la_SOURCES = mod_mono.c
 libmod_mono_old_la_LIBADD = $(MONO_LIBS)
 
-INCLUDES = $(MONO_CFLAGS)
+INCLUDES = $(MONO_CFLAGS) -DPREFIX=\"$(prefix)\"
 
 
 install: $(lib_LTLIBRARIES)
