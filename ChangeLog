@@ -1,3 +1,22 @@
+2005-02-10 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* INSTALL:
+	* man/mod_mono.8.in: updated.
+
+2005-02-10 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* configure.in: no ranlib.
+
+	* src/mod_mono.c: fixed a few minor problems found under apache 1.3.
+	Don't pass the default mono config. directory to servers others than
+	the default one. Fixed the default socket file name for non-default
+	servers.
+
+	* src/mod_mono.h: MonoSetServerAlias takes 1 argument even on
+	apache 1.3.
+
+	* README: updated...
+
 2005-02-09 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* configure.in: fixed autoscan warning and use 'if test'.

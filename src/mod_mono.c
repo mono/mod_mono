@@ -157,6 +157,7 @@ store_config_xsp (cmd_parms *cmd, void *offset, const char *first, const char *s
 	module_cfg *config;
 	char *ptr;
 	
+	DEBUG_PRINT (1, "store_config %u '%s' '%s'", (unsigned) cmd->info, first, second);
 	config = ap_get_module_config (cmd->server->module_config, &mono_module);
 
 	if (second == NULL) {
@@ -181,10 +182,11 @@ store_config_xsp (cmd_parms *cmd, void *offset, const char *first, const char *s
 	if (prev_value != NULL) {
 		new_value = apr_pstrcat (cmd->pool, prev_value, ",", value, NULL);
 	} else {
-		new_value = (char *) value;
+		new_value = apr_pstrdup (cmd->pool, value);
 	}
 
 	*((char **) ptr) = new_value;
+	DEBUG_PRINT (1, "store_config end: %s", new_value);
 	return NULL;
 }
 
@@ -196,7 +198,8 @@ create_dir_config (apr_pool_t *p, char *dirspec)
 	DEBUG_PRINT (1, "creating dir config for %s", dirspec);
 
 	cfg = apr_pcalloc (p, sizeof (per_dir_config));
-	cfg->location = apr_pstrdup (p, dirspec);
+	if (dirspec != NULL)
+		cfg->location = apr_pstrdup (p, dirspec);
 
 	return cfg;
 }
@@ -210,6 +213,8 @@ create_mono_server_config (apr_pool_t *p, server_rec *s)
 
 	server = apr_pcalloc (p, sizeof (module_cfg));
 	add_xsp_server (p, "default", server);
+
+	DEBUG_PRINT (1, "create_mono_server_config done");
 	return server;
 }
 
@@ -613,6 +618,7 @@ try_connect (xsp_data *conf, apr_socket_t **sock, apr_pool_t *pool)
 		else
 			fn = get_default_socket_name (pool, conf->alias, SOCKET_FILE);
 
+		DEBUG_PRINT (1, "Socket file name %s", fn);
 		memcpy (unix_address.sun_path, fn, strlen (fn) + 1);
 		ptradd = (struct sockaddr *) &unix_address;
 		if (connect (sock_fd, ptradd, sizeof (unix_address)) != -1)
@@ -869,7 +875,9 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 		char *fn;
 
 		fn = config->filename;
-		fn = fn ? fn : SOCKET_FILE;
+		if (fn == NULL)
+			fn = get_default_socket_name (pool, config->alias, SOCKET_FILE);
+
 		argv [argi++] = "--filename";
 		argv [argi++] = fn;
 	}
@@ -890,11 +898,9 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 		argv [argi++] = config->appconfig_file;
 	}
 
-	argv [argi++] = "--appconfigdir";
 	if (config->appconfig_dir != NULL) {
+		argv [argi++] = "--appconfigdir";
 		argv [argi++] = config->appconfig_dir;
-	} else {
-		argv [argi++] = DFLT_MONO_CONFIG_DIR;
 	}
 
 	/*
@@ -1082,16 +1088,19 @@ mono_execute_request (request_rec *r)
 	apr_status_t input;
 	int status;
 	module_cfg *config;
-	per_dir_config *dir_config;
+	per_dir_config *dir_config = NULL;
 	int idx;
 
 	config = ap_get_module_config (r->server->module_config, &mono_module);
-	dir_config = ap_get_module_config (r->per_dir_config, &mono_module);
+	if (r->per_dir_config != NULL)
+		dir_config = ap_get_module_config (r->per_dir_config, &mono_module);
+
 	if (dir_config != NULL && dir_config->alias != NULL)
 		idx = search_for_alias (dir_config->alias, config);
 	else
 		idx = search_for_alias ("default", config);
 
+	DEBUG_PRINT (2, "idx = %d", idx);
 #ifdef APACHE13
 	sock = apr_pcalloc (r->pool, sizeof (apr_socket_t));
 #endif
@@ -1355,7 +1364,7 @@ MAKE_CMD_ITERATE2 (AddMonoApplications, applications,
 	"Appends an application."
 	),
 
-MAKE_CMD_ACCESS(MonoSetServerAlias, set_alias,
+MAKE_CMD_ACCESS (MonoSetServerAlias, set_alias,
 	"Uses the server named by this alias inside this Directory/Location."
 	),
 

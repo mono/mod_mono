@@ -1,4 +1,4 @@
-Last updated: Jan 8, 2005
+Last updated: Jan 9, 2005
 
 Index
 -------
@@ -128,33 +128,25 @@ APPENDIX A: Typical configuration without virtual hosts
   in /usr prefix. If you installed them in other place, take a look at
   Appendix C.
 
-  In Apache 1.3 you will end up with something like:
+  Your configuration should be something like:
 
       LoadModule mono_module /usr/lib/apache/1.3/mod_mono.so
       AddModule mod_mono.c
       Alias /demo "/usr/share/doc/xsp/test"
-      MonoApplications "/demo:/usr/share/doc/xsp/test"
+      AddMonoApplications default "/demo:/usr/share/doc/xsp/test"
       <Directory /usr/share/doc/xsp/test>
               SetHandler mono
+      # The following lines required for apache 1.3
               <IfModule mod_dir.c>
                     DirectoryIndex index.aspx
               </IfModule>
       </Directory>
 
-  With Apache 2.0 you will have something like:
+  or like this:
 
       LoadModule mono_module modules/mod_mono.so
       Alias /demo "/usr/share/doc/xsp/test"
-      MonoApplications "/demo:/usr/share/doc/xsp/test"
-      <Directory /usr/share/doc/xsp/test>
-              SetHandler mono
-      </Directory>
-
-  or like:
-
-      LoadModule mono_module modules/mod_mono.so
-      Alias /demo "/usr/share/doc/xsp/test"
-      MonoApplications "/demo:/usr/share/doc/xsp/test"
+      AddMonoApplications default "/demo:/usr/share/doc/xsp/test"
       <Location /demo>
               SetHandler mono
       </Location>
@@ -162,13 +154,13 @@ APPENDIX A: Typical configuration without virtual hosts
   If you prefer to .webapp configuration  file(s)  (see  manual  page
   of xsp), you can change MonoApplications in the above samples by:
 
-      MonoApplicationsConfigFile "/var/www/applications.webapp"
+      MonoApplicationsConfigFile default "/var/www/applications.webapp"
 
   replacing the path to the file with yours.
 
   If you want to use several .webapp files, use this instead:
 
-      MonoApplicationsConfigDir "/var/www/webapp"
+      MonoApplicationsConfigDir default "/var/www/webapp"
 
   and  all  the .webapp files found in the directory /var/www/webapp
   will be loaded.
@@ -178,7 +170,8 @@ APPENDIX A: Typical configuration without virtual hosts
 
        AddHandler mono .aspx .ascx .asax .ashx .config .cs .asmx
 
-  but this will break PathInfo.
+  but this will make PathInfo unusable.
+
 
 APPENDIX B: Configuration directives for mod_mono
 ---------------------------------------------------
@@ -186,10 +179,13 @@ APPENDIX B: Configuration directives for mod_mono
   For the default values that have a path beginning with /usr, replace
   that /usr with your installation prefix if you installed elsewhere.
   
-  These are the directives supported under both apache 1.3 and 2.0. You
-  probably will never use those that have "used only when MonoRunXSP is
-  True" in parenthesis unless you install mono and/or xsp in a different
-  prefix from the one you used for mod_mono.
+  These are the directives supported under both apache 1.3 and 2.0. All
+  of them but MonoSetServerAlias accept an optional first argument that
+  is the mod-mono-server instance alias for which the directive applies.
+  If only one argument is provided for them, it will apply to the
+  'default' mod-mono-server instance. Refer to the monodoc documentation
+  on configuring mod_mono for more examples.
+
 
   MonoUnixSocket
 
@@ -200,21 +196,21 @@ APPENDIX B: Configuration directives for mod_mono
   MonoRunXSP
 
     If the value is True, it tells mod_mono to spawn mod-mono-server.exe
-    if it's not already running. If set to False, mod_mono won't do
-    that.
+    if it's not already running.  If set to 'false', the rest of
+    directives are useless.
     Default value: True
 
-  MonoExecutablePath (used only when MonoRunXSP is True)
+  MonoExecutablePath
 
     The full path to mono executable.
     Default value: "/usr/bin/mono"
 
-  MonoPath (used only when MonoRunXSP is True)
+  MonoPath
 
     This value will be used to set the MONO_PATH environment variable.
     Default value: ""
 
-  MonoServerPath (used only when MonoRunXSP is True)
+  MonoServerPath
 
     The full path to mod-mono-server.exe.
     Default value: "/usr/bin/mod-mono-server.exe"
@@ -247,10 +243,14 @@ APPENDIX B: Configuration directives for mod_mono
     is not available on your system, the directive will be ignored.
     Default value: system default
 
-  MonoApplications (used only when MonoRunXSP is True)
+  MonoApplications
   
     This value will be passed to mod-mono-server.exe in the
     --applications option. See xsp(1) manual page for details.
+
+  AddMonoApplications
+  
+    Same as MonoApplications, but the alias argument is mandatory.
 
   MonoApplicationsConfigFile
 
@@ -267,12 +267,17 @@ APPENDIX B: Configuration directives for mod_mono
   Note that you must specify at least one of MonoApplications,
   MonoApplicationsConfigFile and MonoApplicationsConfigDir.
 
-  MonoDebug (used only when MonoRunXSP is True)
+  MonoDebug
   
     Runs mono in debug mode, which produces stack traces with line
     numbers.
     Default value: false
 
+  MonoSetServerAlias
+
+    Takes a server alias name. This is to be used inside <Directory> or
+    <Location>.
+    Default value: 'default' if the directive is not used.
 
 APPENDIX C: Webapp file format
 ---------------------------------
@@ -303,10 +308,7 @@ APPENDIX D: More information
   You can find more information in the manual pages of mono, xsp,
   mod-mono-server and mod_mono.
 
-  Mono and ASP.NET section in the mono FAQ:
-
-    http://www.go-mono.com/faq.html#mod_mono
-
+  There are more commented examples in monodoc.
 
 
 CREDITS

@@ -1,11 +1,8 @@
 mod_mono
 ---------
+mod_mono is an apache module that provides ASP.NET functionality.
 
 See INSTALL for installation instructions
-
-This software is in an early stage of development,
-there are many things that do not work yet.
-Comments, suggestions and patches are welcomed 
 
 You can reach the authors at:
 	daniel @ rawbyte.com

@@ -204,7 +204,7 @@ static char *cmdNames [] = {
 /* Directives */
 #ifdef APACHE13
 #define MAKE_CMD_ACCESS(name, function_name, description) \
-	{ #name, function_name, NULL, ACCESS_CONF, TAKE12, description }
+	{ #name, function_name, NULL, ACCESS_CONF, TAKE1, description }
 
 #define MAKE_CMD12(name, field_name, description) \
 	{ #name, store_config_xsp, (void *) APR_OFFSETOF (xsp_data, field_name), \

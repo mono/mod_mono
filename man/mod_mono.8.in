@@ -1,6 +1,6 @@
 .\" 
 .\" mod_mono manual page.
-.\" (C) 2004 Novell, Inc. 
+.\" (C) 2004,2005 Novell, Inc. 
 .\" Author:
 .\"   Gonzalo Paniagua Javier (gonzalo@ximian.com)
 .\"
@@ -9,7 +9,7 @@
 .if n .sp
 ..
 
-.TH mod_mono "8" "21 Nov 2004" "mod_mono @VERSION@" "ASP.NET Support for Apache"
+.TH mod_mono "8" "9 Feb 2005" "mod_mono @VERSION@" "ASP.NET Support for Apache"
 .SH NAME
 mod_mono \- apache module that enables ASP.NET pages. Works together with mod-mono-server.exe
 .SH DESCRIPTION
@@ -18,9 +18,14 @@ versions of apache.
 .PP
 It needs mod-mono-server.exe installed on the system. By default, it
 will attemp to run mod-mono-server.exe if it doesn't find it's running.
-The runtime contains a native code generator that transforms the
-Common Intermediate Language into native code.
 .SH CONFIGURATION DIRECTIVES
+.PP
+All the directives but MonoSetServerAlias accept an optional first argument that
+is the mod-mono-server instance alias for which the directive applies.  If only
+one argument is provided for them, thr directive will apply to the 'default'
+mod-mono-server instance. Refer to the monodoc documentation on configuring
+mod_mono for more examples.
+
 .TP
 .I "MonoUnixSocket"
 It accepts a file name as argument. That file will be a named pipe
@@ -41,19 +46,19 @@ Default value: "127.0.0.1"
 .TP
 .I "MonoRunXSP"
 If the value is True, it tells mod_mono to spawn mod-mono-server.exe
-if it's not already running. If set to False, mod_mono won't do
-that.
+if it's not already running. If set to False, most of these directives are
+useless.
 Default value: True
 .TP
-.I "MonoExecutablePath (used only when MonoRunXSP is True)"
+.I MonoExecutablePath
 The full path to mono executable.
 Default value: "/usr/bin/mono"
 .TP
-.I "MonoPath (used only when MonoRunXSP is True)"
+.I MonoPath
 This value will be used to set the MONO_PATH environment variable.
 Default value: ""
 .TP
-.I "MonoServerPath (used only when MonoRunXSP is True)"
+.I MonoServerPath
 The full path to mod-mono-server.exe.
 Default value: "/usr/bin/mod-mono-server.exe"
 .TP
@@ -62,7 +67,7 @@ The directory where mono runtime will create the ".wapi" directory
 used to emulate windows I/O. It's used to set MONO_SHARED_DIR.
 Default value: "/tmp"
 .TP
-.I "MonoDocumentRootDir (used only when MonoRunXSP is True)"
+.I MonoDocumentRootDir
 The directory passed in --root argument when launching mod-mono-server.
 .TP
 .I "MonoMaxCPUTime"
@@ -79,31 +84,38 @@ It will be restarted when the limit is reached. If this capability
 is not available on your system, the directive will be ignored.
 Default value: system default
 .TP
-.I "MonoApplications (used only when MonoRunXSP is True)"
+.I MonoApplications
+.TP
+.I AddMonoApplications
 This value will be passed to mod-mono-server.exe in the
 --applications option. See xsp(1) manual page for details.
 .TP
-.I "MonoApplicationsConfigFile (used only when MonoRunXSP is True)"
+.I MonoApplicationsConfigFile
 The argument passed in --appconfigfile argument to mod-mono-server.
 Default value: NULL.
 .TP
-.I "MonoApplicationsConfigDir (used only when MonoRunXSP is True)"
+.I MonoApplicationsConfigDir
 The argument passed in --appconfigdir argument to mod-mono-server.
 Default value: config/mod-mono-applications
 .PP
 Note that you must specify at least one of MonoApplications,
 MonoApplicationsConfigFile and MonoApplicationsConfigDir.
-.I "MonoDebug (used only when MonoRunXSP is True)"
+.TP
+.I MonoDebug
 Runs mono in debug mode, which produces stack traces with line numbers.
 Default value: false.
+.TP
+.I MonoSetServerAlias
+Takes a server alias name. This is to be used inside <Directory> or
+<Location>.
+Default value: 'default' if the directive is not used.
 .SH SAMPLE CONFIGURATION
-For Apache 1.3, with mod-mono-server.exe from package xsp installed in
-prefix=/usr:
+This one using <Directory>:
 .nf
       LoadModule mono_module /usr/lib/apache/1.3/libmod_mono.so
       AddModule mod_mono.c
       Alias /mono "/usr/share/doc/xsp/test"
-      MonoApplications "/mono:/usr/share/doc/xsp/test"
+      AddMonoApplications default "/mono:/usr/share/doc/xsp/test"
       <Directory /usr/share/doc/xsp/test>
               SetHandler mono
               <IfModule mod_dir.c>
@@ -112,24 +124,11 @@ prefix=/usr:
       </Directory>
 .fi
 .PP
-For Apache 2.0, with mod-mono-server.exe from package xsp installed in
-prefix=/usr:
+This one using <Location>:
 .nf
-
-      LoadModule mono_module modules/libmod_mono.so
-      Alias /mono "/usr/share/doc/xsp/test"
-      MonoApplications "/mono:/usr/share/doc/xsp/test"
-      <Directory /usr/share/doc/xsp/test>
-              SetHandler mono
-      </Directory>
-.fi
-.PP
-or the preferred:
-.nf
-
       LoadModule mono_module modules/libmod_mono.so
       Alias /demo "/usr/share/doc/xsp/test"
-      MonoApplications "/demo:/usr/share/doc/xsp/test"
+      AddMonoApplications default "/demo:/usr/share/doc/xsp/test"
       <Location /demo>
               SetHandler mono
       </Location>
@@ -141,7 +140,7 @@ If you prefer to .webapp configuration file(s)
 samples by:
 .nf
 
-      MonoApplicationsConfigFile "/var/www/applications.webapp"
+      MonoApplicationsConfigFile default "/var/www/applications.webapp"
       
 .fi
 replacing the path to the file with yours.
@@ -149,11 +148,13 @@ replacing the path to the file with yours.
 If you want to use several .webapp files, use this instead:
 .nf
 
-      MonoApplicationsConfigDir "/var/www/webapp"
+      MonoApplicationsConfigDir default "/var/www/webapp"
 
 .fi
 and all the .webapp files found in the directory /var/www/webapp will be
 loaded.
+.PP
+Refer to monodoc documentation on configuring mod_mono for more examples.
 .SH ENVIRONMENT VARIABLES
 .PP
 It may modify MONO_PATH, PATH and MONO_SHARED_DIR when starting
@@ -162,8 +163,8 @@ mod-mono-server.
 .PP
 httpd.conf
 .SH AUTHORS
-mod_mono was written by Daniel Ridruejo (daniel rawbyte com) and Gonzalo
-Paniagua Javier (gonzalo@ximian.com).
+mod_mono was started by Daniel Ridruejo (daniel rawbyte com). Currently, Gonzalo
+Paniagua Javier (gonzalo ximian.com) is the maintainer.
 .SH MAILING LISTS
 See http://mail.ximian.com/mailman/mono-list for details.
 .SH WEB SITE
