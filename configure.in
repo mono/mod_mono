@@ -79,6 +79,7 @@ CFLAGS="$CFLAGS $AP_INCLUDES"
 
 AC_MSG_CHECKING([Apache version])
 AC_TRY_COMPILE([#include <apr.h>], [
+	apr_byte_t b;
 ], [
 	APACHE_VER=2.0
 ], [
