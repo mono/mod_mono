@@ -60,9 +60,10 @@ INSTALLING mod_mono
        Edit your httpd.conf file, which should be in /etc/httpd,
        /etc/apache, /etc/apache2...
 
-       Add the following line:
+       Add the following lines:
 
             Alias /mono "/usr/share/doc/xsp/test"
+	    MonoApplications "/mono:/usr/share/doc/xsp/test"
 
        so that apache redirects requests from /mono to /mono/ and looks
        for everything requested as /mono/xxx under
@@ -84,11 +85,20 @@ INSTALLING mod_mono
 	          SetHandler mono
             </Location>
 
-	Take a look at Appendix A below for typical configuration samples.
+	Take a look at Appendix B below for typical configuration
+	samples and Appendix C for detailed descriptions on
+	available configuration directives.
+
+	Assuming you have installed mono and mod-mono-server.exe in /usr
+	prefix, you don't have to do anything else.
     
   4. Run mod-mono-server.
 
-       Run these two commands:
+       This step is OPTIONAL. With the default configuration and
+       everything intalled in /usr. The module will spawn
+       mod-mono-server.exe when needed.
+
+       If you still want to run it manually, do:
 
          cd /usr/share/doc/xsp/test
 	 mono /usr/bin/mod-mono-server.exe --root . --applications /mono:.
@@ -137,11 +147,16 @@ APPENDIX A: installing Apache from source
 APPENDIX B: Typical configuration
 -------------------------------------------------
 
+  This samples assume that you have mono and mod-mono-server installed
+  in /usr prefix. If you installed them in other place, take a look at
+  Appendix C.
+
   In Apache 1.3 you will end up with something like:
 
       LoadModule mono_module /usr/lib/apache/1.3/libmod_mono.so
       AddModule mod_mono.c
       Alias /mono "/usr/share/doc/xsp/test"
+      MonoApplications "/mono:/usr/share/doc/xsp/test"
       <Directory /usr/share/doc/xsp/test>
               SetHandler mono
               <IfModule mod_dir.c>
@@ -153,6 +168,7 @@ APPENDIX B: Typical configuration
 
       LoadModule mono_module modules/libmod_mono.so
       Alias /mono "/usr/share/doc/xsp/test"
+      MonoApplications "/mono:/usr/share/doc/xsp/test"
       <Directory /usr/share/doc/xsp/test>
               SetHandler mono
       </Directory>
@@ -170,7 +186,51 @@ APPENDIX B: Typical configuration
 
        AddHandler mono .aspx .ascx .asax .ashx .config .cs .asmx
 
+APPENDIX C: Configuration directives for mod_mono
+---------------------------------------------------
+
+  These are the directives supported under both apache 1.3 and 2.0:
   
+  MonoUnixSocket
+
+    It accepts a file name as argument. That file will be a named pipe
+    used to send/receive data from/to mod_mono to/from mod-mono-server.
+    Default value: "/tmp/mod_mono_server".
+
+  MonoRunXSP
+
+    If the value is True, it tells mod_mono to spawn mod-mono-server.exe
+    if it's not already running. If set to False, mod_mono won't do
+    that.
+    Default value: True
+
+  MonoExecutablePath (used only when MonoRunXSP is True)
+
+    The full path to mono executable.
+    Default value: "/usr/bin/mono"
+
+  MonoPath (used only when MonoRunXSP is True)
+
+    This value will be used to set the MONO_PATH environment variable.
+    Default value: ""
+
+  MonoServerPath (used only when MonoRunXSP is True)
+
+    The full path to mod-mono-server.exe.
+    Default value: "/usr/bin/mod-mono-server.exe"
+
+  MonoApplications (used only when MonoRunXSP is True)
+  
+    This value will be passed to mod-mono-server.exe in the
+    --applications option. It is mandatory if MonoRunXSP is True.
+
+  MonoWapiDir
+
+    The directory where mono runtime will create the ".wapi" directory
+    used to emulate windows I/O. It's used to set MONO_SHARED_DIR.
+    Default value: "/tmp"
+
+
 CREDITS
 --------
 
