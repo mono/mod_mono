@@ -1070,7 +1070,7 @@ mono_init_handler (apr_pool_t *p,
 #ifdef APACHE13
 static const handler_rec mono_handlers [] = {
 	{ "mono", mono_handler },
-	{ NULL }
+	{ NULL, NULL }
 };
 #else
 static void
