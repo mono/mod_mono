@@ -233,7 +233,7 @@ static MonoString *mono_apache_request_get_path_translated(request_rec *r) {
 }
 
 static MonoString *mono_apache_request_get_query_string(request_rec *r) {
-  return mono_string_new(mono_domain_get(), r->parsed_uri.query);
+  return mono_string_new(mono_domain_get(), r->parsed_uri.query ? r->parsed_uri.query : "");
 }
 
 static int mono_apache_should_client_block( request_rec *r ) {
