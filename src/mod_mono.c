@@ -25,8 +25,8 @@
 #endif
 
 /* define this to get tons of messages in the log */
-#define DEBUG
-#define DEBUG_LEVEL 1
+#undef DEBUG
+#define DEBUG_LEVEL 0
 
 #include "mod_mono.h"
 
@@ -48,6 +48,8 @@ typedef struct {
 	char *appconfig_dir;
 	char *listen_port;
 	char *listen_address;
+	char *max_cpu_time;
+	char *max_memory;
 } mono_server_rec;
 
 CONFIG_FUNCTION (unix_socket, filename)
@@ -62,6 +64,8 @@ CONFIG_FUNCTION (appconfig_file, appconfig_file)
 CONFIG_FUNCTION (appconfig_dir, appconfig_dir)
 CONFIG_FUNCTION (listen_port, listen_port)
 CONFIG_FUNCTION (listen_address, listen_address)
+CONFIG_FUNCTION (max_cpu_time, max_cpu_time)
+CONFIG_FUNCTION (max_memory, max_memory)
 
 static void *
 create_mono_server_config (apr_pool_t *p, server_rec *s)
@@ -83,6 +87,8 @@ create_mono_server_config (apr_pool_t *p, server_rec *s)
 	server->appconfig_dir = APPCONFIG_DIR;
 	server->listen_port = NULL;
 	server->listen_address = NULL;
+	server->max_cpu_time = NULL;
+	server->max_memory = NULL;
 
 	return server;
 }
@@ -523,6 +529,30 @@ setenv_to_putenv (apr_pool_t *pool, char *name, char *value)
 #endif
 
 static void
+set_process_limits (int max_cpu_time, int max_memory)
+{
+#ifdef HAVE_SETRLIMIT
+	struct rlimit limit;
+
+	if (max_cpu_time > 0) {
+		/* We don't want SIGXCPU */
+		limit.rlim_cur = max_cpu_time;
+		limit.rlim_max = max_cpu_time;
+		DEBUG_PRINT (1, "Setting CPU time limit to %d", max_cpu_time);
+		(void) setrlimit (RLIMIT_CPU, &limit);
+	}
+
+	if (max_memory > 0) {
+		/* We don't want ENOMEM */
+		limit.rlim_cur = max_memory;
+		limit.rlim_max = max_memory;
+		DEBUG_PRINT (1, "Setting memory limit to %d", max_memory);
+		(void) setrlimit (RLIMIT_DATA, &limit);
+	}
+#endif
+}
+
+static void
 fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 {
 	pid_t pid;
@@ -536,6 +566,17 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	char *monodir;
 	char *serverdir;
 	char *wapidir;
+	int max_memory = 0;
+	int max_cpu_time = 0;
+#ifdef HAVE_SETRLIMIT
+	struct rlimit limits;
+#endif
+
+	if (server_conf->max_memory != NULL)
+		max_memory = atoi (server_conf->max_memory);
+
+	if (server_conf->max_cpu_time != NULL)
+		max_cpu_time = atoi (server_conf->max_cpu_time);
 
 	pid = fork ();
 	if (pid > 0) {
@@ -558,6 +599,7 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	for (i = getdtablesize () - 1; i >= 3; i--)
 		close (i);
 
+	set_process_limits (max_cpu_time, max_memory);
 	tmp = getenv ("PATH");
 	DEBUG_PRINT (1, "PATH: %s", tmp);
 	if (tmp == NULL)
@@ -999,6 +1041,27 @@ MAKE_CMD (MonoApplicationsConfigDir, appconfig_dir,
 	"Default value: \"\""
 	),
 
+MAKE_CMD (MonoMaxMemory, max_memory,
+	"If MonoRunXSP is True, the maximum size of the process's data "
+	"segment (initialized data, uninitialized data, and heap) allowed "
+	"for the spawned mono process. It will be restarted if when limit "
+	"is reached."
+#ifndef HAVE_SETRLIMIT
+	".. but your system doesn't support setrlimit. Sorry, this feature "
+	"will not be available."
+#endif
+	" Default value: system default"
+	),
+
+MAKE_CMD (MonoMaxCPUTime, max_cpu_time,
+	"If MonoRunXSP is True, CPU time limit in seconds allowed for "
+	"the spawned mono process. After that, it will be restarted."
+#ifndef HAVE_SETRLIMIT
+	".. but your system doesn't support setrlimit. Sorry, this feature "
+	"will not be available."
+#endif
+	" Default value: system default"
+	),
 NULL
 };
 

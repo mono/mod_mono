@@ -1,5 +1,12 @@
 2004-07-14 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
+	* configure.in: check for setrlimit.
+	* src/mod_mono.c: added MonoMaxMemory and MonoMaxCPUTime directives. If
+	set and setlimit is available, mod_mono will set those limits when
+	spwning mod-mono-server.
+
+2004-07-14 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
 	* src/Makefile.am:
 	* src/mod_mono.c:
 	* src/mod_mono.h: moved conditional cruft to a header file. Fixed note
