@@ -1,3 +1,15 @@
+2004-11-15 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* configure.in: added more tests for functions/headers. New option to
+	set the default MonoApplicationsConfigDir.
+
+	* src/mod_mono.c: don't use sleep and don't fork mod-mono-server if
+	we're terminating and mod-mono-server wasn't started.
+
+	* src/mod_mono.h: this should be ok to compile on windows now.
+
+	Thanks to Angel Marín.
+
 2004-10-27 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: patch by alois.belaska@monetplus.cz that fixes

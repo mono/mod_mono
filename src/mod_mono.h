@@ -23,14 +23,27 @@
 #ifndef __MOD_MONO_H
 #define __MOD_MONO_H
 
-#include <unistd.h>
 #include <errno.h>
-#include <netdb.h>
-#include <sys/select.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+
+#ifndef WIN32
+#include <sys/select.h>
 #include <sys/un.h>
+#endif
+
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif
+
+#ifdef HAVE_NETDB_H
+#include <netdb.h>
+#endif
+
+#ifdef HAVE_SYS_WAIT_H
 #include <sys/wait.h>
+#endif
+
 #include "httpd.h"
 #include "http_core.h"
 #include "http_log.h"
@@ -70,6 +83,7 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #define apr_socket_timeout_set(sock, t) ((sock)->timeout = t)
 #define apr_socket_close(sock) (ap_pclosesocket ((sock)->pool, (sock)->fd))
 #define APR_INET PF_INET
+#define apr_time_from_sec(x)	(x * 1000000)
 
 typedef time_t apr_interval_time_t;
 typedef size_t apr_size_t;
@@ -102,14 +116,22 @@ apr_socket_recv (apr_socket_t *sock, char *buf, apr_size_t *len);
 /* Apache 2 only */
 #define STATUS_AND_SERVER 0, NULL
 #include <http_protocol.h>
+#include <util_script.h>
 #include <apr_strings.h>
 #include <apr_support.h>
+#include <apr_env.h>
 /* End Apache 2 only */
 #endif
 
 /* Some defaults */
 #ifndef MONO_PREFIX
 #define MONO_PREFIX "/usr"
+#endif
+
+#ifdef WIN32
+#define DIRECTORY_SEPARATOR	";"
+#else
+#define DIRECTORY_SEPARATOR	":"
 #endif
 
 #define EXECUTABLE_PATH 	MONO_PREFIX "/bin/mono"

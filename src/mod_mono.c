@@ -487,6 +487,16 @@ apr_wait_for_io_or_timeout (void *unused, apr_socket_t *s, int for_read)
 
 	return (ret == 1) ? 0 : -1;
 }
+
+static void
+apr_sleep (long t)
+{
+	struct timeval tv;
+
+	tv.tv_usec = t % 1000000;
+	tv.tv_sec = t / 1000000;
+	select (0, NULL, NULL, NULL, &tv);
+}
 #elif !defined (HAVE_APR_SOCKET_CONNECT)
 	/* libapr-0 <= 0.9.3 (or 0.9.2?) */
 #	define apr_socket_connect apr_connect
@@ -771,7 +781,7 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 }
 
 static apr_status_t
-setup_socket (apr_socket_t **sock, mono_server_rec *server_conf, apr_pool_t *pool)
+setup_socket (apr_socket_t **sock, mono_server_rec *server_conf, apr_pool_t *pool, int dontfork)
 {
 	int i;
 	apr_status_t rv;
@@ -794,7 +804,7 @@ setup_socket (apr_socket_t **sock, mono_server_rec *server_conf, apr_pool_t *poo
 
 	rv = try_connect (server_conf, sock, pool);
 	DEBUG_PRINT (1, "try_connect: %d", (int) rv);
-	if (rv == APR_SUCCESS)
+	if (rv == APR_SUCCESS || dontfork)
 		return rv;
 
 	if (rv == -2)
@@ -851,7 +861,7 @@ setup_socket (apr_socket_t **sock, mono_server_rec *server_conf, apr_pool_t *poo
 
 	DEBUG_PRINT (1, "parent waiting");
 	for (i = 0; i < 3; i++) {
-		sleep (1);
+		apr_sleep (apr_time_from_sec (1));
 		DEBUG_PRINT (1, "try_connect %d", i);
 		rv = try_connect (server_conf, sock, pool);
 		if (rv == APR_SUCCESS)
@@ -1007,7 +1017,7 @@ mono_execute_request (request_rec *r)
 #ifdef APACHE13
 	sock = apr_pcalloc (r->pool, sizeof (apr_socket_t));
 #endif
-	rv = setup_socket (&sock, server_conf, r->pool);
+	rv = setup_socket (&sock, server_conf, r->pool, FALSE);
 	DEBUG_PRINT (2, "After setup_socket");
 	if (rv != APR_SUCCESS)
 		return HTTP_SERVICE_UNAVAILABLE;
@@ -1059,11 +1069,10 @@ terminate_xsp (void *data)
 #ifdef APACHE13
 	sock = apr_pcalloc (pconf, sizeof (apr_socket_t));
 #endif
-	mono_conf->run_xsp = "false";
-	rv = setup_socket (&sock, mono_conf, pconf);
+	rv = setup_socket (&sock, mono_conf, pconf, TRUE);
 	if (rv == APR_SUCCESS) {
 		write_data (sock, termstr, 1);
-		sleep (1);
+		apr_sleep (apr_time_from_sec (1));
 		apr_socket_close (sock);
 	}
 
