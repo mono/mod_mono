@@ -1,3 +1,7 @@
+2004-04-13  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* configure.in: substitute APXS and small fix for TRY_COMPILE.
+
 2004-04-08  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* NEWS: updated.
