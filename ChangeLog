@@ -1,5 +1,10 @@
 2005-03-05 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
+	* src/mod_mono.c: try to connect to mod-mono-server before forking.
+	Patch by Rob Lyon.
+
+2005-03-05 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
 	* configure.in: 1.0.6.99.
 	* src/mod_mono.c: patch from Rob Lyon that fixes unix socket deletion
 	when the default name is used.

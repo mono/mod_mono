@@ -1288,6 +1288,8 @@ mono_child_init (
 	int i;
 	module_cfg *config;
 	xsp_data *xsp;
+	apr_socket_t *sock;
+	apr_status_t rv;
 
 	DEBUG_PRINT (0, "Mono Child Init");
 	config = ap_get_module_config (s->module_config, &mono_module);
@@ -1303,10 +1305,22 @@ mono_child_init (
 		if (xsp->status != FORK_NONE)
 			continue;
 
-		xsp->status = FORK_INPROCESS;
-		DEBUG_PRINT (0, "Forking %s", xsp->alias);
-		fork_mod_mono_server (pconf, xsp);
-		xsp->status = FORK_SUCCEEDED;
+#ifdef APACHE13
+		sock = apr_pcalloc (pconf, sizeof (apr_socket_t));
+#endif
+		rv = setup_socket (&sock, xsp, pconf, TRUE);
+
+		if (rv == APR_SUCCESS) {
+			/* connected */
+			DEBUG_PRINT (0, "connected %s", xsp->alias);
+			apr_socket_close (sock);
+		} else {
+			/* need fork */
+			xsp->status = FORK_INPROCESS;
+			DEBUG_PRINT (0, "forking %s", xsp->alias);
+			fork_mod_mono_server (pconf, xsp);
+			xsp->status = FORK_SUCCEEDED;
+		}
 	}
 }
 
