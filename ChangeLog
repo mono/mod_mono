@@ -1,5 +1,10 @@
 2003-09-18  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
+	* src/mod_mono_unix.c: don't loop forever if mod-mono-server is
+	disconnected. content_type can be NULL.
+
+2003-09-18  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
 	* INSTALL: tell about AddType and Alias for mod_mono_unix.
 	* NEWS: updated.
 	* src/mod_mono_unix.c: check that the content type is

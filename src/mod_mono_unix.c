@@ -536,10 +536,10 @@ modmono_execute_request (request_rec *r)
 		input = read (fd, &command, sizeof (int));
 		if (input > 0)
 			result = do_command (command, fd, r, &status);
-	} while (input != -1 && result == TRUE);
+	} while (input > 0 && result == TRUE);
 
 	close (fd);
-	if (input == -1)
+	if (input <= 0)
 		status = HTTP_INTERNAL_SERVER_ERROR;
 
 	return status;
@@ -548,7 +548,7 @@ modmono_execute_request (request_rec *r)
 static int
 modmono_handler (request_rec *r)
 {
-	if (strcmp (r->content_type, "application/x-asp-net"))
+	if (!r->content_type || strcmp (r->content_type, "application/x-asp-net"))
 		return DECLINED;
 
 	return modmono_execute_request (r);
