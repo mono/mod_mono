@@ -1,8 +1,21 @@
+2004-06-03  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* man/mod_mono.8.in: 
+	* INSTALL: added .webapp sample. MonoApplications is not mandatory.
+
+	* src/mod_mono.c: only one of MonoApplications,
+	MonoApplicationsConfigFile and MonoApplicationsConfigDir is allowed.
+	MonoApplications is no longer mandatory.
+
 2004-06-02  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* configure.in: check for setenv and putenv.
 	* src/mod_mono.c: use putenv when setenv is not available. Fixes build
 	problem under Solaris 8.
+
+2004-06-02  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* Released 0.10
 
 2004-05-29  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 

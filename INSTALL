@@ -1,4 +1,4 @@
-Last updated: May 29, 2004
+Last updated: Jun 3, 2004
 
 Index
 -------
@@ -194,11 +194,6 @@ APPENDIX B: Configuration directives for mod_mono
     The full path to mod-mono-server.exe.
     Default value: "/usr/bin/mod-mono-server.exe"
 
-  MonoApplications (used only when MonoRunXSP is True)
-  
-    This value will be passed to mod-mono-server.exe in the
-    --applications option. It is mandatory if MonoRunXSP is True.
-
   MonoWapiDir
 
     The directory where mono runtime will create the ".wapi" directory
@@ -210,6 +205,11 @@ APPENDIX B: Configuration directives for mod_mono
     Value passed in --root argument when running mod-mono-server. This
     tells mod-mono-server to change the directory to the value specified
     before doing anything else.
+
+  MonoApplications (used only when MonoRunXSP is True)
+  
+    This value will be passed to mod-mono-server.exe in the
+    --applications option. See xsp(1) manual page for details.
 
   MonoApplicationsConfigFile
 
@@ -223,6 +223,8 @@ APPENDIX B: Configuration directives for mod_mono
     specified directory DIR. Files must have '.webapp' extension.
     Default value: ""
 
+  Note that only one of MonoApplications, MonoApplicationsConfigFile and
+  MonoApplicationsConfigDir is allowed.
 
 
 APPENDIX C: Webapp file format
