@@ -1,5 +1,11 @@
 2004-07-07 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
+	* src/mod_mono.c: removed the mutex stuff that prevented multiple forks
+	no first request. It doesn't work on RH9 :-? (worked on debian sid with
+	apache2 and 1.3).
+
+2004-07-07 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
 	* src/mod_mono.c: removed unused commands, unified setting status code
 	and message into one single command. Now apache handles closing the
 	socket used to connect to mod-mono-server and waiting, terminating or

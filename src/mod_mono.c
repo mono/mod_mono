@@ -62,9 +62,6 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #define apr_status_t int
 #define apr_os_sock_t int
 #define APR_SUCCESS 0
-#define apr_proc_mutex_t mutex
-#define apr_proc_mutex_lock ap_acquire_mutex
-#define apr_proc_mutex_unlock ap_release_mutex
 
 typedef struct apr_socket apr_socket_t;
 struct apr_socket {
@@ -191,7 +188,6 @@ module AP_MODULE_DECLARE_DATA mono_module;
 
 /* Configuration pool. Cleared on restart. */
 static apr_pool_t *pconf;
-static apr_proc_mutex_t *runmono_mutex;
 
 typedef struct {
 	char *filename;
@@ -780,28 +776,19 @@ setup_socket (apr_socket_t **sock, mono_server_rec *server_conf, apr_pool_t *poo
 		return -1;
 	}
 
-	rv = apr_proc_mutex_lock (runmono_mutex);
-	if (rv == APR_SUCCESS) {
-		fork_mod_mono_server (pool, server_conf);
-	}
+	fork_mod_mono_server (pool, server_conf);
 
 	DEBUG_PRINT (1, "parent waiting");
 	for (i = 0; i < 3; i++) {
 		sleep (1);
 		DEBUG_PRINT (1, "try_connect %d", i);
 		if (try_connect (server_conf->filename, sock) == APR_SUCCESS) {
-			if (rv == APR_SUCCESS)
-				apr_proc_mutex_unlock (runmono_mutex);
-
 			return APR_SUCCESS;
 		}
 	}
 
 	ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
 		      "Failed connecting and child didn't exit!");
-
-	if (rv == APR_SUCCESS)
-		apr_proc_mutex_unlock (runmono_mutex);
 
 	apr_socket_close (*sock);
 	return -1;
@@ -919,24 +906,6 @@ mono_handler (request_rec *r)
 	return mono_execute_request (r);
 }
 
-static int
-create_runmono_mutex (apr_pool_t *ptemp)
-{
-	char *fname, *tmp;
-
-	tmp = (char *) apr_pcalloc (ptemp, L_tmpnam);
-	tmp = tmpnam (tmp);
-	fname = apr_psprintf (pconf, "%s.%d", tmp, getpid ());
-
-	DEBUG_PRINT (0, "fname: %s", fname);
-#ifdef APACHE2
-	return apr_proc_mutex_create (&runmono_mutex, fname, APR_LOCK_DEFAULT, pconf);
-#else
-	runmono_mutex = ap_create_mutex (fname);
-	return 0;
-#endif
-}
-
 #ifdef APACHE13
 static void
 mono_init_handler (server_rec *s, pool *p)
@@ -944,7 +913,6 @@ mono_init_handler (server_rec *s, pool *p)
 	DEBUG_PRINT (0, "Initializing handler");
 	ap_add_version_component ("mod_mono/" VERSION);
 	pconf = p;
-	create_runmono_mutex (p);
 }
 #else
 static int
@@ -956,7 +924,7 @@ mono_init_handler (apr_pool_t *p,
 	DEBUG_PRINT (0, "Initializing handler");
 	ap_add_version_component (p, "mod_mono/" VERSION);
 	pconf = s->process->pconf;
-	return create_runmono_mutex (ptemp);
+	return OK;
 }
 #endif
 
