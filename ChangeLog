@@ -1,9 +1,18 @@
+
+2004-08-25 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* Makefile.am:
+	* configure.in:
+	* src/Makefile.am: changes needed by our favourite packager to make
+	rpms out of this. Building the old module is no longer an option.
+
 2004-08-12  Geoff Norton <gnorton@customerdna.com>
 
 	* INSTALL:
 	* man/mod_mono.8.in:
-	* src/mod_mono.c:  Use RLIMIT_DATA as opposed to RLIMIT_AS; because RLIMIT_AS
-	isn't defined on all platforms.  Update documentation to reflect this change.
+	* src/mod_mono.c:  Use RLIMIT_DATA as opposed to RLIMIT_AS; because
+	RLIMIT_AS isn't defined on all platforms.  Update documentation to
+	reflect this change.
 
 2004-07-29 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 

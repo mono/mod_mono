@@ -1,15 +1,15 @@
 AC_INIT(src/mod_mono.c)
-AM_INIT_AUTOMAKE(mod_mono, 1.0.1)
+AM_INIT_AUTOMAKE(mod_mono, 1.0.2)
 AM_CONFIG_HEADER(include/mod_mono_config.h:config.in)
 
 AC_PROG_CC
 AM_PROG_LIBTOOL
 
-AC_MSG_CHECKING([if building mod_mono_old is requested])
-AC_ARG_ENABLE(old-module,
-	[  --enable-old-module     enables compilation of the mod_mono_old module],
-	enable_old_module=$enableval, enable_old_module=no)
-AC_MSG_RESULT($enable_old_module)
+dnl AC_MSG_CHECKING([if building mod_mono_old is requested])
+dnl AC_ARG_ENABLE(old-module,
+dnl 	[  --enable-old-module     enables compilation of the mod_mono_old module],
+dnl 	enable_old_module=$enableval, enable_old_module=no)
+dnl AC_MSG_RESULT($enable_old_module)
 
 # check for --with-apxs
 AC_MSG_CHECKING(for --with-apxs)
@@ -173,6 +173,9 @@ AC_MSG_CHECKING(for Apache libexec directory)
 APXS_LIBEXECDIR=`${APXS} -q LIBEXECDIR`
 AC_MSG_RESULT($APXS_LIBEXECDIR)
 
+AC_MSG_CHECKING(for Apache sysconf directory)
+APXS_SYSCONFDIR=`${APXS} -q SYSCONFDIR`
+AC_MSG_RESULT($APXS_SYSCONFDIR)
 # determine INCLUDES
 
 AC_MSG_CHECKING([for Apache include directory])
@@ -250,19 +253,19 @@ AC_ARG_WITH(crosspkgdir, [  --with-crosspkgdir=/path/to/pkg-config/dir],
 dnl Check for mono.pc if building mod_mono_old is requested
 MONO_CFLAGS=""
 MONO_LIBS=""
-if test "yes" = "$enable_old_module" ; then
-	MONO_REQUIRED_VERSION=0.28.99
-	PKG_CHECK_MODULES(MONO,
-			  mono >= $MONO_REQUIRED_VERSION,
-			  enable_old_module="yes",
-			  enable_old_module="no")
+dnl if test "yes" = "$enable_old_module" ; then
+dnl 	MONO_REQUIRED_VERSION=0.28.99
+dnl 	PKG_CHECK_MODULES(MONO,
+dnl 			  mono >= $MONO_REQUIRED_VERSION,
+dnl 			  enable_old_module="yes",
+dnl 			  enable_old_module="no")
 
-	if test "$enable_old_module" = "no" ; then
-		AC_MSG_ERROR([Building old module requested but no mono.pc found. $MONO_PKG_ERRORS])
-	fi
-fi
+dnl 	if test "$enable_old_module" = "no" ; then
+dnl 		AC_MSG_ERROR([Building old module requested but no mono.pc found. $MONO_PKG_ERRORS])
+dnl 	fi
+dnl fi
 
-AM_CONDITIONAL(BUILD_OLD_MODULE, test "yes" = "$enable_old_module")
+dnl AM_CONDITIONAL(BUILD_OLD_MODULE, test "yes" = "$enable_old_module")
 AM_CONDITIONAL(APACHE2, test "$APACHE_VER" = "2.0")
 if test "$APACHE_VER" = "2.0" ; then
 dnl Sources are recompiled if we change the target version
@@ -306,6 +309,7 @@ AC_DEFINE_UNQUOTED([MONO_PREFIX],"$MONO_PREFIX",[Mono installation prefix])
 
 
 AC_SUBST(APXS_LIBEXECDIR)
+AC_SUBST(APXS_SYSCONFDIR)
 AC_SUBST(APXS)
 AC_SUBST(AP_INCLUDES)
 AC_SUBST(CFLAGS)
@@ -315,6 +319,7 @@ AC_SUBST(MONO_PREFIX)
 
 AC_OUTPUT(
 Makefile
+mod_mono.conf
 src/Makefile
 man/mod_mono.8
 man/Makefile
@@ -331,7 +336,7 @@ echo "   * apxs = $APXS"
 test "$APACHE_VER" = "2.0" -a -x "$APRCONFIG" && \
 echo "   * apr-config = $APRCONFIG"
 echo "   * mono prefix = $MONO_PREFIX"
-echo "   * Build old module: $enable_old_module"
+dnl echo "   * Build old module: $enable_old_module"
 echo ""
 echo "---"
 
