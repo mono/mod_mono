@@ -1,5 +1,5 @@
 2003-02-02  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
-	* src/mod_mono.c: Fixed returning null value when no query string. Thanks to "Ula? VURAL" <uvural@netorbits.com> for reporting this
+	* src/mod_mono.c: Fixed returning null value when no query string is present. Thanks to "Ula? VURAL" <uvural@netorbits.com> and Geo <_geo@post.sk> for reporting this.
 	
 2003-01-22  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
 	* INSTALL: Some typos and step by step instructions for Red Hat 8.0
