@@ -1,2 +1,4 @@
 
+EXTRA_DIST = FAQ.txt
+
 SUBDIRS = src

@@ -22,7 +22,12 @@ The steps are as follow:
 - Test the examples
 
 There's also a section about using mod_mono with the Apache 2 that comes
-with your Linux distribution, such as Red Hat 8.0
+with your Linux distribution. Finally, if you are using Red Hat 8.0
+there's an appendix covering this platform.
+
+mod_mono is still in its infancy and Mono is a moving target, there's still a lot to be done!
+If you have suggestions, bugs or patches you can reach me at daniel @ rawbyte.com
+It may take me a bit, but I try to reply to all mod_mono related email
 
 INSTALLING FROM SOURCE
 ======================
@@ -95,6 +100,8 @@ You can then build mod_mono as explained previously using
 
 ./configure --with-apxs=/usr/sbin/apxs
 
+Red Hat 8.0 is so common that I have included a section at the end with step by
+step instructions for this platform.
 
 ASP.NET support
 ===============
@@ -122,16 +129,16 @@ Edit /home/user/mono/install/apache2/conf/httpd.conf :
 
 Listen 8080   
 LoadModule mono_module /home/user/mono/install/apache2/lib/libmod_mono.so
-MonoApplication /mono /home/user/mono/xsp/server/test
+MonoApplication /mono /home/user/mono/install/xsp/server/test
 
 The MonoApplication directive takes two arguments. The first one is the virtual path, which is part
 of the URL used to access your application. The second one is the physical path, the directory
 where the application resides. In this case is the directory containing the XSP test pages.
-Only onw MonoApplication directive is currently allowed.
+Only one MonoApplication directive is currently allowed.
 
 NOTE: If a machine.config is not installed in your path, which normally occurs during Mono installation,
 you may need to create a ModMono.exe.config. This file needs to be placed in the application base dir, in this case
-/home/user/mono/xsp/server/test/
+/home/user/mono/install/xsp/server/test/
 You can find an example for the contents of this file in the data/machine.config subdirectory of the Mono distribution.
 
 
@@ -149,5 +156,89 @@ and you should get the example index.
 If you get a Internal Server Error page instead, take a look at 
 /home/user/mono/install/apache2/logs/error_log
 for indications of what may have gone wrong
+
+
+APPENDIX: RED HAT 8.0
+=====================
+
+a) Install Mono
+
+Install the Mono rpms from 
+http://www.go-mono.com/download.html
+
+b) Install Apache
+
+Make sure the followings rpms are installed
+
+httpd-2.0.40-8.i386.rpm
+httpd-devel-2.0.40-8.i386.rpm
+
+You can find a copy of them at
+http://www.rpmfind.net/linux/RPM/redhat/8.0/i386/httpd-2.0.40-8.i386.html
+http://www.rpmfind.net//linux/RPM/redhat/8.0/i386/httpd-devel-2.0.40-8.i386.html
+
+To install them: 
+
+rpm -i httpd-2.0.40-8.i386.rpm httpd-devel-2.0.40-8.i386.rpm
+
+c) mod_mono
+
+Follow the instructions at http://www.go-mono.com/anoncvs.html,
+which is as follows:
+
+export CVSROOT=:pserver:anonymous@anoncvs.go-mono.com:/mono
+cvs login
+cvs -z3 co mod_mono
+
+Now cd into the mod_mono directory
+
+./autogen.sh --with-apxs=/usr/sbin/apxs
+make
+make install
+
+You need to become root (use the 'su' command) to do make install,
+as it will try to copy mod_mono.so to the /usr/lib/httpd/modules/
+directory
+
+To build ModMono.dll, cd into mod_mono/src and type
+
+make -f makedll.make
+cp ModMono.dll /usr/lib/ModMono.dll
+
+d) XSP server pages
+
+Follow the general instructions explained earlier in the document
+You need to make sure the directory where the aspx files are is writable by
+the user Apache will be running as:
+
+chown -R apache.apache /home/user/mono/install/xsp/server/test
+
+e) Configure Apache
+
+Edit the /etc/httpd/conf/httpd.conf file and add the following:
+
+LoadModule mono_module mod_mono.so
+MonoApplication /mono /home/user/mono/install/xsp/server/test
+
+The following is a temporary hack, will not be necessary in the future:
+mkdir /var/www/.wapi/
+chown apache.apache /var/www/.wapi
+chmod 700 /var/www/.wapi
+
+f) Start apache 
+
+As root, type:
+
+/etc/init.d/httpd start
+
+g) Browse the examples
+
+http://127.0.0.1/mono/index.aspx
+
+
+If you find any problems, take a look at 
+/var/log/httpd/error_log and also read the 
+FAQ.txt document included with mod_mono
+
 
 

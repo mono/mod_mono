@@ -1,0 +1,44 @@
+
+FAQ
+
+Installation and troubleshooting
+
+If you get a blank page or a stack trace instead of the page you expected,
+something went wrong. To find out what, the most useful place to look at is the 
+Apache error_log file. If you installed Apache from source as explained it
+will be in /usr/local/apache2/logs, if you use Red Hat, it will be in 
+/var/logs/httpd/
+
+1) I get an error about a .wapi/ directory
+
+Mono creates that directory in the home of the current user. When you are running
+Mono inside Apache, it tries to create that directory in the home of the user
+Apache is running as. This will be solved in future releases, but for now the following hack
+should work:
+
+If you get something like
+
+** (process:2899): CRITICAL **: : shared file [/var/www/.wapi/shared_data-0] open error: No such file or directory
+
+Then you need to issue the following commands, as root
+
+mkdir /var/www/.wapi/
+chown apache.apache /var/www/.wapi
+chmod 700 /var/www/.wapi
+
+
+2) I get an error about a missing tmpxxxxxxxxx.dll
+
+Something along the lines of
+
+Unhandled Exception: System.UnauthorizedAccessException: Access to the path "./tmp1632595207.dll" is denied.
+
+This is likely because the ASP page compiler does not have permission to create that intermediate file,
+probably because the user apache is running as does not have permission to write in that directory.
+
+The following should fix it
+
+chown -R apache.apache /home/user/mono/install/xsp/server/test
+
+
+

@@ -1,3 +1,9 @@
+2003-01-22  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
+	* INSTALL: Some typos and step by step instructions for Red Hat 8.0
+	* README: Removed reference to POST not working
+	* FAQ.txt: Added doc with more common problems people find installing mod_mono
+	* Makefile.am: Added FAQ.txt to the dist files
+	
 2003-01-18  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
 	* INSTALL: Updated install instructions to cover --with-apxs
 	* configure.in: Check in /usr/sbin/apxs
