@@ -34,8 +34,6 @@ DEFINE_MODULE (mono_module);
 
 /* Configuration pool. Cleared on restart. */
 static apr_pool_t *pconf;
-/* server timeout for every request in milliseconds */
-static int server_timeout;
 
 typedef struct {
 	char *filename;
@@ -188,9 +186,6 @@ write_data (apr_socket_t *sock, const void *str, int size)
 {
 	int prevsize = size;
 
-	if (apr_wait_for_io_or_timeout (NULL, sock, 0) != 0)
-		return -1;
-
 	if (apr_socket_send (sock, str, &size) != APR_SUCCESS)
 		return -1;
 
@@ -218,9 +213,6 @@ static int
 read_data (apr_socket_t *sock, void *ptr, int size)
 {
 	int prevsize = size;
-
-	if (apr_wait_for_io_or_timeout (NULL, sock, 1) != 0)
-		return -1;
 
 	if (apr_socket_recv (sock, ptr, &size) != APR_SUCCESS)
 		return -1;
@@ -804,7 +796,6 @@ setup_socket (apr_socket_t **sock, mono_server_rec *server_conf, apr_pool_t *poo
 		return rv;
 	}
 
-	apr_socket_timeout_set (*sock, server_timeout);
 	rv = try_connect (server_conf, sock, pool);
 	DEBUG_PRINT (1, "try_connect: %d", (int) rv);
 	if (rv == APR_SUCCESS)
@@ -1061,7 +1052,6 @@ mono_init_handler (server_rec *s, pool *p)
 	DEBUG_PRINT (0, "Initializing handler");
 	ap_add_version_component ("mod_mono/" VERSION);
 	pconf = p;
-	server_timeout = s->timeout * 1000;
 }
 #else
 static int
@@ -1073,7 +1063,6 @@ mono_init_handler (apr_pool_t *p,
 	DEBUG_PRINT (0, "Initializing handler");
 	ap_add_version_component (p, "mod_mono/" VERSION);
 	pconf = s->process->pconf;
-	server_timeout = s->timeout * 1000;
 	return OK;
 }
 #endif
