@@ -1,3 +1,12 @@
+2003-08-10  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
+	* doc/modmono.xml: DocBook documentation
+	* src/mod_mono.c: ifde-ed out code since it only supports Apache 2 currently
+	* src/Makefile.am: consistent naming
+	
+2003-08-04  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
+	* configure.in: 
+	* src/mod_mono_unix.c: Port to Apache 1.3
+
 2003-08-01  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/Makefile.am: added mod_mono_unix.

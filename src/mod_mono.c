@@ -49,6 +49,7 @@
  *
  */
 
+#ifndef APACHE13
 #include <httpd.h>
 #include <http_core.h>
 #include <http_protocol.h>
@@ -475,3 +476,4 @@ module AP_MODULE_DECLARE_DATA mono_module =
     register_modmono_hooks                 /* register hooks */
   };
 
+#endif
