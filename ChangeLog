@@ -1,3 +1,13 @@
+2005-02-07 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* configure.in: added --enable-debug to compile mod_mono with verbose
+	logging.
+	* src/mod_mono.c: comment on DEBUG and remove the unix socket file upon
+	termination of mod-mono-server, just in case the finalizers are not
+	called.
+
+	Thanks to Rob Lyon.
+
 2005-02-06 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* configure.in:

@@ -24,8 +24,9 @@
 #include "mod_mono_config.h"
 #endif
 
-/* define this to get tons of messages in the log */
-#undef DEBUG
+/* uncomment this to get tons of messages in the log */
+/* or use --with-debug[=yes] with configure */
+/* #define DEBUG */
 #define DEBUG_LEVEL 0
 
 #include "mod_mono.h"
@@ -1053,6 +1054,9 @@ terminate_xsp (void *data)
 		apr_sleep (apr_time_from_sec (1));
 		apr_socket_close (sock);
 	}
+
+	if (mono_conf->listen_port == NULL && mono_conf->filename != NULL)
+		remove (mono_conf->filename); /* Don't bother checking error */
 
 	return APR_SUCCESS;
 }
