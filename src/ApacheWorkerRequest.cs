@@ -202,7 +202,7 @@ namespace Apache.Web
 		}
 
 		public override string MapPath (string path) {
-		  return base.MapPath(request.RemovePrefix(path, appHost.VPath));
+		  return base.MapPath(request.RemovePrefix(path, base.GetAppPath ()));
 		}
 
 		public override string GetRemoteName ()
