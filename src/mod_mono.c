@@ -584,22 +584,22 @@ modmono_execute_request (request_rec *r)
 
 	fd = setup_socket (server_conf->filename);
 	if (fd == -1)
-		return HTTP_INTERNAL_SERVER_ERROR;
+		return HTTP_SERVICE_UNAVAILABLE;
 
 	if (write_data_string_no_prefix (fd, r->method) <= 0)
-		return HTTP_INTERNAL_SERVER_ERROR;
+		return HTTP_SERVICE_UNAVAILABLE;
 
 	if (write_data_string_no_prefix (fd, r->uri) <= 0)
-		return HTTP_INTERNAL_SERVER_ERROR;
+		return HTTP_SERVICE_UNAVAILABLE;
 
 	if (write_data_string_no_prefix (fd, request_get_query_string (r)) < 0)
-		return HTTP_INTERNAL_SERVER_ERROR;
+		return HTTP_SERVICE_UNAVAILABLE;
 
 	if (write_data_string_no_prefix (fd, r->protocol) <= 0)
-		return HTTP_INTERNAL_SERVER_ERROR;
+		return HTTP_SERVICE_UNAVAILABLE;
 	
 	if (!send_headers (r, fd))
-		return HTTP_INTERNAL_SERVER_ERROR;
+		return HTTP_SERVICE_UNAVAILABLE;
 		
 	do {
 		input = read (fd, &command, sizeof (int));
