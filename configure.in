@@ -272,6 +272,14 @@ fi
 AC_C_BIGENDIAN
 AC_CHECK_FUNCS([setenv putenv ])
 
+found_apr_socket_connect=no
+AC_CHECK_LIB(apr-0, apr_socket_connect, found_apr_socket_connect=yes)
+if test x$found_apr_socket_connect = xyes ; then
+	AC_DEFINE([HAVE_APR_SOCKET_CONNECT],,[apr_socket_connect is present])
+else
+	echo "TCP Socket communication with mod-mono-server not supported."
+fi
+
 MONO_PREFIX=`$PKG_CONFIG --silence-errors --variable=prefix mono`
 if test x$MONO_PREFIX = "x" ; then
 	MONO_PREFIX=$prefix

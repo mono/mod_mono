@@ -558,6 +558,9 @@ apr_socket_connect (apr_socket_t *sock, apr_sockaddr_t *sa)
 	return APR_SUCCESS;
 }
 
+#elif !defined (HAVE_APR_SOCKET_CONNECT)
+	/* libapr-0 <= 0.9.3 (or 0.9.2?) */
+#	define apr_socket_connect apr_connect
 #endif
 
 static apr_status_t 
@@ -1093,7 +1096,7 @@ MAKE_CMD (MonoUnixSocket, unix_socket,
 	),
 
 MAKE_CMD (MonoListenPort, listen_port,
-	"TCP port on which mod-mono-server should/is listen on. Mutually "
+	"TCP port on which mod-mono-server should listen/is listening on. Mutually "
 	"exclusive with MonoUnixSocket. "
 	"When this options is specified, "
 	"mod-mono-server and mod_mono will use a TCP socket for communication. "
