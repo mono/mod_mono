@@ -60,7 +60,6 @@ CONFIG_FUNCTION (run_xsp, run_xsp)
 CONFIG_FUNCTION (executable_path, executable_path)
 CONFIG_FUNCTION (path, path)
 CONFIG_FUNCTION (server_path, server_path)
-CONFIG_FUNCTION (applications, applications)
 CONFIG_FUNCTION (wapidir, wapidir)
 CONFIG_FUNCTION (document_root, document_root)
 CONFIG_FUNCTION (appconfig_file, appconfig_file)
@@ -69,7 +68,29 @@ CONFIG_FUNCTION (listen_port, listen_port)
 CONFIG_FUNCTION (listen_address, listen_address)
 CONFIG_FUNCTION (max_cpu_time, max_cpu_time)
 CONFIG_FUNCTION (max_memory, max_memory)
-CONFIG_FUNCTION (debug, debug)
+
+static const char *
+add_applications (cmd_parms *cmd, void *m, const char *first, const char *second)
+{
+	char *value = apr_pstrdup (cmd->temp_pool, second);
+	mono_server_rec *config = ap_get_module_config (cmd->server->module_config, &mono_module);
+	char *old_value = config->applications;
+
+	/* By now, we ignore the first argument */
+	if (old_value != NULL) {
+		config->applications = apr_pstrcat (cmd->pool, old_value, ",", value, NULL);
+	} else {
+		config->applications = value;
+	}
+
+	return NULL;
+}
+
+static const char *
+mono_config_applications (cmd_parms *cmd, void *config, const char *parm)
+{
+	return add_applications (cmd, NULL, NULL, parm);
+}
 
 static void *
 create_mono_server_config (apr_pool_t *p, server_rec *s)
@@ -456,40 +477,6 @@ apr_socket_recv (apr_socket_t *sock, char *buf, apr_size_t *len)
 	} while ((result >= 0 && total < *len) || (result == -1 && errno == EINTR));
 
 	return (total == *len) ? 0 : -1;
-}
-
-static apr_status_t
-apr_wait_for_io_or_timeout (void *unused, apr_socket_t *s, int for_read)
-{
-	fd_set fds;
-	int ret;
-	struct timeval tv, *tvptr;
-	div_t divvy;
-	time_t timeout;
-	int fd;
-
-	fd = s->fd;
-	timeout = s->timeout;
-	divvy = div (timeout, 1000);
-	do {
-		FD_ZERO (&fds);
-		FD_SET (fd, &fds);
-		if (timeout >= 0) {
-			tv.tv_sec = divvy.quot;
-			tv.tv_usec = divvy.rem;
-			tvptr = &tv;
-		} else {
-			tvptr = NULL;
-		}
-
-		if (for_read)
-			ret = select (fd + 1, &fds, NULL, NULL, tvptr);
-		else
-			ret = select (fd + 1, NULL, &fds, NULL, tvptr);
-
-	} while (ret == -1 && errno == EINTR);
-
-	return (ret == 1) ? 0 : -1;
 }
 
 static void
@@ -1238,9 +1225,8 @@ MAKE_CMD (MonoMaxCPUTime, max_cpu_time,
 	" Default value: system default"
 	),
 #endif
-MAKE_CMD (MonoDebug, debug,
-	"If MonoDebug is true, mono will be run in debug mode."
-	" Default value: False"
+MAKE_CMD_ITERATE2 ("AddMonoApplications", add_applications,
+	"Appends an application."
 	),
 	{ NULL }
 };

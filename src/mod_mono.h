@@ -6,7 +6,7 @@
  * 	Gonzalo Paniagua Javier
  *
  * Copyright (c) 2002 Daniel Lopez Ridruejo
- *           (c) 2002-2004 Novell, Inc.
+ *           (c) 2002-2005 Novell, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -75,6 +75,7 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #define apr_array_header array_header
 #define apr_array_header_t array_header
 #define apr_pstrdup ap_pstrdup
+#define apr_pstrcat ap_pstrcat
 #define apr_psprintf ap_psprintf
 #define apr_status_t int
 #define apr_os_sock_t int
@@ -100,9 +101,6 @@ struct mysockaddr {
 	size_t  addrlen;
 	struct sockaddr *addr;
 };
-
-static apr_status_t
-apr_wait_for_io_or_timeout (void *unused, apr_socket_t *s, int for_read);
 
 static apr_status_t
 apr_socket_send (apr_socket_t *sock, const char *buf, apr_size_t *len);
@@ -219,9 +217,15 @@ static char *cmdNames [] = {
 #ifdef APACHE13
 #define MAKE_CMD(name, function_name, description) \
 	{ #name, CONFIG_FUNCTION_NAME (function_name), NULL, RSRC_CONF, TAKE1, description }
+
+#define MAKE_CMD_ITERATE2(name, function_name, description) \
+	{ name, function_name, NULL, RSRC_CONF, ITERATE2, description }
 #else
 #define MAKE_CMD(name, function_name, description) \
 	AP_INIT_TAKE1 (#name, CONFIG_FUNCTION_NAME(function_name), NULL, RSRC_CONF, description)
+
+#define MAKE_CMD_ITERATE2(name, function_name, description) \
+	AP_INIT_ITERATE2 (name, function_name, NULL , RSRC_CONF, description)
 #endif
 
 /* Debugging */

@@ -1,3 +1,13 @@
+2005-02-08 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: removed MonoDebug stuff and unused
+	apr_wait_for_io_or_timeout when compiling for apache 1.3.
+	New AddMonoApplications directive that takes 2 arguments, the first one
+	unused by now and the second one a set of applications to be appended
+	to the existing ones.
+
+	* src/mod_mono.h: #defined MAKE_CMD_ITERATE2.
+
 2005-02-07 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* configure.in: added --enable-debug to compile mod_mono with verbose
