@@ -4,6 +4,8 @@
 	* src/mod_mono_unix.c: New module that communicates with an external
 	process through a unix socket.
 
+	* INSTALL: updated.
+
 2003-04-12  Miguel de Icaza  <miguel@ximian.com>
 
 	* src/mod_mono.c (create_application_host): Add call to
