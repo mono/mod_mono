@@ -63,31 +63,40 @@
 
 module AP_MODULE_DECLARE_DATA mono_module;
 
-#define EXPOSE_REQUEST_FIELD_STRING(funcname, fieldname) static MonoString * funcname (request_rec *r) {  return mono_string_new(mono_domain_get(), r->fieldname);}
+#define EXPOSE_REQUEST_FIELD_STRING_GET(funcname, fieldname) static MonoString * funcname (request_rec *r) {  return mono_string_new(mono_domain_get(), r->fieldname);}
 
-#define EXPOSE_CONNECTION_FIELD_STRING(funcname, fieldname) static MonoString * funcname (conn_rec *c) {  return mono_string_new(mono_domain_get(), c->fieldname);}
+#define EXPOSE_REQUEST_FIELD_STRING_SET(funcname, fieldname) static void funcname (request_rec *r, MonoString *value) { r->fieldname = apr_pstrdup(r->pool, (const char *)mono_string_to_utf8(value));}
+
+#define EXPOSE_REQUEST_FIELD_INT_GET(funcname, fieldname) static int funcname (request_rec *r) {  return r->fieldname; }
+#define EXPOSE_REQUEST_FIELD_INT_SET(funcname, fieldname) static void funcname (request_rec *r, int value) { r->fieldname = value; }
+
+#define EXPOSE_CONNECTION_FIELD_STRING_GET(funcname, fieldname) static MonoString * funcname (conn_rec *c) {  return mono_string_new(mono_domain_get(), c->fieldname);}
 
 
-EXPOSE_REQUEST_FIELD_STRING(mono_apache_request_get_request, the_request);
-EXPOSE_REQUEST_FIELD_STRING(mono_apache_request_get_protocol, protocol);
-EXPOSE_REQUEST_FIELD_STRING(mono_apache_request_get_hostname, hostname);
-EXPOSE_REQUEST_FIELD_STRING(mono_apache_request_get_status_line, status_line);
-EXPOSE_REQUEST_FIELD_STRING(mono_apache_request_get_method, method);
-EXPOSE_REQUEST_FIELD_STRING(mono_apache_request_get_range, range);
-EXPOSE_REQUEST_FIELD_STRING(mono_apache_request_get_content_type, content_type);
-EXPOSE_REQUEST_FIELD_STRING(mono_apache_request_get_handler, handler);
-EXPOSE_REQUEST_FIELD_STRING(mono_apache_request_get_content_encoding, content_encoding);
-EXPOSE_REQUEST_FIELD_STRING(mono_apache_request_get_user, user);
-EXPOSE_REQUEST_FIELD_STRING(mono_apache_request_get_auth_type, ap_auth_type);
-EXPOSE_REQUEST_FIELD_STRING(mono_apache_request_get_unparsed_uri, unparsed_uri);
-EXPOSE_REQUEST_FIELD_STRING(mono_apache_request_get_uri, uri);
-EXPOSE_REQUEST_FIELD_STRING(mono_apache_request_get_filename, filename);
-EXPOSE_REQUEST_FIELD_STRING(mono_apache_request_get_canonical_filename, canonical_filename);
-EXPOSE_REQUEST_FIELD_STRING(mono_apache_request_get_path_info, path_info);
-EXPOSE_REQUEST_FIELD_STRING(mono_apache_request_get_args, args);
+EXPOSE_REQUEST_FIELD_STRING_GET(mono_apache_request_get_request, the_request);
+EXPOSE_REQUEST_FIELD_STRING_GET(mono_apache_request_get_protocol, protocol);
+EXPOSE_REQUEST_FIELD_STRING_GET(mono_apache_request_get_hostname, hostname);
+EXPOSE_REQUEST_FIELD_STRING_GET(mono_apache_request_get_status_line, status_line);
+EXPOSE_REQUEST_FIELD_STRING_SET(mono_apache_request_set_status_line, status_line);
+EXPOSE_REQUEST_FIELD_STRING_GET(mono_apache_request_get_method, method);
+EXPOSE_REQUEST_FIELD_STRING_GET(mono_apache_request_get_range, range);
+EXPOSE_REQUEST_FIELD_STRING_GET(mono_apache_request_get_content_type, content_type);
+EXPOSE_REQUEST_FIELD_STRING_GET(mono_apache_request_get_handler, handler);
+EXPOSE_REQUEST_FIELD_STRING_GET(mono_apache_request_get_content_encoding, content_encoding);
+EXPOSE_REQUEST_FIELD_STRING_GET(mono_apache_request_get_user, user);
+EXPOSE_REQUEST_FIELD_STRING_GET(mono_apache_request_get_auth_type, ap_auth_type);
+EXPOSE_REQUEST_FIELD_STRING_GET(mono_apache_request_get_unparsed_uri, unparsed_uri);
+EXPOSE_REQUEST_FIELD_STRING_GET(mono_apache_request_get_uri, uri);
+EXPOSE_REQUEST_FIELD_STRING_GET(mono_apache_request_get_filename, filename);
+EXPOSE_REQUEST_FIELD_STRING_GET(mono_apache_request_get_canonical_filename, canonical_filename);
+EXPOSE_REQUEST_FIELD_STRING_GET(mono_apache_request_get_path_info, path_info);
+EXPOSE_REQUEST_FIELD_STRING_GET(mono_apache_request_get_args, args);
 
-EXPOSE_CONNECTION_FIELD_STRING(mono_apache_connection_get_remote_address, remote_ip);
-EXPOSE_CONNECTION_FIELD_STRING(mono_apache_connection_get_local_address, local_ip);
+EXPOSE_REQUEST_FIELD_INT_GET(mono_apache_request_get_status_code, status);
+EXPOSE_REQUEST_FIELD_INT_SET(mono_apache_request_set_status_code, status);
+
+EXPOSE_CONNECTION_FIELD_STRING_GET(mono_apache_connection_get_remote_address, remote_ip);
+EXPOSE_CONNECTION_FIELD_STRING_GET(mono_apache_connection_get_local_address, local_ip);
 
 typedef struct {
   const char *modmono_dll;
@@ -214,6 +223,8 @@ void register_wrappers () {
   mono_add_internal_call("Apache.Web.Request::ShouldClientBlockInternal", mono_apache_should_client_block);
   mono_add_internal_call("Apache.Web.Request::SetupClientBlockInternal", mono_apache_setup_client_block);
   mono_add_internal_call("Apache.Web.Request::GetClientBlockInternal", mono_apache_get_client_block);
+  mono_add_internal_call("Apache.Web.Request::SetStatusLineInternal", mono_apache_request_set_status_line);
+  mono_add_internal_call("Apache.Web.Request::SetStatusCodeInternal", mono_apache_request_set_status_code);
 }
 
 static MonoObject *

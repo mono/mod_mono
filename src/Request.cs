@@ -234,6 +234,21 @@ namespace Apache.Web
 		  return GetClientBlockInternal(request, bytes, (uint)size);
 		} 
 
+		[MethodImplAttribute(MethodImplOptions.InternalCall)]
+		extern static int SetStatusCodeInternal(IntPtr request, int code);
+		
+		public void SetStatusCode (int code) 
+		{
+		  SetStatusCodeInternal(request, code);
+		}
+
+		[MethodImplAttribute(MethodImplOptions.InternalCall)]
+		extern static int SetStatusLineInternal (IntPtr request, string status);
+		
+		public void SetStatusLine (string status)
+		{
+		  SetStatusLineInternal(request, status);
+		}
 	}
 }
 

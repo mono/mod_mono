@@ -99,7 +99,7 @@ namespace Apache.Web
 
 		public override void CloseConnection ()
 		{
-			request.Close ();
+		  request.Close ();
 		}
 
 		public override string GetHttpVerbName ()
@@ -171,7 +171,9 @@ namespace Apache.Web
 
 		public override void SendStatus (int statusCode, string statusDescription)
 		{
-			//TODO: should the status of the response be set here?
+		  request.SetStatusCode(statusCode);
+		  // Protocol will be added by Apache
+		  request.SetStatusLine(String.Format("{0} {1}", statusCode, statusDescription));
 		}
 
 		public override void SendUnknownResponseHeader (string name, string value)

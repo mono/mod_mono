@@ -1,3 +1,9 @@
+2003-01-06  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
+	* src/mod_mono.c: Added setter macros and allow setting status
+	line and status code
+	* src/Request.cs: Added SetStatusLine and SetStatusCode
+	* src/ApacheWorkerRequest.cs: Added SendStatus
+	
 2003-01-03  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
 	* src/mod_mono.c: Added support functions for reading HTTP bodies,
 	this enables POST support:
