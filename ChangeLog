@@ -1,3 +1,9 @@
+2003-08-01  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/Makefile.am: added mod_mono_unix.
+	* src/mod_mono_unix.c: New module that communicates with an external
+	process through a unix socket.
+
 2003-04-12  Miguel de Icaza  <miguel@ximian.com>
 
 	* src/mod_mono.c (create_application_host): Add call to
