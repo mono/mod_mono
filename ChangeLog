@@ -1,3 +1,10 @@
+2003-02-25  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
+	Bring it up to date with Mono 0.20
+	* src/mod_mono.c: added mono_thread_attach (thanks Dick). Return NULL if header not found.
+	* src/ApacheApplicationHost.cs: Add an internal method so the call will
+	be made in the right domain, as suggested by Dietmar. This can be done from C, but was added after 
+	Mono 0.20. It also required a serialization constructor for IntPtr that Gonzalo promptly added, thanks!
+	
 2003-02-17  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/MonoWorkerRequest.cs: updated from xsp.

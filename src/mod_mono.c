@@ -213,7 +213,8 @@ static void mono_apache_request_set_response_header(request_rec *r, MonoString *
 }
 
 static MonoString *mono_apache_request_get_request_header(request_rec *r, MonoString *header_name) {
-  return mono_string_new(mono_domain_get(), apr_table_get(r->headers_in, mono_string_to_utf8(header_name)));
+    char *header = apr_table_get(r->headers_in, mono_string_to_utf8(header_name));
+    return header ? mono_string_new(mono_domain_get(),header) : NULL;
 }
 
 static conn_rec *mono_apache_request_get_connection (request_rec *r) {
@@ -343,6 +344,7 @@ create_application_host (request_rec *r)
   }
   register_wrappers();
   domain = mono_jit_init (app_base_dir);
+  mono_thread_attach(domain);
 
   if (domain == NULL) {
     ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_mono: Could not initialize domain");
@@ -386,16 +388,21 @@ int modmono_handler (request_rec* r) {
 }
 
 int modmono_execute_request(MonoObject *ApacheApplicationHost, request_rec *r) {
-  MonoMethodDesc *desc;
   MonoClass *class;
-  MonoMethod *processRequestMethod;
   gpointer args [1];
   gchar *cwd;
-  MonoClass *mclass;
+  MonoClass *klass;
   modmono_server_rec *server_conf;
-  desc = mono_method_desc_new ("::ProcessRequest(intptr)", 0);
-  
-  processRequestMethod = mono_method_desc_search_in_class(desc, mono_object_class(ApacheApplicationHost));
+  int i;
+
+  /* We cannot use mono_method_desc_search_in_class because the class is a transparent proxy.
+     The right way is to use mono_object_get_virtual_method, but that function was fixed post 0.20
+     For now, search the method in the real object (klass) and call the remoting ones (class)
+   */
+  klass = ((MonoTransparentProxy *)ApacheApplicationHost)->klass;
+  for (i = 0; i < klass->vtable_size; ++i) {
+    if (!strcmp(klass->vtable[i]->name,"ProcessRequest")) break;
+  }
 
   /* xxx Hack because of the tmp*.dll files, which are created in the current current directory.*/
   cwd = g_malloc(APR_PATH_MAX);
@@ -407,7 +414,7 @@ int modmono_execute_request(MonoObject *ApacheApplicationHost, request_rec *r) {
   server_conf = ap_get_module_config(r->server->module_config, &mono_module);
   chdir (server_conf->app_base_dir); 
   args[0] = &r;
-  mono_runtime_invoke (processRequestMethod, ApacheApplicationHost, args, NULL);
+  mono_runtime_invoke (klass->vtable[i], ApacheApplicationHost, args, NULL);
   chdir(cwd);
   g_free(cwd);
   return OK;

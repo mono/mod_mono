@@ -67,10 +67,15 @@ namespace Apache.Web
 			return ApplicationHost.CreateApplicationHost (typeof (ApacheApplicationHost), virtualPath, baseDirectory);
 		}
 
-		public void ProcessRequest (IntPtr request)
-		{
+		/* Hack until fix for TP calls from C, that did not made it in Mono 0.20 */
+		private void internalProcessRequest (IntPtr request) {
 			ApacheWorkerRequest wr = new ApacheWorkerRequest (this, request);
 			wr.ProcessRequest ();
+		}
+
+		public void ProcessRequest (IntPtr request)
+		{
+			internalProcessRequest(request);
 		}
 		
 		public string Path
