@@ -1,3 +1,8 @@
+2005-02-11 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: SERVER_PORT_SECURE returns true if we're https. Part
+	of the fix for bug #71680.
+
 2005-02-10 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* INSTALL:

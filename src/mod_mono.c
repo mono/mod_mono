@@ -400,10 +400,16 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 		request_send_response_from_memory (r, str, size);
 		break;
 	case GET_SERVER_VARIABLE:
-		if (read_data_string (r->pool, sock, &str, NULL) == NULL) {
+		if (read_data_string (r->pool, sock, &str, NULL) == NULL)
 			break;
+
+		if (!strcmp (str, "SERVER_PORT_SECURE")) {
+			/* This does not work well for apache 1.3 */
+			str = (strcmp (ap_http_method (r), "https") == 0) ? "True" : NULL;
+		} else {
+			str = (char *) apr_table_get (r->subprocess_env, str);
 		}
-		str = (char *) apr_table_get (r->subprocess_env, str);
+
 		status = write_data_string (sock, str);
 		break;
 	case SET_RESPONSE_HEADER:
