@@ -1079,7 +1079,7 @@ mono_init_handler (server_rec *s, pool *p)
 	DEBUG_PRINT (0, "Initializing handler");
 	ap_add_version_component ("mod_mono/" VERSION);
 	pconf = p;
-	ap_register_cleanup (p, s, terminate_xsp, apr_pool_cleanup_null);
+	ap_register_cleanup (p, s, terminate_xsp, ap_null_cleanup);
 }
 #else
 static int
