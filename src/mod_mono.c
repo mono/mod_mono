@@ -50,6 +50,7 @@ typedef struct {
 	char *listen_address;
 	char *max_cpu_time;
 	char *max_memory;
+	char *debug;
 } mono_server_rec;
 
 CONFIG_FUNCTION (unix_socket, filename)
@@ -66,6 +67,7 @@ CONFIG_FUNCTION (listen_port, listen_port)
 CONFIG_FUNCTION (listen_address, listen_address)
 CONFIG_FUNCTION (max_cpu_time, max_cpu_time)
 CONFIG_FUNCTION (max_memory, max_memory)
+CONFIG_FUNCTION (debug, debug)
 
 static void *
 create_mono_server_config (apr_pool_t *p, server_rec *s)
@@ -89,6 +91,7 @@ create_mono_server_config (apr_pool_t *p, server_rec *s)
 	server->listen_address = NULL;
 	server->max_cpu_time = NULL;
 	server->max_memory = NULL;
+	server->debug = "False";
 
 	return server;
 }
@@ -639,7 +642,7 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 {
 	pid_t pid;
 	int i;
-	const int MAXARGS = 20;
+	const int MAXARGS = 21;
 	char *argv [MAXARGS];
 	int argi;
 	char *path;
@@ -714,7 +717,9 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	memset (argv, 0, sizeof (char *) * MAXARGS);
 	argi = 0;
 	argv [argi++] = server_conf->executable_path;
-	/* argv [argi++] = "--debug"; */
+	if (!strcasecmp (server_conf->debug, "True"))
+		argv [argi++] = "--debug";
+	
 	argv [argi++] = server_conf->server_path;
 	if (server_conf->listen_port != NULL) {
 		char *la;
@@ -1221,6 +1226,10 @@ MAKE_CMD (MonoMaxCPUTime, max_cpu_time,
 	" Default value: system default"
 	),
 #endif
+MAKE_CMD (MonoDebug, debug,
+	"If MonoDebug is true, mono will be run in debug mode."
+	" Default value: False"
+	),
 	{ NULL }
 };
 

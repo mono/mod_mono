@@ -93,6 +93,9 @@ Default value: config/mod-mono-applications
 .PP
 Note that you must specify at least one of MonoApplications,
 MonoApplicationsConfigFile and MonoApplicationsConfigDir.
+.I "MonoDebug (used only when MonoRunXSP is True)"
+Runs mono in debug mode, which produces stack traces with line numbers.
+Default value: false.
 .SH SAMPLE CONFIGURATION
 For Apache 1.3, with mod-mono-server.exe from package xsp installed in
 prefix=/usr:

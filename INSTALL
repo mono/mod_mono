@@ -1,4 +1,4 @@
-Last updated: Nov 21, 2004
+Last updated: Jan 8, 2005
 
 Index
 -------
@@ -266,6 +266,12 @@ APPENDIX B: Configuration directives for mod_mono
 
   Note that you must specify at least one of MonoApplications,
   MonoApplicationsConfigFile and MonoApplicationsConfigDir.
+
+  MonoDebug (used only when MonoRunXSP is True)
+  
+    Runs mono in debug mode, which produces stack traces with line
+    numbers.
+    Default value: false
 
 
 APPENDIX C: Webapp file format

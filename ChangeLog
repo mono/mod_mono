@@ -1,3 +1,11 @@
+2005-01-08 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: patch by Raffaelle Sandrini that adds a new MonoDebug
+	directive to enable the debug mode when running mono.
+
+	* INSTALL:
+	* man/mod_mono.8.in: documented te previous change.
+
 2004-11-21 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: pass default applications directory to
