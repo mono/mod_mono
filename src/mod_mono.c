@@ -628,6 +628,26 @@ get_directory (apr_pool_t *pool, const char *filepath)
 	return result;
 }
 
+#ifdef HAVE_SETENV
+#	define SETENV(pool, name, value) setenv (name, value, 1)
+#else
+#	ifdef HAVE_PUTENV
+#	define SETENV(pool, name, value) setenv_to_putenv (pool, name, value)
+static int
+setenv_to_putenv (apr_pool_t *pool, char *name, char *value)
+{
+	char *arg;
+
+	arg = apr_pcalloc (pool, strlen (name) + strlen (value) + 2);
+	sprintf (arg, "%s=%s", name, value);
+	return putenv (arg);
+}
+
+#	else
+#	error No setenv or putenv found!
+#endif
+#endif
+
 static void
 fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 {
