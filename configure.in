@@ -184,7 +184,7 @@ AC_MSG_CHECKING([Apache version])
 AC_TRY_COMPILE([
 	#include <httpd.h>
 ], [
-	char *version = AP_SERVER_MAJORREVISION;
+	char *version = AP_SERVER_BASEREVISION;
 ], [
 	APACHE_VER=2.0
 ], [
