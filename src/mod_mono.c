@@ -1216,8 +1216,14 @@ terminate_xsp (void *data)
 			write_data (sock, termstr, 1);
 		}
 
-		if (xsp->listen_port == NULL && xsp->filename != NULL)
-			remove (xsp->filename); /* Don't bother checking error */
+		if (xsp->listen_port == NULL) {
+			char *fn = xsp->filename;
+
+			if (fn == NULL)
+				fn = get_default_socket_name (pconf, xsp->alias, SOCKET_FILE);
+
+			remove (fn); /* Don't bother checking error */
+		}
 	}
 
 	apr_sleep (apr_time_from_sec (1));
