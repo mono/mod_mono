@@ -61,19 +61,30 @@
 as possible to Apache 2 module, reducing ifdefs in the code itself*/
 
 #define STATUS_AND_SERVER NULL
+#ifndef TRUE
 #define TRUE 1
 #define FALSE 0
+#endif
 
 #define apr_pool_t ap_pool
 #define apr_pcalloc_t ap_pcalloc_t
 #define apr_pcalloc ap_pcalloc
+
 #define apr_table_setn ap_table_setn
 #define apr_table_get ap_table_get
+#define apr_table_elts ap_table_elts
+#define apr_table_entry_t table_entry
+
+#define apr_array_header array_header
+#define apr_array_header_t array_header
+#define apr_pstrdup ap_pstrdup
 #define APR_SUCCESS 0
 
+#include <ap_alloc.h>
 #else
 #define STATUS_AND_SERVER 0, NULL
 #include <http_protocol.h>
+#include <apr_strings.h>
 #endif
 
 #include <http_core.h>
@@ -84,18 +95,14 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 
 enum Cmd {
 	FIRST_COMMAND,
-	GET_PROTOCOL = 0,
-	GET_METHOD,
+	GET_REQUEST_LINE = 0,
 	SEND_FROM_MEMORY,
 	GET_PATH_INFO,
 	GET_SERVER_VARIABLE,
 	GET_PATH_TRANSLATED,
 	GET_SERVER_PORT,
 	SET_RESPONSE_HEADER,
-	GET_REQUEST_HEADER,
 	GET_FILENAME,
-	GET_URI,
-	GET_QUERY_STRING,
 	GET_REMOTE_ADDRESS,
 	GET_LOCAL_ADDRESS,
 	GET_REMOTE_PORT,
@@ -113,18 +120,14 @@ enum Cmd {
 };
 
 char *cmdNames [] = {
-	"GET_PROTOCOL",
-	"GET_METHOD",
+	"GET_REQUEST_LINE",
 	"SEND_FROM_MEMORY",
 	"GET_PATH_INFO",
 	"GET_SERVER_VARIABLE",
 	"GET_PATH_TRANSLATED",
 	"GET_SERVER_PORT",
 	"SET_RESPONSE_HEADER",
-	"GET_REQUEST_HEADER",
 	"GET_FILENAME",
-	"GET_URI",
-	"GET_QUERY_STRING",
 	"GET_REMOTE_ADDRESS",
 	"GET_LOCAL_ADDRESS",
 	"GET_REMOTE_PORT",
@@ -283,36 +286,59 @@ setup_client_block (request_rec *r)
 	}
 }
 
-static void
-write_data (int fd, const void *str, int size)
+static int
+write_data_no_prefix (int fd, const void *str, int size)
 {
-	write (fd, str, size);
+	return write (fd, str, size);
 }
 
-static void
+static int
 write_ok (int fd)
 {
 	int i = 0;
 	
-	write (fd, &i, 1);
+	return write (fd, &i, 1);
 }
 
-static void
+static int
+write_data (int fd, const void *str, int size)
+{
+	if (write_ok (fd) == -1)
+		return -1;
+
+	return write_data_no_prefix (fd, str, size);
+}
+
+static int
 write_err (int fd)
 {
 	int i = -1;
 	
-	write (fd, &i, 1);
+	return write (fd, &i, 1);
 }
 
-static void
-write_data_string (int fd, const char *str)
+static int
+write_data_string_no_prefix (int fd, const char *str)
 {
 	int l;
 
 	l = (str == NULL) ? 0 : strlen (str);
-	write (fd, &l, sizeof (int));
-	write (fd, str, l);
+	if (write (fd, &l, sizeof (int)) != sizeof (int))
+		return -1;
+
+	if (l == 0)
+		return 0;
+
+	return write (fd, str, l);
+}
+
+static int
+write_data_string (int fd, const char *str)
+{
+	if (write_ok (fd) == -1)
+		return;
+
+	return write_data_string_no_prefix (fd, str);
 }
 
 static char *
@@ -321,10 +347,13 @@ read_data_string (apr_pool_t *pool, int fd, char **ptr, int *size)
 	int l;
 	char *buf;
 
-	read (fd, &l, sizeof (int));
+	if (read (fd, &l, sizeof (int)) != sizeof (int))
+		return NULL;
+
 	buf = apr_pcalloc (pool, l + 1);
-	read (fd, buf, l);
-	/* buf [l] = '\0'; */
+	if (read (fd, buf, l) != l)
+		return NULL;
+
 	if (ptr)
 		*ptr = buf;
 
@@ -334,10 +363,10 @@ read_data_string (apr_pool_t *pool, int fd, char **ptr, int *size)
 	return buf;
 }
 
-static void
+static int
 read_data (int fd, void *ptr, int size)
 {
-	read (fd, ptr, size);
+	return (read (fd, ptr, size) == size) ? size : -1;
 }
 
 static int
@@ -347,134 +376,125 @@ do_command (int command, int fd, request_rec *r, int *result)
 	char *str;
 	char *str2;
 	int i;
+	int status;
 
 	ap_log_error (APLOG_MARK, APLOG_DEBUG, STATUS_AND_SERVER, "Command received: %s", cmdNames [command]);
 	*result = OK;
 	switch (command) {
-	case GET_PROTOCOL:
-		write_ok (fd);
-		write_data_string (fd, r->protocol);
-		break;
-	case GET_METHOD:
-		write_ok (fd);
-		write_data_string (fd, r->method);
-		break;
 	case SEND_FROM_MEMORY:
-		read_data_string (r->pool, fd, &str, &size);
+		if (read_data_string (r->pool, fd, &str, &size) == NULL) {
+			status = -1;
+			break;
+		}
 		request_send_response_from_memory (r, str, size);
-		write_ok (fd);
+		status = write_ok (fd);
 		break;
 	case GET_PATH_INFO:
-		write_ok (fd);
-		write_data_string (fd, r->path_info);
+		status = write_data_string (fd, r->path_info);
 		break;
 	case GET_SERVER_VARIABLE:
-		str = read_data_string (r->pool, fd, &str, NULL);
+		if (read_data_string (r->pool, fd, &str, NULL) == NULL) {
+			status = -1;
+			break;
+		}
 		str = (char *) request_get_server_variable (r, str);
-		write_ok (fd);
-		write_data_string (fd, str);
+		status = write_data_string (fd, str);
 		break;
 	case GET_PATH_TRANSLATED:
 		str = request_get_path_translated (r);
-		write_ok (fd);
-		write_data_string (fd, str);
+		status = write_data_string (fd, str);
 		break;
 	case GET_SERVER_PORT:
 		i = request_get_server_port (r);
-		write_ok (fd);
-		write_data (fd, &i, sizeof (int));
+		status = write_data (fd, &i, sizeof (int));
 		break;
 	case SET_RESPONSE_HEADER:
-		read_data_string (r->pool, fd, &str, NULL);
-		read_data_string (r->pool, fd, &str2, NULL);
+		if (read_data_string (r->pool, fd, &str, NULL) == NULL) {
+			status = -1;
+			break;
+		}
+		if (read_data_string (r->pool, fd, &str2, NULL) == NULL) {
+			status = -1;
+			break;
+		}
 		set_response_header (r, str, str2);
-		write_ok (fd);
-		break;
-	case GET_REQUEST_HEADER:
-		str = read_data_string (r->pool, fd, &str, NULL);
-		write_ok (fd);
-		str = (char *) request_get_request_header (r, str);
-		write_data_string (fd, str);
+		status = write_ok (fd);
 		break;
 	case GET_FILENAME:
-		write_ok (fd);
-		write_data_string (fd, r->filename);
-		break;
-	case GET_URI:
-		write_ok (fd);
-		write_data_string (fd, r->uri);
-		break;
-	case GET_QUERY_STRING:
-		write_ok (fd);
-		str = request_get_query_string (r);
-		write_data_string (fd, str);
+		status = write_data_string (fd, r->filename);
 		break;
 	case GET_REMOTE_ADDRESS:
-		write_ok (fd);
-		write_data_string (fd, r->connection->remote_ip);
+		status = write_data_string (fd, r->connection->remote_ip);
 		break;
 	case GET_LOCAL_ADDRESS:
-		write_ok (fd);
-		write_data_string (fd, r->connection->local_ip);
+		status = write_data_string (fd, r->connection->local_ip);
 		break;
 	case GET_REMOTE_PORT:
-		write_ok (fd);
 		i = connection_get_remote_port (r->connection);
-		write_data (fd, &i, sizeof (int));
+		status = write_data (fd, &i, sizeof (int));
 		break;
 	case GET_LOCAL_PORT:
-		write_ok (fd);
 		i = connection_get_local_port (r);
-		write_data (fd, &i, sizeof (int));
+		status = write_data (fd, &i, sizeof (int));
 		break;
 	case GET_REMOTE_NAME:
-		write_ok (fd);
 		str = (char *) connection_get_remote_name (r);
-		write_data_string (fd, str);
+		status = write_data_string (fd, str);
 		break;
 	case FLUSH:
 		connection_flush (r);
-		write_ok (fd);
+		status = write_ok (fd);
 		break;
 	case CLOSE:
-		write_ok (fd);
+		status = write_ok (fd);
 		return FALSE;
 		break;
 	case SHOULD_CLIENT_BLOCK:
 		size = ap_should_client_block (r);
-		write_ok (fd);
-		write_data (fd, &size, sizeof (int));
+		status = write_data (fd, &size, sizeof (int));
 		break;
 	case SETUP_CLIENT_BLOCK:
 		size = setup_client_block (r);
-		write_ok (fd);
-		write_data (fd, &size, sizeof (int));
+		status = write_data (fd, &size, sizeof (int));
 		break;
 	case GET_CLIENT_BLOCK:
-		read_data (fd, &i, sizeof (int));
+		status = read_data (fd, &i, sizeof (int));
+		if (status == -1)
+			break;
+
 		str = apr_pcalloc (r->pool, i);
 		i = ap_get_client_block (r, str, i);
-		write_ok (fd);
-		write_data (fd, &i, sizeof (int));
-		write_data (fd, str, i);
+		status = write_data (fd, &i, sizeof (int));
+		status = write_data_no_prefix (fd, str, i);
 		break;
 	case SET_STATUS_LINE:
-		read_data_string (r->pool, fd, &str, NULL);
-		write_ok (fd);
-		r->status_line = strdup (str);
+		if (read_data_string (r->pool, fd, &str, NULL) == NULL) {
+			status = -1;
+			break;
+		}
+		status = write_ok (fd);
+		r->status_line = apr_pstrdup (r->pool, str);
 		break;
 	case SET_STATUS_CODE:
-		read_data (fd, &i, sizeof (int));
+		status = read_data (fd, &i, sizeof (int));
+		if (status == -1)
+			break;
+
 		r->status = i;
-		write_ok (fd);
+		status = write_ok (fd);
 		break;
 	case DECLINE_REQUEST:
-		write_ok (fd);
+		status = write_ok (fd);
 		*result = DECLINED;
 		return FALSE;
 	default:
 		*result = HTTP_INTERNAL_SERVER_ERROR;
 		write_err (fd);
+		return FALSE;
+	}
+
+	if (status == -1) {
+		*result = HTTP_INTERNAL_SERVER_ERROR;
 		return FALSE;
 	}
 
@@ -514,6 +534,34 @@ setup_socket (const char *filename)
 }
 
 static int
+send_headers (request_rec *r, int fd)
+{
+	const apr_array_header_t *elts;
+	const apr_table_entry_t *t_elt;
+	const apr_table_entry_t *t_end;
+
+	elts = apr_table_elts (r->headers_in);
+	write_data_no_prefix (fd, &elts->nelts, sizeof (int));
+	if (elts->nelts == 0)
+		return TRUE;
+
+	t_elt = (const apr_table_entry_t *) (elts->elts);
+	t_end = t_elt + elts->nelts;
+
+	do {
+		if (write_data_string_no_prefix (fd, t_elt->key) <= 0)
+			return FALSE;
+		if (write_data_string_no_prefix (fd, t_elt->val) < 0)
+			return FALSE;
+
+
+		t_elt++;
+	} while (t_elt < t_end);
+
+	return TRUE;
+}
+
+static int
 modmono_execute_request (request_rec *r)
 {
 	int fd;
@@ -521,6 +569,7 @@ modmono_execute_request (request_rec *r)
 	int result;
 	int input;
 	int status;
+	char *str;
 	modmono_server_rec *server_conf;
 
 	server_conf = ap_get_module_config (r->server->module_config, &mono_module);
@@ -529,6 +578,21 @@ modmono_execute_request (request_rec *r)
 	if (fd == -1)
 		return HTTP_INTERNAL_SERVER_ERROR;
 
+	if (write_data_string_no_prefix (fd, r->method) <= 0)
+		return HTTP_INTERNAL_SERVER_ERROR;
+
+	if (write_data_string_no_prefix (fd, r->uri) <= 0)
+		return HTTP_INTERNAL_SERVER_ERROR;
+
+	if (write_data_string_no_prefix (fd, request_get_query_string (r)) < 0)
+		return HTTP_INTERNAL_SERVER_ERROR;
+
+	if (write_data_string_no_prefix (fd, r->protocol) <= 0)
+		return HTTP_INTERNAL_SERVER_ERROR;
+	
+	if (!send_headers (r, fd))
+		return HTTP_INTERNAL_SERVER_ERROR;
+		
 	do {
 		input = read (fd, &command, sizeof (int));
 		if (input > 0)
