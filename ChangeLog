@@ -1,3 +1,9 @@
+2004-03-30  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* NEWS: old stuff here.
+	* src/Makefile.am: don't add libmod_mono_old.la to lib_LTLIBRARIES when
+	we're not building mod_mono_old.
+
 2004-02-12  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* configure.in: fixed issues detecting the right version of apache in

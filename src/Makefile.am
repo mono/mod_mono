@@ -20,7 +20,11 @@ EXTRA_libmod_mono_old_la_SOURCES = mod_mono_old.c
 libmod_mono_old_la_LIBADD = $(MONO_LIBS)
 
 INCLUDES=$(MONO_CFLAGS)
+if BUILD_OLD_MODULE
 lib_LTLIBRARIES = libmod_mono.la libmod_mono_old.la
+else
+lib_LTLIBRARIES = libmod_mono.la
+endif
 
 make_so:
 	@if test ! -L mod_mono.so ; then ln -s .libs/libmod_mono.so mod_mono.so ; fi
