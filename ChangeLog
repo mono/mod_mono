@@ -1,3 +1,12 @@
+2004-09-24 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: double fork is back. When the configuration pool is
+	cleaned up, we tell mod-mono-server to terminate instead of sending a
+	SIGTERM, thus allowing unloading the applications and Application_End
+	event being triggered.
+
+	* configure.in: 1.0.2.99
+
 2004-09-17 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: disabled --debug option for mono.

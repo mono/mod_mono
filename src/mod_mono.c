@@ -641,6 +641,7 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	char *wapidir;
 	int max_memory = 0;
 	int max_cpu_time = 0;
+	int status;
 
 	if (server_conf->max_memory != NULL)
 		max_memory = atoi (server_conf->max_memory);
@@ -650,18 +651,15 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 
 	pid = fork ();
 	if (pid > 0) {
-#ifdef APACHE2
-		apr_proc_t *proc;
-
-		proc = apr_pcalloc (pconf, sizeof (apr_proc_t));
-		proc->pid = pid;
-		apr_pool_note_subprocess (pconf, proc, APR_KILL_AFTER_TIMEOUT);
-#else
-		ap_note_subprocess (pconf, pid, kill_after_timeout);
-#endif
+		wait (&status);
 		return;
 	}
 
+	pid = fork ();
+	if (pid > 0)
+		exit (0);
+
+	setsid ();
 	chdir ("/");
 	umask (0077);
 	DEBUG_PRINT (1, "child started");
@@ -947,12 +945,14 @@ send_initial_data (request_rec *r, apr_socket_t *sock)
 	int size;
 
 	DEBUG_PRINT (2, "Send init1");
-	size = ((r->method != NULL) ? strlen (r->method) : 0) + sizeof (int);
+	size = 1;
+	size += ((r->method != NULL) ? strlen (r->method) : 0) + sizeof (int);
 	size += ((r->uri != NULL) ? strlen (r->uri) : 0) + sizeof (int);
 	size += ((r->args != NULL) ? strlen (r->args) : 0) + sizeof (int);
 	size += ((r->protocol != NULL) ? strlen (r->protocol) : 0) + sizeof (int);
 
 	ptr = str = apr_pcalloc (r->pool, size);
+	*ptr++ = 1; /* version */
 	ptr += write_string_to_buffer (ptr, 0, r->method);
 	ptr += write_string_to_buffer (ptr, 0, r->uri);
 	ptr += write_string_to_buffer (ptr, 0, r->args);
@@ -1045,6 +1045,33 @@ mono_handler (request_rec *r)
 	return mono_execute_request (r);
 }
 
+static apr_status_t
+terminate_xsp (void *data)
+{
+	server_rec *server = (server_rec *) data;
+	mono_server_rec *mono_conf;
+	apr_socket_t *sock;
+	apr_status_t rv;
+	char *termstr = "";
+
+	mono_conf = ap_get_module_config (server->module_config, &mono_module);
+	if (!strcasecmp (mono_conf->run_xsp, "false"))
+		return APR_SUCCESS;
+
+#ifdef APACHE13
+	sock = apr_pcalloc (pconf, sizeof (apr_socket_t));
+#endif
+	mono_conf->run_xsp = "false";
+	rv = setup_socket (&sock, mono_conf, pconf);
+	if (rv == APR_SUCCESS) {
+		write_data (sock, termstr, 1);
+		sleep (1);
+		apr_socket_close (sock);
+	}
+
+	return APR_SUCCESS;
+}
+
 #ifdef APACHE13
 static void
 mono_init_handler (server_rec *s, pool *p)
@@ -1052,6 +1079,7 @@ mono_init_handler (server_rec *s, pool *p)
 	DEBUG_PRINT (0, "Initializing handler");
 	ap_add_version_component ("mod_mono/" VERSION);
 	pconf = p;
+	ap_register_cleanup (p, s, terminate_xsp, apr_pool_cleanup_null);
 }
 #else
 static int
@@ -1063,6 +1091,7 @@ mono_init_handler (apr_pool_t *p,
 	DEBUG_PRINT (0, "Initializing handler");
 	ap_add_version_component (p, "mod_mono/" VERSION);
 	pconf = s->process->pconf;
+	apr_pool_cleanup_register (pconf, s, terminate_xsp, apr_pool_cleanup_null);
 	return OK;
 }
 #endif
