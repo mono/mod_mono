@@ -891,11 +891,6 @@ mono_execute_request (request_rec *r)
 	mono_server_rec *server_conf;
 
 	server_conf = ap_get_module_config (r->server->module_config, &mono_module);
-	if (server_conf->filename == NULL && server_conf->listen_port == NULL)
-		server_conf->filename = SOCKET_FILE;
-	else if (server_conf->listen_address == NULL)
-		server_conf->listen_address = LISTEN_ADDRESS;
-
 #ifdef APACHE13
 	sock = apr_pcalloc (r->pool, sizeof (apr_socket_t));
 #endif
@@ -936,6 +931,19 @@ mono_handler (request_rec *r)
 	return mono_execute_request (r);
 }
 
+static void
+set_config_defaults (server_rec *s)
+{
+	mono_server_rec *server_conf;
+
+	server_conf = ap_get_module_config (s->module_config, &mono_module);
+	if (server_conf->filename == NULL && server_conf->listen_port == NULL)
+		server_conf->filename = SOCKET_FILE;
+
+	if (server_conf->listen_port != NULL && server_conf->listen_address == NULL)
+		server_conf->listen_address = LISTEN_ADDRESS;
+}
+
 #ifdef APACHE13
 static void
 mono_init_handler (server_rec *s, pool *p)
@@ -943,6 +951,7 @@ mono_init_handler (server_rec *s, pool *p)
 	DEBUG_PRINT (0, "Initializing handler");
 	ap_add_version_component ("mod_mono/" VERSION);
 	pconf = p;
+	set_config_defaults (s);
 }
 #else
 static int
@@ -954,6 +963,7 @@ mono_init_handler (apr_pool_t *p,
 	DEBUG_PRINT (0, "Initializing handler");
 	ap_add_version_component (p, "mod_mono/" VERSION);
 	pconf = s->process->pconf;
+	set_config_defaults (s);
 	return OK;
 }
 #endif

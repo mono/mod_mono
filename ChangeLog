@@ -1,5 +1,10 @@
 2004-07-14 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
+	* src/mod_mono.c: set filename and listen_address defaults in the
+	post_config hook.
+
+2004-07-14 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
 	* src/mod_mono.c: use RLIMIT_AS instead of RLIMIT_DATA. gcc 3.2 doesn't
 	like #ifdef inside macro parameters.
 
