@@ -456,7 +456,13 @@ do_command (int command, int fd, request_rec *r, int *result)
 		status = write_data (fd, &size, sizeof (int));
 		break;
 	case SETUP_CLIENT_BLOCK:
-		size = setup_client_block (r);
+		if (setup_client_block (r) != APR_SUCCESS) {
+			size = -1;
+			status = write_data (fd, &size, sizeof (int));
+			break;
+		}
+
+		size = 0;
 		status = write_data (fd, &size, sizeof (int));
 		break;
 	case GET_CLIENT_BLOCK:

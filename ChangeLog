@@ -1,3 +1,7 @@
+2003-11-18  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: return 0 if OK for setup_client_block.
+
 2003-11-17  Duncan Mak  <duncan@ximian.com>
 
 	* src/Makefile.am (install): Fix install target.
