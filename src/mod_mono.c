@@ -164,6 +164,7 @@ enum Cmd {
 	GET_CLIENT_BLOCK,
 	SET_STATUS,
 	DECLINE_REQUEST,
+	NOT_FOUND,
 	LAST_COMMAND
 };
 
@@ -413,7 +414,15 @@ do_command (int command, int fd, request_rec *r, int *result)
 	int i;
 	int status = 0;
 
-	ap_log_error (APLOG_MARK, APLOG_DEBUG, STATUS_AND_SERVER, "Command received: %s", cmdNames [command]);
+	if (command < 0 || command >= LAST_COMMAND) {
+		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+				"Unknown command: %d", command);
+		*result = HTTP_INTERNAL_SERVER_ERROR;
+		return FALSE;
+	}
+
+	ap_log_error (APLOG_MARK, APLOG_DEBUG, STATUS_AND_SERVER,
+			"Command received: %s", cmdNames [command]);
 	*result = OK;
 	switch (command) {
 	case SEND_FROM_MEMORY:
@@ -494,6 +503,16 @@ do_command (int command, int fd, request_rec *r, int *result)
 		break;
 	case DECLINE_REQUEST:
 		*result = DECLINED;
+		return FALSE;
+	case NOT_FOUND:
+		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+				"No application found for %s", r->uri);
+
+		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+				"Host header was %s",
+				request_get_request_header (r, "host"));
+
+		*result = HTTP_NOT_FOUND;
 		return FALSE;
 	default:
 		*result = HTTP_INTERNAL_SERVER_ERROR;
