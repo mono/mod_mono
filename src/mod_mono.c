@@ -616,10 +616,6 @@ get_directory (apr_pool_t *pool, const char *filepath)
 	return result;
 }
 
-	pid_t pid;
-	int status;
-
-	
 static void
 fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 {
