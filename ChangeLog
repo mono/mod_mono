@@ -1,3 +1,7 @@
+2003-04-11  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/ApacheWorkerRequest.cs: fixed compilation.
+
 2003-03-27  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/MonoWorkerRequest.cs: added a MapPathEvent that is fired before
