@@ -418,18 +418,21 @@ apr_socket_connect (apr_socket_t *sock, apr_sockaddr_t *sa)
 #endif
 
 static apr_status_t 
-try_connect (mono_server_rec *server_conf, apr_socket_t **sock, apr_pool_t *pool)
+try_connect (mono_server_rec *conf, apr_socket_t **sock, apr_pool_t *pool)
 {
 	char *error;
 	struct sockaddr_un unix_address;
 	struct sockaddr *ptradd;
+	char *fn, *la;
 
-	if (server_conf->listen_port == NULL) {
+	fn = conf->filename ? conf->filename : SOCKET_FILE;
+	la = conf->listen_address ? conf->listen_address : LISTEN_ADDRESS;
+	if (conf->listen_port == NULL) {
 		apr_os_sock_t sock_fd;
 
 		apr_os_sock_get (&sock_fd, *sock);
 		unix_address.sun_family = PF_UNIX;
-		memcpy (unix_address.sun_path, server_conf->filename, strlen (server_conf->filename) + 1);
+		memcpy (unix_address.sun_path, fn, strlen (fn) + 1);
 		ptradd = (struct sockaddr *) &unix_address;
 		if (connect (sock_fd, ptradd, sizeof (unix_address)) != -1)
 			return APR_SUCCESS;
@@ -437,18 +440,13 @@ try_connect (mono_server_rec *server_conf, apr_socket_t **sock, apr_pool_t *pool
 		apr_status_t rv;
 		apr_sockaddr_t *sa;
 
-		rv = -1;
-		if (server_conf->listen_address != NULL &&
-		    server_conf->listen_port != NULL) {
-			rv = apr_sockaddr_info_get (&sa, server_conf->listen_address, APR_INET,
-						atoi (server_conf->listen_port), 0, 
-						pool);
-		}
+		rv = apr_sockaddr_info_get (&sa, la, APR_INET,
+					atoi (conf->listen_port), 0, pool);
 
 		if (rv != APR_SUCCESS) {
 			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
 				      "mod_mono: error in address ('%s') or port ('%s').",
-				      server_conf->listen_address, server_conf->listen_port);
+				      la, conf->listen_port);
 			return -2;
 		}
 
@@ -464,28 +462,27 @@ try_connect (mono_server_rec *server_conf, apr_socket_t **sock, apr_pool_t *pool
 		return -1; /* Can try to launch mod-mono-server */
 	case EPERM:
 		error = strerror (errno);
-		if (server_conf->listen_port == NULL)
+		if (conf->listen_port == NULL)
 			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-				      "mod_mono: file %s exists, but wrong permissions.",
-				      server_conf->filename);
+				      "mod_mono: file %s exists, but wrong permissions.", fn);
 		else
 			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
 				      "mod_mono: no permission to listen on %s.",
-				      server_conf->listen_port);
+				      conf->listen_port);
 
 
 		apr_socket_close (*sock);
 		return -2; /* Unrecoverable */
 	default:
 		error = strerror (errno);
-		if (server_conf->listen_port == NULL)
+		if (conf->listen_port == NULL)
 			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
 				      "mod_mono: connect error (%s). File: %s",
-				      error, server_conf->filename);
+				      error, fn);
 		else
 			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
 				      "mod_mono: connect error (%s). Address: %s Port: %s",
-				      error, server_conf->listen_address, server_conf->listen_port);
+				      error, la, conf->listen_port);
 
 
 		apr_socket_close (*sock);
@@ -627,7 +624,12 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	wapidir = apr_pcalloc (pool, strlen (server_conf->wapidir) + 5 + 2);
 	sprintf (wapidir, "%s/%s", server_conf->wapidir, ".wapi");
 	mkdir (wapidir, 0700);
-	chmod (wapidir, 0700);
+	if (chmod (wapidir, 0700) != 0 && (errno == EPERM || errno == EACCES)) {
+		ap_log_error (APLOG_MARK, APLOG_DEBUG, STATUS_AND_SERVER,
+			"%s: %s", wapidir, strerror (errno));
+		exit (1);
+	}
+	
 	SETENV (pool, "MONO_SHARED_DIR", server_conf->wapidir);
 
 	memset (argv, 0, sizeof (char *) * MAXARGS);
@@ -636,13 +638,21 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	argv [argi++] = "--debug";
 	argv [argi++] = server_conf->server_path;
 	if (server_conf->listen_port != NULL) {
+		char *la;
+
+		la = server_conf->listen_address;
+		la = la ? la : LISTEN_ADDRESS;
 		argv [argi++] = "--address";
-		argv [argi++] = server_conf->listen_address;
+		argv [argi++] = la;
 		argv [argi++] = "--port";
 		argv [argi++] = server_conf->listen_port;
 	} else {
+		char *fn;
+
+		fn = server_conf->filename;
+		fn = fn ? fn : SOCKET_FILE;
 		argv [argi++] = "--filename";
-		argv [argi++] = server_conf->filename;
+		argv [argi++] = fn;
 	}
 
 	if (server_conf->applications != NULL) {
@@ -931,19 +941,6 @@ mono_handler (request_rec *r)
 	return mono_execute_request (r);
 }
 
-static void
-set_config_defaults (server_rec *s)
-{
-	mono_server_rec *server_conf;
-
-	server_conf = ap_get_module_config (s->module_config, &mono_module);
-	if (server_conf->filename == NULL && server_conf->listen_port == NULL)
-		server_conf->filename = SOCKET_FILE;
-
-	if (server_conf->listen_port != NULL && server_conf->listen_address == NULL)
-		server_conf->listen_address = LISTEN_ADDRESS;
-}
-
 #ifdef APACHE13
 static void
 mono_init_handler (server_rec *s, pool *p)
@@ -951,7 +948,6 @@ mono_init_handler (server_rec *s, pool *p)
 	DEBUG_PRINT (0, "Initializing handler");
 	ap_add_version_component ("mod_mono/" VERSION);
 	pconf = p;
-	set_config_defaults (s);
 }
 #else
 static int
@@ -963,7 +959,6 @@ mono_init_handler (apr_pool_t *p,
 	DEBUG_PRINT (0, "Initializing handler");
 	ap_add_version_component (p, "mod_mono/" VERSION);
 	pconf = s->process->pconf;
-	set_config_defaults (s);
 	return OK;
 }
 #endif

@@ -1,3 +1,10 @@
+2004-07-29 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* configure.in: 1.0.1
+	* src/mod_mono.c: attempt to address sigsegv seem on Fedora when all
+	defaults are used. Write to the error log if the user does not have
+	permission on .wapi directory.
+
 2004-07-28 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* configure.in: s/apr-0/apr/
