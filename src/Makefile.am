@@ -1,4 +1,4 @@
-MKINSTALLDIRS=@top_builddir@mkinstalldirs
+MKINSTALLDIRS=$(top_builddir)mkinstalldirs
 CLEANFILES = .libs/libmod_mono.so .libs/libmod_mono_old.so *~
 
 EXTRA_DIST = ApacheApplicationHost.cs \
