@@ -160,7 +160,7 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 }
 
 static const char *
-store_config_xsp (cmd_parms *cmd, void *offset, const char *first, const char *second)
+store_config_xsp (cmd_parms *cmd, void *notused, const char *first, const char *second)
 {
 	const char *alias;
 	const char *value;
@@ -169,8 +169,10 @@ store_config_xsp (cmd_parms *cmd, void *offset, const char *first, const char *s
 	int idx;
 	module_cfg *config;
 	char *ptr;
+	unsigned long offset;
 	
-	DEBUG_PRINT (1, "store_config %u '%s' '%s'", (unsigned) cmd->info, first, second);
+	offset = (unsigned long) cmd->info;
+	DEBUG_PRINT (1, "store_config %lu '%s' '%s'", offset, first, second);
 	config = ap_get_module_config (cmd->server->module_config, &mono_module);
 
 	if (second == NULL) {
@@ -186,10 +188,10 @@ store_config_xsp (cmd_parms *cmd, void *offset, const char *first, const char *s
 		idx = add_xsp_server (cmd->pool, alias, config, cmd->server->is_virtual);
 
 	ptr = (char *) &config->servers [idx];
-	ptr += (int) cmd->info;
+	ptr += offset;
 
 	/* MonoApplications/AddMonoApplications are accumulative */
-	if ((int) cmd->info == APR_OFFSETOF (xsp_data, applications))
+	if (offset == APR_OFFSETOF (xsp_data, applications))
 		prev_value = *((char **) ptr);
 
 	if (prev_value != NULL) {
@@ -340,9 +342,9 @@ setup_client_block (request_rec *r)
 }
 
 static int
-write_data (apr_socket_t *sock, const void *str, int size)
+write_data (apr_socket_t *sock, const void *str, apr_size_t size)
 {
-	int prevsize = size;
+	apr_size_t prevsize = size;
 
 	if (apr_socket_send (sock, str, &size) != APR_SUCCESS)
 		return -1;
@@ -368,7 +370,7 @@ write_data_string (apr_socket_t *sock, const char *str)
 }
 
 static int
-read_data (apr_socket_t *sock, void *ptr, int size)
+read_data (apr_socket_t *sock, void *ptr, apr_size_t size)
 {
 	if (apr_socket_recv (sock, ptr, &size) != APR_SUCCESS)
 		return -1;
@@ -377,7 +379,7 @@ read_data (apr_socket_t *sock, void *ptr, int size)
 }
 
 static char *
-read_data_string (apr_pool_t *pool, apr_socket_t *sock, char **ptr, int *size)
+read_data_string (apr_pool_t *pool, apr_socket_t *sock, char **ptr, apr_size_t *size)
 {
 	int l, count;
 	char *buf;
@@ -409,7 +411,7 @@ read_data_string (apr_pool_t *pool, apr_socket_t *sock, char **ptr, int *size)
 static int
 do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 {
-	int size;
+	apr_size_t size;
 	char *str;
 	char *str2;
 	int i;

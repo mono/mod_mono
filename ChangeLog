@@ -1,5 +1,10 @@
 2005-02-24 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
+	* src/mod_mono.c: some small changes that make this work on amd64.
+	Thanks to Mike Morano.
+
+2005-02-24 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
 	* src/mod_mono.c: make the new 'several mod-mono-server' schema work
 	when directives are inside <virtualhost>.
 
