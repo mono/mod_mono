@@ -1,3 +1,8 @@
+2003-08-12  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* configure.in: fixed apache version detection. It was looking for
+	"-I/some/directory/apr.h", then failed and default to 1.3.
+
 2003-08-10  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
 	* doc/modmono.xml: DocBook documentation
 	* src/mod_mono.c: ifde-ed out code since it only supports Apache 2 currently
