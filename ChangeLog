@@ -1,3 +1,11 @@
+2005-02-06 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* configure.in:
+	* src/mod_mono.h: define our own variable when building for a big-endian
+	architecture instead of using WORDS_BIGENDIAN, since some packages might
+	have that defined on little-endian machines !?. Thanks to Winfried
+	Harbecke for pointing this out.
+
 2005-02-04 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* configure.in: 1.0.5.99

@@ -145,7 +145,7 @@ apr_socket_recv (apr_socket_t *sock, char *buf, apr_size_t *len);
 #define LISTEN_ADDRESS		"127.0.0.1"
 
 /* Converts every int sent into little endian */
-#ifdef WORDS_BIGENDIAN
+#ifdef MODMONO_BIGENDIAN
 #define INT_FROM_LE(val) LE_FROM_INT (val)
 #define LE_FROM_INT(val)	((unsigned int) ( \
     (((unsigned int) (val) & (unsigned int) 0x000000ffU) << 24) | \

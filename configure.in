@@ -6,6 +6,10 @@ AC_PROG_CC
 AM_PROG_LIBTOOL
 
 AC_C_BIGENDIAN
+if [ x$ac_cv_c_bigendian = xyes ] ; then
+	AC_DEFINE([MODMONO_BIGENDIAN],,[Compiling on a big-endian machine.])
+fi
+	
 
 # Checks for header files.
 AC_HEADER_SYS_WAIT
