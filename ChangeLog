@@ -1,3 +1,11 @@
+2004-05-29  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* INSTALL:
+	* README: updated.
+
+	* src/mod_mono.c: no need to maintain 2 separated lists of commands and
+	descriptions for apache 1.3 and 2.0.
+
 2004-05-25  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: patch from Andrew Arnott that fixes parameters passed

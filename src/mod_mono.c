@@ -943,90 +943,71 @@ mono_register_hooks (apr_pool_t * p)
 #endif
 
 #ifdef APACHE13
-static const command_rec mono_cmds [] = {
-	{"MonoUnixSocket",
-	CONFIG_FUNCTION_NAME(unix_socket),
-	NULL,
-	RSRC_CONF,
-	TAKE1,
-	"Named pipe file name. Default: /tmp/mod_mono_server"
-	},
+#define MAKE_CMD(name, function_name, description) \
+	{ #name, CONFIG_FUNCTION_NAME (function_name), NULL, RSRC_CONF, TAKE1, description }
+#else
+#define MAKE_CMD(name, function_name, description) \
+	AP_INIT_TAKE1 (#name, CONFIG_FUNCTION_NAME(unix_socket), NULL, RSRC_CONF, description)
+#endif
 
-	{"MonoRunXSP",
-	CONFIG_FUNCTION_NAME(run_xsp),
-	NULL,
-	RSRC_CONF,
-	TAKE1,
+static const command_rec mono_cmds [] = {
+MAKE_CMD (MonoUnixSocket, unix_socket,
+	"Named pipe file name. Default: /tmp/mod_mono_server"
+	),
+
+MAKE_CMD (MonoRunXSP, run_xsp,
 	"It can be False or True. If it is True, asks the module to "
 	"start mod-mono-server.exe if it's not already there. Default: False"
-	},
+	),
 
-	{"MonoExecutablePath",
-	CONFIG_FUNCTION_NAME(executable_path),
-	NULL,
-	RSRC_CONF,
-	TAKE1,
+MAKE_CMD (MonoExecutablePath, executable_path,
 	"If MonoRunXSP is True, this is the full path where mono is located. "
 	"Default: /usr/bin/mono"
-	},
+	),
 
-	{"MonoPath",
-	CONFIG_FUNCTION_NAME(path),
-	NULL,
-	RSRC_CONF,
-	TAKE1,
+MAKE_CMD (MonoPath, path,
 	"If MonoRunXSP is True, this will be the content of MONO_PATH "
 	"environment variable. Default: \"\""
-	},
+	),
 
-	{"MonoServerPath",
-	CONFIG_FUNCTION_NAME(server_path),
-	NULL,
-	RSRC_CONF,
-	TAKE1,
+MAKE_CMD (MonoServerPath, server_path,
 	"If MonoRunXSP is True, this is the full path to mod-mono-server.exe. "
 	"Default: /usr/bin/mod-mono-server.exe"
-	},
+	),
 
-	{"MonoApplications",
-	CONFIG_FUNCTION_NAME(applications),
-	NULL,
-	RSRC_CONF,
-	TAKE1,
+MAKE_CMD (MonoApplications, applications,
 	"Comma separated list with virtual directories and real directories. "
 	"One ASP.NET application will be created for each pair. Default: \"\" "
-	},
-	{"MonoWapiDir",
-	CONFIG_FUNCTION_NAME (wapidir),
-	NULL,
-	RSRC_CONF,
-	TAKE1,
-	"See MONO_SHARED_DIR in the mono manual page. Default: \"/tmp\""
-	},
-	{"MonoDocumentRootDir",
-	CONFIG_FUNCTION_NAME (document_root),
-	NULL,
-	RSRC_CONF,
-	TAKE1,
-	"The argument passed in --root argument to mod-mono-server. Default: /"
-	},
-	{"MonoApplicationsConfigFile",
-	CONFIG_FUNCTION_NAME (appconfig_file),
-	NULL,
-	RSRC_CONF,
-	TAKE1,
-	"The argument passed in --appconfigfile argument to mod-mono-server. Default: NULL"
-	},
-	{"MonoApplicationsConfigDir",
-	CONFIG_FUNCTION_NAME (appconfig_dir),
-	NULL,
-	RSRC_CONF,
-	TAKE1,
-	"The argument passed in --appconfigdir argument to mod-mono-server. Default: NULL"
-	},
-	{NULL}
+	),
+
+MAKE_CMD (MonoWapiDir, wapidir,
+	"The directory where mono runtime will create the '.wapi' directory "
+	"used to emulate windows I/O. It's used to set MONO_SHARED_DIR. "
+	"Default value: \"/tmp\""
+	),
+
+MAKE_CMD (MonoDocumentRootDir, document_root,
+	"The argument passed in --root argument to mod-mono-server. "
+	"This tells mod-mono-server to change the directory to the "
+	"value specified before doing anything else. Default: /"
+	),
+
+MAKE_CMD (MonoApplicationsConfigFile, appconfig_file,
+	"Adds application definitions from the  XML configuration file. "
+	"See Appendix C for details on the file format. "
+	"Default value: \"\""
+	),
+
+MAKE_CMD (MonoApplicationsConfigDir, appconfig_dir,
+	"Adds application definitions from all XML files found in the "
+	"specified directory DIR. Files must have '.webapp' extension. "
+	"Default value: \"\""
+	),
+
+NULL
 };
 
+#ifdef APACHE13
 module MODULE_VAR_EXPORT mono_module =
   {
     STANDARD_MODULE_STUFF,
@@ -1050,77 +1031,6 @@ module MODULE_VAR_EXPORT mono_module =
     NULL                        /* post read-request */
   };
 #else
-static const command_rec mono_cmds [] =
-{
-    AP_INIT_TAKE1 ("MonoUnixSocket",
-		   CONFIG_FUNCTION_NAME(unix_socket),
-		   NULL,
-		   RSRC_CONF,
-		   "Named pipe file name. Default: /tmp/mod_mono_server"
-		  ),
-    AP_INIT_TAKE1 ("MonoRunXSP",
-		   CONFIG_FUNCTION_NAME(run_xsp),
-		   NULL,
-		   RSRC_CONF,
-		   "It can be False or True. If it is True, asks the module to "
-		   "start mod-mono-server.exe if it's not already there. Default: False"
-		  ),
-    AP_INIT_TAKE1 ("MonoExecutablePath",
-		   CONFIG_FUNCTION_NAME (executable_path),
-		   NULL,
-		   RSRC_CONF,
-		   "If MonoRunXSP is True, this is the full path where mono is located. "
-		   "Default: /usr/bin/mono"
-		  ),
-    AP_INIT_TAKE1 ("MonoPath",
-		   CONFIG_FUNCTION_NAME (path),
-		   NULL,
-		   RSRC_CONF,
-		   "If MonoRunXSP is True, this will be the content of MONO_PATH "
-		   "environment variable. Default: \"\""
-		  ),
-    AP_INIT_TAKE1 ("MonoServerPath",
-		   CONFIG_FUNCTION_NAME (server_path),
-		   NULL,
-		   RSRC_CONF,
-		   "If MonoRunXSP is True, this is the full path to mod-mono-server.exe. "
-		   "Default: /usr/bin/mod-mono-server.exe"
-		  ),
-    AP_INIT_TAKE1 ("MonoApplications",
-		   CONFIG_FUNCTION_NAME (applications),
-		   NULL,
-		   RSRC_CONF,
-		   "Comma separated list with virtual directories and real directories. "
-		   "One ASP.NET application will be created for each pair. Default: \"\" "
-		  ),
-    AP_INIT_TAKE1 ("MonoWapiDir",
-		   CONFIG_FUNCTION_NAME (wapidir),
-		   NULL,
-		   RSRC_CONF,
-		   "See MONO_SHARED_DIR in the mono manual page. Default: \"/tmp\""
-		  ),
-   AP_INIT_TAKE1 ("MonoDocumentRootDir",
-		  CONFIG_FUNCTION_NAME (document_root),
-		  NULL,
-		  RSRC_CONF,
-		  "The argument passed in --root argument to mod-mono-server. Default: /"
-		  ),
-    AP_INIT_TAKE1 ("MonoApplicationsConfigFile",
-		   CONFIG_FUNCTION_NAME (appconfig_file),
-		   NULL,
-		   RSRC_CONF,
-		   "The argument passed in --appconfigfile argument to mod-mono-server. Default: NULL"
-		   ),
-    AP_INIT_TAKE1 ("MonoApplicationsConfigDir",
-		   CONFIG_FUNCTION_NAME (appconfig_dir),
-		   NULL,
-		   RSRC_CONF,
-		   "The argument passed in --appconfigdir argument to mod-mono-server. Default: NULL"
-		   ),
-
-    NULL
-};
-
 module AP_MODULE_DECLARE_DATA mono_module = {
 	STANDARD20_MODULE_STUFF,
 	NULL,				/* dir config creater */
