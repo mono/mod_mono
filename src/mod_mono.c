@@ -25,7 +25,7 @@
 #endif
 
 /* uncomment this to get tons of messages in the log */
-/* or use --with-debug[=yes] with configure */
+/* or use --enable-debug with configure */
 /* #define DEBUG */
 #define DEBUG_LEVEL 0
 
