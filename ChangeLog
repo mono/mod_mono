@@ -1,3 +1,8 @@
+2003-10-04  Pedro Martínez Juliá  <yoros@wanadoo.es>
+
+	* src/mod_mono.c: added a loop when reading from the socket, it
+	needs to read "l" bytes and "read" is getting "count" bytes.
+
 2003-10-03  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: added more error checks and write basic request data

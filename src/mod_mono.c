@@ -344,15 +344,17 @@ write_data_string (int fd, const char *str)
 static char *
 read_data_string (apr_pool_t *pool, int fd, char **ptr, int *size)
 {
-	int l;
+	int l, count;
 	char *buf;
 
 	if (read (fd, &l, sizeof (int)) != sizeof (int))
 		return NULL;
 
 	buf = apr_pcalloc (pool, l + 1);
-	if (read (fd, buf, l) != l)
-		return NULL;
+	count = l;
+	while (count > 0) {
+		count -= read (fd, buf + l - count, count);
+	}
 
 	if (ptr)
 		*ptr = buf;
