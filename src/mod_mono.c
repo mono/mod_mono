@@ -109,6 +109,8 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #define MODMONO_SERVER_PATH 	PREFIX "/bin/mod-mono-server.exe"
 #define WAPIDIR				"/tmp"
 #define DOCUMENT_ROOT		NULL
+#define APPCONFIG_FILE		NULL
+#define APPCONFIG_DIR		NULL
 #define SOCKET_FILE		"/tmp/mod_mono_server"
 
 /* define this to get tons of messages in the log */
@@ -207,6 +209,8 @@ typedef struct {
 	char *applications;
 	char *wapidir;
 	char *document_root;
+	char *appconfig_file;
+	char *appconfig_dir;
 } mono_server_rec;
 
 CONFIG_FUNCTION (unix_socket, filename)
@@ -217,6 +221,8 @@ CONFIG_FUNCTION (server_path, server_path)
 CONFIG_FUNCTION (applications, applications)
 CONFIG_FUNCTION (wapidir, wapidir)
 CONFIG_FUNCTION (document_root, document_root)
+CONFIG_FUNCTION (appconfig_file, appconfig_file)
+CONFIG_FUNCTION (appconfig_dir, appconfig_dir)
 
 static void *
 create_mono_server_config (apr_pool_t *p, server_rec *s)
@@ -234,6 +240,8 @@ create_mono_server_config (apr_pool_t *p, server_rec *s)
 	server->applications = NULL;
 	server->wapidir = WAPIDIR;
 	server->document_root = DOCUMENT_ROOT;
+	server->appconfig_file = APPCONFIG_FILE;
+	server->appconfig_dir = APPCONFIG_DIR;
 
 	return server;
 }
@@ -626,7 +634,7 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	pid_t pid;
 	int status;
 	int i;
-	char *argv [10];
+	char *argv [14];
 	char *path;
 	char *tmp;
 	char *monodir;
@@ -697,21 +705,37 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
                 argv[7] = NULL;
                 argv[8] = NULL;
         }
+	if (server_conf->appconfig_file != NULL) {
+		argv[9] = "--appconfigfile";
+		argv[10] = server_conf->appconfig_file;
+	} else {
+		argv[9] = NULL;
+		argv[10] = NULL;
+	}
+	if (server_conf->appconfig_dir != NULL) {
+		argv[11] = "--appconfigdir";
+		argv[12] = server_conf->appconfig_dir;
+	} else {
+		argv[11] = NULL;
+		argv[12] = NULL;
+	}
 
-        argv [9] = NULL;
+        argv [13] = NULL;
 
 	ap_log_error (APLOG_MARK, APLOG_DEBUG,
 		      STATUS_AND_SERVER,
-                      "running '%s %s %s %s %s %s %s %s %s'",
+                      "running '%s %s %s %s %s %s %s %s %s %s %s %s %s'",
                       argv [0], argv [1], argv [2], argv [3], argv [4],
-		      argv [5], argv [6], argv [7], argv[8]);
+		      argv [5], argv [6], argv [7], argv [8], 
+		      argv [9], argv [10], argv [11], argv [12]);
 
 	execv (argv [0], argv);
 	ap_log_error (APLOG_MARK, APLOG_ERR,
 		      STATUS_AND_SERVER,
-                      "Failed running '%s %s %s %s %s %s %s %s %s'. Reason: %s",
+                      "Failed running '%s %s %s %s %s %s %s %s %s %s %s %s %s'. Reason: %s",
                       argv [0], argv [1], argv [2], argv [3], argv [4],
 		      argv [5], argv [6], argv [7], argv [8],
+		      argv [9], argv [10], argv [11], argv [12],
 		      strerror (errno));
 	exit (1);
 }
@@ -984,7 +1008,20 @@ static const command_rec mono_cmds [] = {
 	TAKE1,
 	"The argument passed in --root argument to mod-mono-server. Default: /"
 	},
-
+	{"MonoApplicationsConfigFile",
+	CONFIG_FUNCTION_NAME (appconfig_file),
+	NULL,
+	RSRC_CONF,
+	TAKE1,
+	"The argument passed in --appconfigfile argument to mod-mono-server. Default: NULL"
+	},
+	{"MonoApplicationsConfigDir",
+	CONFIG_FUNCTION_NAME (appconfig_dir),
+	NULL,
+	RSRC_CONF,
+	TAKE1,
+	"The argument passed in --appconfigdir argument to mod-mono-server. Default: NULL"
+	},
 	{NULL}
 };
 
@@ -1066,6 +1103,18 @@ static const command_rec mono_cmds [] =
 		  RSRC_CONF,
 		  "The argument passed in --root argument to mod-mono-server. Default: /"
 		  ),
+    AP_INIT_TAKE1 ("MonoApplicationsConfigFile",
+		   CONFIG_FUNCTION_NAME (appconfig_file),
+		   NULL,
+		   RSRC_CONF,
+		   "The argument passed in --appconfigfile argument to mod-mono-server. Default: NULL"
+		   ),
+    AP_INIT_TAKE1 ("MonoApplicationsConfigDir",
+		   CONFIG_FUNCTION_NAME (appconfig_dir),
+		   NULL,
+		   RSRC_CONF,
+		   "The argument passed in --appconfigdir argument to mod-mono-server. Default: NULL"
+		   ),
 
     NULL
 };
