@@ -1,3 +1,7 @@
+2004-09-17 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: disabled --debug option for mono.
+
 2004-09-10 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: patch from Anders (andersb@blacksun.ca) that fixes

@@ -708,7 +708,7 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	memset (argv, 0, sizeof (char *) * MAXARGS);
 	argi = 0;
 	argv [argi++] = server_conf->executable_path;
-	argv [argi++] = "--debug";
+	/* argv [argi++] = "--debug"; */
 	argv [argi++] = server_conf->server_path;
 	if (server_conf->listen_port != NULL) {
 		char *la;
