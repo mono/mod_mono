@@ -9,6 +9,16 @@ http://www.apacheworld.org
 
 Gonzalo Paniagua Javier <gonzalo @ ximian.com>
 
+  We provide two different modules for apache:
+
+    -mod_mono: this one uses the embedding API of the mono runtime so
+    it needs the mono runtime libraries. as of now, it has some problems
+    with caching of pages already compiled.
+    
+    -mod_mono_unix: it uses a unix socket to communicate with a backend
+    process, mod-mono-server.exe (it's in xsp module in CVS), which is
+    in charge of the real process of the ASP.NET requests. It does not
+    depend on mono runtime libraries, so it's easier to install.
 
   The following are instructions for getting mod_mono and/or
   mod_mono_unix working with Apache 2 and serving ASP.NET pages. This
