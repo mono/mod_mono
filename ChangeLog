@@ -1,3 +1,9 @@
+2004-06-11  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* configure.in: check for endian-ness.
+	* src/mod_mono.c: all the integers that are read/written from/to the
+	socket are swapped if the module is running in a big endian system.
+
 2004-06-03  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* man/mod_mono.8.in: 

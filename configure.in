@@ -26,7 +26,6 @@ AC_ARG_WITH(apxs, [  --with-apxs=PATH        Path to apxs],
 ],
 AC_MSG_RESULT(no))
 
-AC_CHECK_FUNCS(setenv putenv)
 # check for --with-apr-config
 # apr-config - at least in debian apr include directory is different
 APR_INCLUDES=""
@@ -269,6 +268,9 @@ if test "$APACHE_VER" = "2.0" ; then
 dnl Sources are recompiled if we change the target version
 	AC_DEFINE([APACHE2],,[Compiling for Apache 2.0])
 fi
+
+AC_C_BIGENDIAN
+AC_CHECK_FUNCS([setenv putenv ])
 
 AC_SUBST(LIBEXECDIR)
 AC_SUBST(APXS)

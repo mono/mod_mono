@@ -54,6 +54,7 @@
  *
  */
 
+#include <mod_mono_config.h>
 #include <httpd.h>
 #include <http_config.h>
 #include <errno.h>
@@ -96,7 +97,6 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 
 #include <http_core.h>
 #include <http_log.h>
-#include <mod_mono_config.h>
 #include <sys/un.h>
 #include <sys/select.h>
 
@@ -112,6 +112,20 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #define APPCONFIG_FILE		NULL
 #define APPCONFIG_DIR		NULL
 #define SOCKET_FILE		"/tmp/mod_mono_server"
+
+/* Converts every int sent into little endian */
+#ifdef WORDS_BIGENDIAN
+#define INT_FROM_LE(val) LE_FROM_INT (val)
+#define LE_FROM_INT(val)	((unsigned int) ( \
+    (((unsigned int) (val) & (unsigned int) 0x000000ffU) << 24) | \
+    (((unsigned int) (val) & (unsigned int) 0x0000ff00U) <<  8) | \
+    (((unsigned int) (val) & (unsigned int) 0x00ff0000U) >>  8) | \
+    (((unsigned int) (val) & (unsigned int) 0xff000000U) >> 24)))
+
+#else
+#define LE_FROM_INT(val) val
+#define INT_FROM_LE(val) val
+#endif
 
 /* define this to get tons of messages in the log */
 #undef DEBUG
@@ -361,7 +375,7 @@ setup_client_block (request_rec *r)
 static int
 write_ok (int fd)
 {
-	int i = 0;
+	int i = LE_FROM_INT (0);
 	
 	return write (fd, &i, 1);
 }
@@ -378,7 +392,7 @@ write_data (int fd, const void *str, int size)
 static int
 write_err (int fd)
 {
-	int i = -1;
+	int i = LE_FROM_INT (-1);
 	
 	return write (fd, &i, 1);
 }
@@ -389,6 +403,7 @@ write_data_string_no_prefix (int fd, const char *str)
 	int l;
 
 	l = (str == NULL) ? 0 : strlen (str);
+	l = LE_FROM_INT (l);
 	if (write (fd, &l, sizeof (int)) != sizeof (int))
 		return -1;
 
@@ -416,6 +431,7 @@ read_data_string (apr_pool_t *pool, int fd, char **ptr, int *size)
 	if (read (fd, &l, sizeof (int)) != sizeof (int))
 		return NULL;
 
+	l = INT_FROM_LE (l);
 	buf = apr_pcalloc (pool, l + 1);
 	count = l;
 	while (count > 0) {
@@ -474,6 +490,7 @@ do_command (int command, int fd, request_rec *r, int *result)
 		break;
 	case GET_SERVER_PORT:
 		i = request_get_server_port (r);
+		i = LE_FROM_INT (i);
 		status = write_data (fd, &i, sizeof (int));
 		break;
 	case SET_RESPONSE_HEADER:
@@ -499,10 +516,12 @@ do_command (int command, int fd, request_rec *r, int *result)
 		break;
 	case GET_REMOTE_PORT:
 		i = connection_get_remote_port (r->connection);
+		i = LE_FROM_INT (i);
 		status = write_data (fd, &i, sizeof (int));
 		break;
 	case GET_LOCAL_PORT:
 		i = connection_get_local_port (r);
+		i = LE_FROM_INT (i);
 		status = write_data (fd, &i, sizeof (int));
 		break;
 	case GET_REMOTE_NAME:
@@ -519,26 +538,30 @@ do_command (int command, int fd, request_rec *r, int *result)
 		break;
 	case SHOULD_CLIENT_BLOCK:
 		size = ap_should_client_block (r);
+		size = LE_FROM_INT (size);
 		status = write_data (fd, &size, sizeof (int));
 		break;
 	case SETUP_CLIENT_BLOCK:
 		if (setup_client_block (r) != APR_SUCCESS) {
-			size = -1;
+			size = LE_FROM_INT (-1);
 			status = write_data (fd, &size, sizeof (int));
 			break;
 		}
 
-		size = 0;
+		size = LE_FROM_INT (0);
 		status = write_data (fd, &size, sizeof (int));
 		break;
 	case GET_CLIENT_BLOCK:
 		status = read_data (fd, &i, sizeof (int));
+		status = INT_FROM_LE (status);
 		if (status == -1)
 			break;
 
 		str = apr_pcalloc (r->pool, i);
 		i = ap_get_client_block (r, str, i);
+		i = LE_FROM_INT (i);
 		status = write_data (fd, &i, sizeof (int));
+		i = INT_FROM_LE (i);
 		status = write (fd, str, i);
 		break;
 	case SET_STATUS_LINE:
@@ -551,10 +574,11 @@ do_command (int command, int fd, request_rec *r, int *result)
 		break;
 	case SET_STATUS_CODE:
 		status = read_data (fd, &i, sizeof (int));
+		status = INT_FROM_LE (status);
 		if (status == -1)
 			break;
 
-		r->status = i;
+		r->status = INT_FROM_LE (i);
 		status = write_ok (fd);
 		break;
 	case DECLINE_REQUEST:
@@ -839,10 +863,12 @@ send_headers (request_rec *r, int fd)
 	const apr_array_header_t *elts;
 	const apr_table_entry_t *t_elt;
 	const apr_table_entry_t *t_end;
+	int tmp;
 
 	elts = apr_table_elts (r->headers_in);
 	DEBUG_PRINT (3, "Elements: %d", (int) elts->nelts);
-	write (fd, &elts->nelts, sizeof (int));
+	tmp = LE_FROM_INT (elts->nelts);
+	write (fd, &tmp, sizeof (int));
 	if (elts->nelts == 0)
 		return TRUE;
 
