@@ -706,13 +706,13 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	setsid ();
 	chdir ("/");
 	umask (0077);
-	setenv ("PATH", path, 1);
-	setenv ("MONO_PATH", server_conf->path, 1);
+	SETENV (pool, "PATH", path);
+	SETENV (pool, "MONO_PATH", server_conf->path);
 	wapidir = apr_pcalloc (pool, strlen (server_conf->wapidir) + 5 + 2);
 	sprintf (wapidir, "%s/%s", server_conf->wapidir, ".wapi");
 	mkdir (wapidir, 0700);
 	chmod (wapidir, 0700);
-	setenv ("MONO_SHARED_DIR", server_conf->wapidir, 1);
+	SETENV (pool, "MONO_SHARED_DIR", server_conf->wapidir);
 
 	memset (argv, 0, sizeof (char *) * maxargs);
 	argi = 0;
