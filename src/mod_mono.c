@@ -750,9 +750,11 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 		argv [argi++] = server_conf->appconfig_file;
 	}
 
+	argv [argi++] = "--appconfigdir";
 	if (server_conf->appconfig_dir != NULL) {
-		argv [argi++] = "--appconfigdir";
 		argv [argi++] = server_conf->appconfig_dir;
+	} else {
+		argv [argi++] = DFLT_MONO_CONFIG_DIR;
 	}
 
 	/*

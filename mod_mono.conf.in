@@ -1,1 +1,8 @@
+# mod_mono.conf
+
+# Acthung! This file may be overwritten
+# Use 'include mod_mono.conf' from other configuration file
+# to load mod_mono module.
+
 LoadModule mono_module @APXS_LIBEXECDIR@/mod_mono.so
+

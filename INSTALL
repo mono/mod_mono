@@ -1,4 +1,4 @@
-Last updated: Sep 8, 2004
+Last updated: Nov 21, 2004
 
 Index
 -------
@@ -262,7 +262,7 @@ APPENDIX B: Configuration directives for mod_mono
 
     Adds application definitions from all XML files found in the
     specified directory DIR. Files must have '.webapp' extension.
-    Default value: ""
+    Default value: config/mod-mono-applications
 
   Note that you must specify at least one of MonoApplications,
   MonoApplicationsConfigFile and MonoApplicationsConfigDir.
@@ -280,6 +280,8 @@ APPENDIX C: Webapp file format
             <vport>{port for the application}</vport>
             <vpath>{virtual directory in apache}</vpath>
             <path>{physical path to aspx files}</path>
+	    <!-- Default value for <enabled> is true -->
+            <enabled>{true|false}</enabled>
          </web-application>
       </apps>
 

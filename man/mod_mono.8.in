@@ -9,7 +9,7 @@
 .if n .sp
 ..
 
-.TH mod_mono "8" "28 Jul 2004" "mod_mono @VERSION@" "ASP.NET Support for Apache"
+.TH mod_mono "8" "21 Nov 2004" "mod_mono @VERSION@" "ASP.NET Support for Apache"
 .SH NAME
 mod_mono \- apache module that enables ASP.NET pages. Works together with mod-mono-server.exe
 .SH DESCRIPTION
@@ -89,7 +89,7 @@ Default value: NULL.
 .TP
 .I "MonoApplicationsConfigDir (used only when MonoRunXSP is True)"
 The argument passed in --appconfigdir argument to mod-mono-server.
-Default value: NULL.
+Default value: config/mod-mono-applications
 .PP
 Note that you must specify at least one of MonoApplications,
 MonoApplicationsConfigFile and MonoApplicationsConfigDir.

@@ -1,3 +1,15 @@
+2004-11-21 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: pass default applications directory to
+	mod-mono-server.
+	* src/Makefile.am: add new compilation flags.
+	* mod_mono.conf.in: added warning.
+	* Makefile.am: Modified file.
+
+	* INSTALL: 
+	* man/mod_mono.8.in: updated for <enabled> in .webapp files and the
+	default value for MonoApplicationsConfigDir.
+
 2004-11-15 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* configure.in: added more tests for functions/headers. New option to
