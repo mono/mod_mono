@@ -21,6 +21,24 @@ AC_ARG_WITH(apxs, [  --with-apxs=PATH        Path to apxs],
 ],
 AC_MSG_RESULT(no))
 
+# check for --with-apr-config
+# apr-config - at least in debian apr include directory is different
+APR_INCLUDES=""
+AC_MSG_CHECKING(for --with-apr-config)
+AC_ARG_WITH(apr-config,
+[  --with-apr-config=PATH  Path to apr-config (apache 2.0). You must use
+                          this option when the output of "apr-config --includes"
+			  is different from "apxs -q INCLUDEDIR"
+],
+[
+  if test -x "$withval"
+  then
+    AC_MSG_RESULT([$withval executable, good])
+    APR_INCLUDES=`$withval --includes`
+  fi
+],
+AC_MSG_RESULT(not specified))
+
 # if no apxs found yet, check /usr/local/apache/sbin
 # since it's the default Apache location
 if test -z "$APXS"; then
@@ -72,10 +90,11 @@ LIBEXECDIR=`${APXS} -q LIBEXECDIR`
 AC_MSG_RESULT($LIBEXECDIR)
 
 # determine INCLUDES
+
 AC_MSG_CHECKING([for Apache include directory])
 AP_INCLUDES="-I`${APXS} -q INCLUDEDIR`"
 AC_MSG_RESULT($AP_INCLUDES)
-CFLAGS="$CFLAGS $AP_INCLUDES"
+CFLAGS="$CFLAGS $AP_INCLUDES $APR_INCLUDES"
 
 AC_MSG_CHECKING([Apache version])
 AC_TRY_COMPILE([#include <apr.h>], [
@@ -128,6 +147,8 @@ echo ""
 echo "   * Installation prefix = $prefix"
 echo "   * Apache version = $APACHE_VER"
 echo "   * Apache modules directory = $LIBEXECDIR"
+echo "   * Apache include directories = $AP_INCLUDES"
+echo "   * apr include directories = $APR_INCLUDES"
 echo ""
 echo "---"
 
