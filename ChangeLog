@@ -1,3 +1,6 @@
+2003-02-04  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
+	* Makefile.am: Add rpm spec files to packaging
+	
 2003-02-03  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
 	* packaging/redhat: Added mod_mono.spec and mono.conf for RPM generation, thanks to David Hollis <dhollis@davehollis.com> for submitting it.
 	
