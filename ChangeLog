@@ -1,3 +1,8 @@
+2003-03-27  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/MonoWorkerRequest.cs: added a MapPathEvent that is fired before
+	doing the normal MapPath stuff and can provide alternate mappings.
+
 2003-03-11  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
 	* src/Request.cs: We need to check for length returned equal to 0 in alias_matches
 	* src/mod_mono.c: fixed bug when matching prefix that made mod_mono handle all pages even those
