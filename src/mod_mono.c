@@ -21,13 +21,18 @@
  * limitations under the License.
  */
 #ifdef HAVE_CONFIG_H
-#include <mod_mono_config.h>
+#include "mod_mono_config.h"
 #endif
 
-#include <httpd.h>
-#include <http_config.h>
 #include <errno.h>
 #include <sys/wait.h>
+#include <sys/un.h>
+#include <sys/select.h>
+#include "httpd.h"
+#include "http_core.h"
+#include "http_log.h"
+#include "http_config.h"
+
 
 #ifdef APACHE13
 /* Apache 1.3 only */
@@ -40,6 +45,7 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #define FALSE 0
 #endif
 
+#include "multithread.h"
 #define apr_pool_t ap_pool
 #define apr_pcalloc_t ap_pcalloc_t
 #define apr_pcalloc ap_pcalloc
@@ -52,7 +58,22 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #define apr_array_header array_header
 #define apr_array_header_t array_header
 #define apr_pstrdup ap_pstrdup
+#define apr_psprintf ap_psprintf
+#define apr_status_t int
+#define apr_os_sock_t int
 #define APR_SUCCESS 0
+#define apr_proc_mutex_t mutex
+#define apr_proc_mutex_lock ap_acquire_mutex
+#define apr_proc_mutex_unlock ap_release_mutex
+
+typedef struct apr_socket apr_socket_t;
+struct apr_socket {
+	apr_pool_t *pool;
+	int fd;
+};
+
+#define apr_os_sock_get(fdptr, sock) (*(fdptr) = (sock)->fd)
+#define apr_socket_close(sock) (ap_pclosesocket ((sock)->pool, (sock)->fd))
 
 #include <ap_alloc.h>
 /* End Apache 1.3 only */
@@ -63,11 +84,6 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #include <apr_strings.h>
 /* End Apache 2 only */
 #endif
-
-#include <http_core.h>
-#include <http_log.h>
-#include <sys/un.h>
-#include <sys/select.h>
 
 #ifndef MONO_PREFIX
 #define MONO_PREFIX "/usr"
@@ -129,14 +145,10 @@ dummy_print (int a, ...)
 
 enum Cmd {
 	FIRST_COMMAND,
-	GET_REQUEST_LINE = 0,
-	SEND_FROM_MEMORY,
-	GET_PATH_INFO,
+	SEND_FROM_MEMORY = 0,
 	GET_SERVER_VARIABLE,
-	GET_PATH_TRANSLATED,
 	GET_SERVER_PORT,
 	SET_RESPONSE_HEADER,
-	GET_FILENAME,
 	GET_REMOTE_ADDRESS,
 	GET_LOCAL_ADDRESS,
 	GET_REMOTE_PORT,
@@ -147,21 +159,16 @@ enum Cmd {
 	SHOULD_CLIENT_BLOCK,
 	SETUP_CLIENT_BLOCK,
 	GET_CLIENT_BLOCK,
-	SET_STATUS_LINE,
-	SET_STATUS_CODE,
+	SET_STATUS,
 	DECLINE_REQUEST,
 	LAST_COMMAND
 };
 
 static char *cmdNames [] = {
-	"GET_REQUEST_LINE",
 	"SEND_FROM_MEMORY",
-	"GET_PATH_INFO",
 	"GET_SERVER_VARIABLE",
-	"GET_PATH_TRANSLATED",
 	"GET_SERVER_PORT",
 	"SET_RESPONSE_HEADER",
-	"GET_FILENAME",
 	"GET_REMOTE_ADDRESS",
 	"GET_LOCAL_ADDRESS",
 	"GET_REMOTE_PORT",
@@ -172,8 +179,7 @@ static char *cmdNames [] = {
 	"SHOULD_CLIENT_BLOCK",
 	"SETUP_CLIENT_BLOCK",
 	"GET_CLIENT_BLOCK",
-	"SET_STATUS_LINE",
-	"SET_STATUS_CODE",
+	"SET_STATUS",
 	"DECLINE_REQUEST"
 };
 
@@ -182,6 +188,10 @@ module MODULE_VAR_EXPORT mono_module;
 #else 
 module AP_MODULE_DECLARE_DATA mono_module;
 #endif
+
+/* Configuration pool. Cleared on restart. */
+static apr_pool_t *pconf;
+static apr_proc_mutex_t *runmono_mutex;
 
 typedef struct {
 	char *filename;
@@ -251,11 +261,11 @@ static int
 connection_get_remote_port (conn_rec *c)
 { 
 #ifdef APACHE13
-  return  ntohs(c->remote_addr.sin_port);
+	return  ntohs (c->remote_addr.sin_port);
 #else
-  apr_port_t port;
-  apr_sockaddr_port_get (&port, c->remote_addr);
-  return port;
+	apr_port_t port;
+	apr_sockaddr_port_get (&port, c->remote_addr);
+	return port;
 #endif
   
 }
@@ -264,11 +274,11 @@ static int
 connection_get_local_port (request_rec *r)
 {
 #ifdef APACHE13  
-  return ap_get_server_port(r);
+	return ap_get_server_port (r);
 #else
-  apr_port_t port;
-  apr_sockaddr_port_get (&port, r->connection->local_addr);
-  return port;  
+	apr_port_t port;
+	apr_sockaddr_port_get (&port, r->connection->local_addr);
+	return port;  
 #endif
 }
 
@@ -276,9 +286,9 @@ static const char *
 connection_get_remote_name (request_rec *r)
 {
 #ifdef APACHE13
-  return ap_get_remote_host (r->connection, r->per_dir_config, REMOTE_NAME);
+	return ap_get_remote_host (r->connection, r->per_dir_config, REMOTE_NAME);
 #else
-  return ap_get_remote_host (r->connection, r->per_dir_config, REMOTE_NAME, NULL);
+	return ap_get_remote_host (r->connection, r->per_dir_config, REMOTE_NAME, NULL);
 #endif
 }
 
@@ -297,10 +307,6 @@ set_response_header (request_rec *r,
 		     const char *name,
 		     const char *value)
 {
-	/* Is there a more efficient way to do this w/o breaking encapsulation at HttpWorkerRequest level?. 
-	Apache requires content_type to be set and will insert content type header itself later on.
-	-- daniel
-	*/
 	if (!strcasecmp(name,"Content-Type")) {
 		r->content_type = value;
 	} else {
@@ -311,19 +317,13 @@ set_response_header (request_rec *r,
 static const char *
 request_get_request_header (request_rec *r, const char *header_name)
 {
-  return apr_table_get (r->headers_in, header_name);
+	return apr_table_get (r->headers_in, header_name);
 }
 
 static const char *
 request_get_server_variable (request_rec *r, const char *name)
 {
 	return apr_table_get (r->subprocess_env, name);
-}
-
-static char *
-request_get_path_translated (request_rec *r)
-{
-	return ap_make_dirstr_parent (r->pool, r->filename);
 }
 
 static char *
@@ -342,28 +342,9 @@ setup_client_block (request_rec *r)
 }
 
 static int
-write_ok (int fd)
-{
-	int i = LE_FROM_INT (0);
-	
-	return write (fd, &i, 1);
-}
-
-static int
 write_data (int fd, const void *str, int size)
 {
-	if (write_ok (fd) == -1)
-		return -1;
-
 	return write (fd, str, size);
-}
-
-static int
-write_err (int fd)
-{
-	int i = LE_FROM_INT (-1);
-	
-	return write (fd, &i, 1);
 }
 
 static int
@@ -386,9 +367,6 @@ write_data_string_no_prefix (int fd, const char *str)
 static int
 write_data_string (int fd, const char *str)
 {
-	if (write_ok (fd) == -1)
-		return;
-
 	return write_data_string_no_prefix (fd, str);
 }
 
@@ -430,7 +408,7 @@ do_command (int command, int fd, request_rec *r, int *result)
 	char *str;
 	char *str2;
 	int i;
-	int status;
+	int status = 0;
 
 	ap_log_error (APLOG_MARK, APLOG_DEBUG, STATUS_AND_SERVER, "Command received: %s", cmdNames [command]);
 	*result = OK;
@@ -441,21 +419,12 @@ do_command (int command, int fd, request_rec *r, int *result)
 			break;
 		}
 		request_send_response_from_memory (r, str, size);
-		status = write_ok (fd);
-		break;
-	case GET_PATH_INFO:
-		status = write_data_string (fd, r->path_info);
 		break;
 	case GET_SERVER_VARIABLE:
 		if (read_data_string (r->pool, fd, &str, NULL) == NULL) {
-			status = -1;
 			break;
 		}
 		str = (char *) request_get_server_variable (r, str);
-		status = write_data_string (fd, str);
-		break;
-	case GET_PATH_TRANSLATED:
-		str = request_get_path_translated (r);
 		status = write_data_string (fd, str);
 		break;
 	case GET_SERVER_PORT:
@@ -473,10 +442,6 @@ do_command (int command, int fd, request_rec *r, int *result)
 			break;
 		}
 		set_response_header (r, str, str2);
-		status = write_ok (fd);
-		break;
-	case GET_FILENAME:
-		status = write_data_string (fd, r->filename);
 		break;
 	case GET_REMOTE_ADDRESS:
 		status = write_data_string (fd, r->connection->remote_ip);
@@ -500,10 +465,8 @@ do_command (int command, int fd, request_rec *r, int *result)
 		break;
 	case FLUSH:
 		connection_flush (r);
-		status = write_ok (fd);
 		break;
 	case CLOSE:
-		status = write_ok (fd);
 		return FALSE;
 		break;
 	case SHOULD_CLIENT_BLOCK:
@@ -534,30 +497,23 @@ do_command (int command, int fd, request_rec *r, int *result)
 		i = INT_FROM_LE (i);
 		status = write (fd, str, i);
 		break;
-	case SET_STATUS_LINE:
+	case SET_STATUS:
+		status = read_data (fd, &i, sizeof (int));
+		if (status == -1)
+			break;
+
 		if (read_data_string (r->pool, fd, &str, NULL) == NULL) {
 			status = -1;
 			break;
 		}
-		status = write_ok (fd);
+		r->status = INT_FROM_LE (i);
 		r->status_line = apr_pstrdup (r->pool, str);
 		break;
-	case SET_STATUS_CODE:
-		status = read_data (fd, &i, sizeof (int));
-		status = INT_FROM_LE (status);
-		if (status == -1)
-			break;
-
-		r->status = INT_FROM_LE (i);
-		status = write_ok (fd);
-		break;
 	case DECLINE_REQUEST:
-		status = write_ok (fd);
 		*result = DECLINED;
 		return FALSE;
 	default:
 		*result = HTTP_INTERNAL_SERVER_ERROR;
-		write_err (fd);
 		return FALSE;
 	}
 
@@ -569,18 +525,20 @@ do_command (int command, int fd, request_rec *r, int *result)
 	return TRUE;
 }
 
-static int
-try_connect (const char *filename, int fd)
+static apr_status_t 
+try_connect (const char *filename, apr_socket_t **sock)
 {
 	char *error;
 	struct sockaddr_un address;
 	struct sockaddr *ptradd;
+	apr_os_sock_t sock_fd;
 
+	apr_os_sock_get (&sock_fd, *sock);
 	ptradd = (struct sockaddr *) &address;
 	address.sun_family = PF_UNIX;
 	memcpy (address.sun_path, filename, strlen (filename) + 1);
-	if (connect (fd, ptradd, sizeof (address)) != -1)
-		return fd;
+	if (connect (sock_fd, ptradd, sizeof (address)) != -1)
+		return APR_SUCCESS;
 
 	switch (errno) {
 	case ENOENT:
@@ -593,7 +551,7 @@ try_connect (const char *filename, int fd)
 			      STATUS_AND_SERVER,
 			      "mod_mono: file %s exists, but wrong permissions.", filename);
 
-		close (fd);
+		apr_socket_close (*sock);
 		return -2; /* Unrecoverable */
 	default:
 		error = strerror (errno);
@@ -602,7 +560,7 @@ try_connect (const char *filename, int fd)
 			      STATUS_AND_SERVER,
 			      "mod_mono: connect error (%s). File: %s", error, filename);
 
-		close (fd);
+		apr_socket_close (*sock);
 		return -2; /* Unrecoverable */
 	}
 }
@@ -659,17 +617,20 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 
 	pid = fork ();
 	if (pid > 0) {
-		wait (&status);
+#ifdef APACHE2
+		apr_proc_t *proc;
+
+		proc = apr_pcalloc (pconf, sizeof (apr_proc_t));
+		proc->pid = pid;
+		apr_pool_note_subprocess (pconf, proc, APR_KILL_AFTER_TIMEOUT);
+#else
+		ap_note_subprocess (pconf, pid, kill_after_timeout);
+#endif
 		return;
 	}
 
-	pid = fork ();
-	if (pid > 0) {
-		exit (0);
-	}
-
-	setsid ();
 	chdir ("/");
+	umask (0077);
 	DEBUG_PRINT (1, "child started");
 	
 	for (i = getdtablesize () - 1; i >= 3; i--)
@@ -697,9 +658,6 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	}
 
 	DEBUG_PRINT (1, "PATH after: %s", path);
-	setsid ();
-	chdir ("/");
-	umask (0077);
 	SETENV (pool, "PATH", path);
 	SETENV (pool, "MONO_PATH", server_conf->path);
 	wapidir = apr_pcalloc (pool, strlen (server_conf->wapidir) + 5 + 2);
@@ -734,12 +692,15 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 		argv [argi++] = "--appconfigdir";
 		argv [argi++] = server_conf->appconfig_dir;
 	}
-	// The last element in the argv array must always be NULL
-	// to terminate the array for execv().
 
-	// Any new argi++'s that are added here must also increase
-	// the maxargs argument at the top of this method to prevent
-	// array out-of-bounds. 
+	/*
+	 * The last element in the argv array must always be NULL
+	 * to terminate the array for execv().
+	 *
+	 * Any new argi++'s that are added here must also increase
+	 * the maxargs argument at the top of this method to prevent
+ 	 * array out-of-bounds. 
+	 */
 
 	ap_log_error (APLOG_MARK, APLOG_DEBUG,
 		      STATUS_AND_SERVER,
@@ -759,32 +720,37 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	exit (1);
 }
 
-static int
-setup_socket (apr_pool_t *pool, mono_server_rec *server_conf)
+static apr_status_t
+setup_socket (apr_socket_t **sock, mono_server_rec *server_conf, apr_pool_t *pool)
 {
-	int fd;
-	int result;
 	char *filename;
 	pid_t pid;
 	int status;
 	int i;
-	
-	fd = socket (PF_UNIX, SOCK_STREAM, 0);
-	if (fd == -1) {
+	apr_status_t rv;
+
+#ifdef APACHE2
+	rv = apr_socket_create (sock, PF_UNIX, SOCK_STREAM, pool);
+#else
+	(*sock)->fd = ap_psocket (pool, PF_UNIX, SOCK_STREAM, 0);
+	(*sock)->pool = pool;
+	rv = ((*sock)->fd != -1) ? APR_SUCCESS : -1;
+#endif
+	if (rv != APR_SUCCESS) {
 		ap_log_error (APLOG_MARK,
 			      APLOG_ERR,
 			      STATUS_AND_SERVER,
 			      "mod_mono: error creating socket.");
 
-		return -1;
+		return rv;
 	}
 
-	result = try_connect (server_conf->filename, fd);
-	DEBUG_PRINT (1, "try_connect: %d", (void *) result);
-	if (result > 0)
-		return fd;
+	rv = try_connect (server_conf->filename, sock);
+	DEBUG_PRINT (1, "try_connect: %d", (void *) rv);
+	if (rv == APR_SUCCESS)
+		return rv;
 
-	if (result == -2)
+	if (rv == -2)
 		return -1;
 
 	/* Running mod-mono-server not requested */
@@ -793,6 +759,8 @@ setup_socket (apr_pool_t *pool, mono_server_rec *server_conf)
 		ap_log_error (APLOG_MARK, APLOG_DEBUG,
 			      STATUS_AND_SERVER,
 			      "Not running mod-mono-server.exe");
+
+		apr_socket_close (*sock);
 		return -1;
 	}
 
@@ -808,22 +776,34 @@ setup_socket (apr_pool_t *pool, mono_server_rec *server_conf)
 			      STATUS_AND_SERVER,
 			      "Not running mod-mono-server.exe because no MonoApplications, "
 			      "MonoApplicationsConfigFile or MonoApplicationConfigDir specified.");
+		apr_socket_close (*sock);
 		return -1;
 	}
 
-	fork_mod_mono_server (pool, server_conf);
+	rv = apr_proc_mutex_lock (runmono_mutex);
+	if (rv == APR_SUCCESS) {
+		fork_mod_mono_server (pool, server_conf);
+	}
+
 	DEBUG_PRINT (1, "parent waiting");
 	for (i = 0; i < 3; i++) {
 		sleep (1);
 		DEBUG_PRINT (1, "try_connect %d", i);
-		result = try_connect (server_conf->filename, fd);
-		if (result > 0)
-			return fd;
+		if (try_connect (server_conf->filename, sock) == APR_SUCCESS) {
+			if (rv == APR_SUCCESS)
+				apr_proc_mutex_unlock (runmono_mutex);
+
+			return APR_SUCCESS;
+		}
 	}
 
 	ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
 		      "Failed connecting and child didn't exit!");
 
+	if (rv == APR_SUCCESS)
+		apr_proc_mutex_unlock (runmono_mutex);
+
+	apr_socket_close (*sock);
 	return -1;
 }
 
@@ -862,7 +842,9 @@ send_headers (request_rec *r, int fd)
 static int
 mono_execute_request (request_rec *r)
 {
-	int fd;
+	apr_socket_t *sock;
+	apr_os_sock_t fd;
+	apr_status_t rv;
 	int command;
 	int result;
 	int input;
@@ -871,40 +853,43 @@ mono_execute_request (request_rec *r)
 	mono_server_rec *server_conf;
 
 	server_conf = ap_get_module_config (r->server->module_config, &mono_module);
-	DEBUG_PRINT (2, "Tengo server conf: %X %X", server_conf, server_conf->filename);
 
-	fd = setup_socket (r->pool, server_conf);
+#ifdef APACHE13
+	sock = apr_pcalloc (r->pool, sizeof (apr_socket_t));
+#endif
+	rv = setup_socket (&sock, server_conf, r->pool);
 	DEBUG_PRINT (2, "After setup_socket");
-	if (fd == -1)
+	if (rv != APR_SUCCESS)
 		return HTTP_SERVICE_UNAVAILABLE;
 
+	apr_os_sock_get (&fd, sock);
 	DEBUG_PRINT (2, "Writing method: %s", r->method);
 	if (write_data_string_no_prefix (fd, r->method) <= 0) {
-		close (fd);
+		apr_socket_close (sock);
 		return HTTP_SERVICE_UNAVAILABLE;
 	}
 
 	DEBUG_PRINT (2, "Writing uri: %s", r->uri);
 	if (write_data_string_no_prefix (fd, r->uri) <= 0) {
-		close (fd);
+		apr_socket_close (sock);
 		return HTTP_SERVICE_UNAVAILABLE;
 	}
 
 	DEBUG_PRINT (2, "Writing query string: %s", request_get_query_string (r));
 	if (write_data_string_no_prefix (fd, request_get_query_string (r)) < 0) {
-		close (fd);
+		apr_socket_close (sock);
 		return HTTP_SERVICE_UNAVAILABLE;
 	}
 
 	DEBUG_PRINT (2, "Writing protocol: %s", r->protocol);
 	if (write_data_string_no_prefix (fd, r->protocol) <= 0) {
-		close (fd);
+		apr_socket_close (sock);
 		return HTTP_SERVICE_UNAVAILABLE;
 	}
 	
 	DEBUG_PRINT (2, "Sending headers");
 	if (!send_headers (r, fd)) {
-		close (fd);
+		apr_socket_close (sock);
 		return HTTP_SERVICE_UNAVAILABLE;
 	}
 		
@@ -916,7 +901,7 @@ mono_execute_request (request_rec *r)
 		}
 	} while (input > 0 && result == TRUE);
 
-	close (fd);
+	apr_socket_close (sock);
 	if (input <= 0)
 		status = HTTP_INTERNAL_SERVER_ERROR;
 
@@ -934,12 +919,32 @@ mono_handler (request_rec *r)
 	return mono_execute_request (r);
 }
 
+static int
+create_runmono_mutex (apr_pool_t *ptemp)
+{
+	char *fname, *tmp;
+
+	tmp = (char *) apr_pcalloc (ptemp, L_tmpnam);
+	tmp = tmpnam (tmp);
+	fname = apr_psprintf (pconf, "%s.%d", tmp, getpid ());
+
+	DEBUG_PRINT (0, "fname: %s", fname);
+#ifdef APACHE2
+	return apr_proc_mutex_create (&runmono_mutex, fname, APR_LOCK_DEFAULT, pconf);
+#else
+	runmono_mutex = ap_create_mutex (fname);
+	return 0;
+#endif
+}
+
 #ifdef APACHE13
 static void
 mono_init_handler (server_rec *s, pool *p)
 {
 	DEBUG_PRINT (0, "Initializing handler");
 	ap_add_version_component ("mod_mono/" VERSION);
+	pconf = p;
+	create_runmono_mutex (p);
 }
 #else
 static int
@@ -950,7 +955,8 @@ mono_init_handler (apr_pool_t *p,
 {
 	DEBUG_PRINT (0, "Initializing handler");
 	ap_add_version_component (p, "mod_mono/" VERSION);
-	return OK;
+	pconf = s->process->pconf;
+	return create_runmono_mutex (ptemp);
 }
 #endif
 
@@ -959,6 +965,9 @@ static const handler_rec mono_handlers [] = {
 	{ "mono", mono_handler },
 	{ NULL }
 };
+
+#define MAKE_CMD(name, function_name, description) \
+	{ #name, CONFIG_FUNCTION_NAME (function_name), NULL, RSRC_CONF, TAKE1, description }
 #else
 static void
 mono_register_hooks (apr_pool_t * p)
@@ -966,12 +975,7 @@ mono_register_hooks (apr_pool_t * p)
 	ap_hook_handler (mono_handler, NULL, NULL, APR_HOOK_FIRST);
 	ap_hook_post_config (mono_init_handler, NULL, NULL, APR_HOOK_MIDDLE);
 }
-#endif
 
-#ifdef APACHE13
-#define MAKE_CMD(name, function_name, description) \
-	{ #name, CONFIG_FUNCTION_NAME (function_name), NULL, RSRC_CONF, TAKE1, description }
-#else
 #define MAKE_CMD(name, function_name, description) \
 	AP_INIT_TAKE1 (#name, CONFIG_FUNCTION_NAME(function_name), NULL, RSRC_CONF, description)
 #endif

@@ -1,3 +1,11 @@
+2004-07-07 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: removed unused commands, unified setting status code
+	and message into one single command. Now apache handles closing the
+	socket used to connect to mod-mono-server and waiting, terminating or
+	killing the forked process when the configuration is reloaded or apache
+	is shut down. When we get several request, don't fork more than once.
+
 2004-07-06 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* COPYING:
