@@ -6,7 +6,7 @@ AC_PROG_CC
 AM_PROG_LIBTOOL
 
 AC_C_BIGENDIAN
-if [ x$ac_cv_c_bigendian = xyes ] ; then
+if [ "x$ac_cv_c_bigendian" = "xyes" ] ; then
 	AC_DEFINE([MODMONO_BIGENDIAN],,[Compiling on a big-endian machine.])
 fi
 	
@@ -35,7 +35,7 @@ AC_ARG_ENABLE(debug,
 	[ ---enable-debug           build mod_mono in debug mode],
 	enable_debug=$enableval, enable_debug=no)
 AC_MSG_RESULT($enable_debug)
-if x$enable_debug = xyes ; then
+if [ "x$enable_debug" = "xyes" ] ; then
 	CFLAGS="$CFLAGS -DDEBUG"
 fi
 
@@ -309,7 +309,7 @@ AC_MSG_RESULT($DFLT_MONO_CONFIG_DIR))
 
 found_apr_socket_connect=no
 AC_CHECK_LIB(apr-0, apr_socket_connect, found_apr_socket_connect=yes)
-if test x$found_apr_socket_connect = xyes ; then
+if test "x$found_apr_socket_connect" = "xyes" ; then
 	AC_DEFINE([HAVE_APR_SOCKET_CONNECT],,[apr_socket_connect is present])
 fi
 
