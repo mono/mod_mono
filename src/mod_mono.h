@@ -26,9 +26,11 @@
 #include <unistd.h>
 #include <errno.h>
 #include <netdb.h>
-#include <sys/wait.h>
-#include <sys/un.h>
 #include <sys/select.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/un.h>
+#include <sys/wait.h>
 #include "httpd.h"
 #include "http_core.h"
 #include "http_log.h"
@@ -38,7 +40,9 @@
 #ifdef APACHE13
 /* Functions needed for making Apache 1.3 module as similar
 as possible to Apache 2 module, reducing ifdefs in the code itself*/
-
+#ifdef HAVE_HTTP_PROTOCOL_H
+#include "http_protocol.h"
+#endif
 #define STATUS_AND_SERVER NULL
 #ifndef TRUE
 #define TRUE 1
@@ -63,22 +67,34 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #define apr_os_sock_t int
 #define APR_SUCCESS 0
 #define apr_os_sock_get(fdptr, sock) (*(fdptr) = (sock)->fd)
+#define apr_socket_timeout_set(sock, t) ((sock)->timeout = t)
 #define apr_socket_close(sock) (ap_pclosesocket ((sock)->pool, (sock)->fd))
 #define APR_INET PF_INET
 
+typedef time_t apr_interval_time_t;
+typedef size_t apr_size_t;
 typedef struct apr_socket apr_socket_t;
 struct apr_socket {
 	apr_pool_t *pool;
 	int fd;
+	time_t timeout;
 };
 
+typedef struct mysockaddr apr_sockaddr_t;
 struct mysockaddr {
 	apr_pool_t *pool;
 	size_t  addrlen;
 	struct sockaddr *addr;
 };
 
-typedef struct mysockaddr apr_sockaddr_t;
+static apr_status_t
+apr_wait_for_io_or_timeout (void *unused, apr_socket_t *s, int for_read);
+
+static apr_status_t
+apr_socket_send (apr_socket_t *sock, const char *buf, apr_size_t *len);
+
+static apr_status_t
+apr_socket_recv (apr_socket_t *sock, char *buf, apr_size_t *len);
 
 #include <ap_alloc.h>
 /* End Apache 1.3 only */
@@ -87,6 +103,7 @@ typedef struct mysockaddr apr_sockaddr_t;
 #define STATUS_AND_SERVER 0, NULL
 #include <http_protocol.h>
 #include <apr_strings.h>
+#include <apr_support.h>
 /* End Apache 2 only */
 #endif
 

@@ -34,6 +34,8 @@ DEFINE_MODULE (mono_module);
 
 /* Configuration pool. Cleared on restart. */
 static apr_pool_t *pconf;
+/* server timeout for every request in milliseconds */
+static int server_timeout;
 
 typedef struct {
 	char *filename;
@@ -146,19 +148,19 @@ connection_get_remote_name (request_rec *r)
 #endif
 }
 
+/* Do nothing
+ * This does a kind of final flush which is not what we want.
+ * It caused bug 60117.
 static void
 connection_flush (request_rec *r)
 {
-/* Do nothing
- * This does a kind of final flush which is not what we want.
- * These caused bug 60117.
 #ifdef APACHE13
 	ap_rflush (r);
 #else
 	ap_flush_conn (r->connection);
 #endif
-*/
 }
+*/
 
 static void
 set_response_header (request_rec *r,
@@ -182,48 +184,69 @@ setup_client_block (request_rec *r)
 }
 
 static int
-write_data (int fd, const void *str, int size)
+write_data (apr_socket_t *sock, const void *str, int size)
 {
-	return write (fd, str, size);
+	int prevsize = size;
+
+	if (apr_wait_for_io_or_timeout (NULL, sock, 0) != 0)
+		return -1;
+
+	if (apr_socket_send (sock, str, &size) != APR_SUCCESS)
+		return -1;
+
+	return (prevsize == size) ? size : -1;
 }
 
 static int
-write_data_string_no_prefix (int fd, const char *str)
+write_data_string (apr_socket_t *sock, const char *str)
 {
 	int l;
 	int lel;
 
 	l = (str == NULL) ? 0 : strlen (str);
 	lel = LE_FROM_INT (l);
-	if (write (fd, &lel, sizeof (int)) != sizeof (int))
+	if (write_data (sock, &lel, sizeof (int)) != sizeof (int))
 		return -1;
 
 	if (l == 0)
 		return 0;
 
-	return write (fd, str, l);
+	return write_data (sock, str, l);
 }
 
 static int
-write_data_string (int fd, const char *str)
+read_data (apr_socket_t *sock, void *ptr, int size)
 {
-	return write_data_string_no_prefix (fd, str);
+	int prevsize = size;
+
+	if (apr_wait_for_io_or_timeout (NULL, sock, 1) != 0)
+		return -1;
+
+	if (apr_socket_recv (sock, ptr, &size) != APR_SUCCESS)
+		return -1;
+
+	return (prevsize == size) ? size : -1;
 }
 
 static char *
-read_data_string (apr_pool_t *pool, int fd, char **ptr, int *size)
+read_data_string (apr_pool_t *pool, apr_socket_t *sock, char **ptr, int *size)
 {
 	int l, count;
 	char *buf;
+	apr_status_t result;
 
-	if (read (fd, &l, sizeof (int)) != sizeof (int))
+	if (read_data (sock, &l, sizeof (int)) == -1)
 		return NULL;
 
 	l = INT_FROM_LE (l);
 	buf = apr_pcalloc (pool, l + 1);
 	count = l;
 	while (count > 0) {
-		count -= read (fd, buf + l - count, count);
+		result = read_data (sock, buf + l - count, count);
+		if (result == -1)
+			return NULL;
+
+		count -= result;
 	}
 
 	if (ptr)
@@ -236,13 +259,7 @@ read_data_string (apr_pool_t *pool, int fd, char **ptr, int *size)
 }
 
 static int
-read_data (int fd, void *ptr, int size)
-{
-	return (read (fd, ptr, size) == size) ? size : -1;
-}
-
-static int
-do_command (int command, int fd, request_rec *r, int *result)
+do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 {
 	int size;
 	char *str;
@@ -257,30 +274,31 @@ do_command (int command, int fd, request_rec *r, int *result)
 		return FALSE;
 	}
 
+	DEBUG_PRINT (2, "Command received: %s", cmdNames [command]);
 	ap_log_error (APLOG_MARK, APLOG_DEBUG, STATUS_AND_SERVER,
 			"Command received: %s", cmdNames [command]);
 	*result = OK;
 	switch (command) {
 	case SEND_FROM_MEMORY:
-		if (read_data_string (r->pool, fd, &str, &size) == NULL) {
+		if (read_data_string (r->pool, sock, &str, &size) == NULL) {
 			status = -1;
 			break;
 		}
 		request_send_response_from_memory (r, str, size);
 		break;
 	case GET_SERVER_VARIABLE:
-		if (read_data_string (r->pool, fd, &str, NULL) == NULL) {
+		if (read_data_string (r->pool, sock, &str, NULL) == NULL) {
 			break;
 		}
 		str = (char *) apr_table_get (r->subprocess_env, str);
-		status = write_data_string (fd, str);
+		status = write_data_string (sock, str);
 		break;
 	case SET_RESPONSE_HEADER:
-		if (read_data_string (r->pool, fd, &str, NULL) == NULL) {
+		if (read_data_string (r->pool, sock, &str, NULL) == NULL) {
 			status = -1;
 			break;
 		}
-		if (read_data_string (r->pool, fd, &str2, NULL) == NULL) {
+		if (read_data_string (r->pool, sock, &str2, NULL) == NULL) {
 			status = -1;
 			break;
 		}
@@ -289,10 +307,10 @@ do_command (int command, int fd, request_rec *r, int *result)
 	case GET_LOCAL_PORT:
 		i = connection_get_local_port (r);
 		i = LE_FROM_INT (i);
-		status = write_data (fd, &i, sizeof (int));
+		status = write_data (sock, &i, sizeof (int));
 		break;
-	case FLUSH:
-		connection_flush (r);
+	case FLUSH: /* The case will be removed after next release */
+		/* connection_flush (r); */
 		break;
 	case CLOSE:
 		return FALSE;
@@ -300,20 +318,20 @@ do_command (int command, int fd, request_rec *r, int *result)
 	case SHOULD_CLIENT_BLOCK:
 		size = ap_should_client_block (r);
 		size = LE_FROM_INT (size);
-		status = write_data (fd, &size, sizeof (int));
+		status = write_data (sock, &size, sizeof (int));
 		break;
 	case SETUP_CLIENT_BLOCK:
 		if (setup_client_block (r) != APR_SUCCESS) {
 			size = LE_FROM_INT (-1);
-			status = write_data (fd, &size, sizeof (int));
+			status = write_data (sock, &size, sizeof (int));
 			break;
 		}
 
 		size = LE_FROM_INT (0);
-		status = write_data (fd, &size, sizeof (int));
+		status = write_data (sock, &size, sizeof (int));
 		break;
 	case GET_CLIENT_BLOCK:
-		status = read_data (fd, &i, sizeof (int));
+		status = read_data (sock, &i, sizeof (int));
 		if (status == -1)
 			break;
 
@@ -321,16 +339,16 @@ do_command (int command, int fd, request_rec *r, int *result)
 		str = apr_pcalloc (r->pool, i);
 		i = ap_get_client_block (r, str, i);
 		i = LE_FROM_INT (i);
-		status = write_data (fd, &i, sizeof (int));
+		status = write_data (sock, &i, sizeof (int));
 		i = INT_FROM_LE (i);
-		status = write (fd, str, i);
+		status = write_data (sock, str, i);
 		break;
 	case SET_STATUS:
-		status = read_data (fd, &i, sizeof (int));
+		status = read_data (sock, &i, sizeof (int));
 		if (status == -1)
 			break;
 
-		if (read_data_string (r->pool, fd, &str, NULL) == NULL) {
+		if (read_data_string (r->pool, sock, &str, NULL) == NULL) {
 			status = -1;
 			break;
 		}
@@ -412,6 +430,73 @@ apr_socket_connect (apr_socket_t *sock, apr_sockaddr_t *sa)
 	return APR_SUCCESS;
 }
 
+static apr_status_t
+apr_socket_send (apr_socket_t *sock, const char *buf, apr_size_t *len)
+{
+	int result;
+	int total;
+
+	total = 0;
+	do {
+		result = write (sock->fd, buf + total, (*len) - total);
+		if (result >= 0)
+			total += result;
+	} while ((result >= 0 && total < *len) || (result == -1 && errno == EINTR));
+
+	return (total == *len) ? 0 : -1;
+}
+
+static apr_status_t
+apr_socket_recv (apr_socket_t *sock, char *buf, apr_size_t *len)
+{
+	int result;
+	int total;
+	apr_os_sock_t sock_fd;
+
+	apr_os_sock_get (&sock_fd, sock);
+	total = 0;
+	do {
+		result = read (sock_fd, buf + total, (*len) - total);
+		if (result >= 0)
+			total += result;
+	} while ((result >= 0 && total < *len) || (result == -1 && errno == EINTR));
+
+	return (total == *len) ? 0 : -1;
+}
+
+static apr_status_t
+apr_wait_for_io_or_timeout (void *unused, apr_socket_t *s, int for_read)
+{
+	fd_set fds;
+	int ret;
+	struct timeval tv, *tvptr;
+	div_t divvy;
+	time_t timeout;
+	int fd;
+
+	fd = s->fd;
+	timeout = s->timeout;
+	divvy = div (timeout, 1000);
+	do {
+		FD_ZERO (&fds);
+		FD_SET (fd, &fds);
+		if (timeout >= 0) {
+			tv.tv_sec = divvy.quot;
+			tv.tv_usec = divvy.rem;
+			tvptr = &tv;
+		} else {
+			tvptr = NULL;
+		}
+
+		if (for_read)
+			ret = select (fd + 1, &fds, NULL, NULL, tvptr);
+		else
+			ret = select (fd + 1, NULL, &fds, NULL, tvptr);
+
+	} while (ret == -1 && errno == EINTR);
+
+	return (ret == 1) ? 0 : -1;
+}
 #elif !defined (HAVE_APR_SOCKET_CONNECT)
 	/* libapr-0 <= 0.9.3 (or 0.9.2?) */
 #	define apr_socket_connect apr_connect
@@ -553,7 +638,6 @@ static void
 fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 {
 	pid_t pid;
-	int status;
 	int i;
 	const int MAXARGS = 20;
 	char *argv [MAXARGS];
@@ -565,9 +649,6 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	char *wapidir;
 	int max_memory = 0;
 	int max_cpu_time = 0;
-#ifdef HAVE_SETRLIMIT
-	struct rlimit limits;
-#endif
 
 	if (server_conf->max_memory != NULL)
 		max_memory = atoi (server_conf->max_memory);
@@ -704,9 +785,6 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 static apr_status_t
 setup_socket (apr_socket_t **sock, mono_server_rec *server_conf, apr_pool_t *pool)
 {
-	char *filename;
-	pid_t pid;
-	int status;
 	int i;
 	apr_status_t rv;
 	int family;
@@ -726,8 +804,9 @@ setup_socket (apr_socket_t **sock, mono_server_rec *server_conf, apr_pool_t *poo
 		return rv;
 	}
 
+	apr_socket_timeout_set (*sock, server_timeout);
 	rv = try_connect (server_conf, sock, pool);
-	DEBUG_PRINT (1, "try_connect: %d", (void *) rv);
+	DEBUG_PRINT (1, "try_connect: %d", (int) rv);
 	if (rv == APR_SUCCESS)
 		return rv;
 
@@ -803,86 +882,123 @@ setup_socket (apr_socket_t **sock, mono_server_rec *server_conf, apr_pool_t *poo
 }
 
 static int
-send_headers (request_rec *r, int fd)
+write_string_to_buffer (char *buffer, int offset, const char *str)
+{
+	int tmp;
+	int le;
+
+	buffer += offset;
+	tmp = (str != NULL) ? strlen (str) : 0;
+	le = LE_FROM_INT (tmp);
+	(*(int *) buffer) = le;
+	if (tmp > 0) {
+		buffer += sizeof (int);
+		memcpy (buffer, str, tmp);
+	}
+
+	return tmp + sizeof (int);
+}
+
+static int
+send_headers (request_rec *r, apr_socket_t *sock)
 {
 	const apr_array_header_t *elts;
 	const apr_table_entry_t *t_elt;
 	const apr_table_entry_t *t_end;
 	int tmp;
+	int size;
+	char *buffer;
+	char *ptr;
 
 	elts = apr_table_elts (r->headers_in);
 	DEBUG_PRINT (3, "Elements: %d", (int) elts->nelts);
-	tmp = LE_FROM_INT (elts->nelts);
-	write (fd, &tmp, sizeof (int));
 	if (elts->nelts == 0)
-		return TRUE;
+		return (write_data (sock, &elts->nelts, sizeof (int)) == sizeof (int));
 
+	size = sizeof (int);
+	t_elt = (const apr_table_entry_t *) (elts->elts);
+	t_end = t_elt + elts->nelts;
+	tmp = 0;
+
+	do {
+		size += sizeof (int) * 2;
+		size += strlen (t_elt->key);
+		size += strlen (t_elt->val);
+		t_elt++;
+		tmp++;
+	} while (t_elt < t_end);
+
+	buffer = apr_pcalloc (r->pool, size);
+	ptr = buffer;
+
+	tmp = LE_FROM_INT (tmp);
+	(*(int *) ptr) = tmp;
+	ptr += sizeof (int);
 	t_elt = (const apr_table_entry_t *) (elts->elts);
 	t_end = t_elt + elts->nelts;
 
 	do {
 		DEBUG_PRINT (3, "%s: %s", t_elt->key, t_elt->val);
-		if (write_data_string_no_prefix (fd, t_elt->key) <= 0)
-			return FALSE;
-		if (write_data_string_no_prefix (fd, t_elt->val) < 0)
-			return FALSE;
+		ptr += write_string_to_buffer (ptr, 0, t_elt->key);
+		ptr += write_string_to_buffer (ptr, 0, t_elt->val);
 
 		t_elt++;
 	} while (t_elt < t_end);
 
-	return TRUE;
+	return (write_data (sock, buffer, size) == size);
 }
 
 static int
-send_initial_data (request_rec *r, int fd)
+send_initial_data (request_rec *r, apr_socket_t *sock)
 {
 	int i;
-	char *str;
+	char *str, *ptr;
+	int size;
 
-	DEBUG_PRINT (2, "Writing method: %s", r->method);
-	if (write_data_string_no_prefix (fd, r->method) <= 0)
+	DEBUG_PRINT (2, "Send init1");
+	size = ((r->method != NULL) ? strlen (r->method) : 0) + sizeof (int);
+	size += ((r->uri != NULL) ? strlen (r->uri) : 0) + sizeof (int);
+	size += ((r->args != NULL) ? strlen (r->args) : 0) + sizeof (int);
+	size += ((r->protocol != NULL) ? strlen (r->protocol) : 0) + sizeof (int);
+
+	ptr = str = apr_pcalloc (r->pool, size);
+	ptr += write_string_to_buffer (ptr, 0, r->method);
+	ptr += write_string_to_buffer (ptr, 0, r->uri);
+	ptr += write_string_to_buffer (ptr, 0, r->args);
+	ptr += write_string_to_buffer (ptr, 0, r->protocol);
+	if (write_data (sock, str, size) != size)
 		return -1;
 
-	DEBUG_PRINT (2, "Writing uri: %s", r->uri);
-	if (write_data_string_no_prefix (fd, r->uri) <= 0)
+	DEBUG_PRINT (2, "Sending headers (init2)");
+	if (!send_headers (r, sock))
 		return -1;
 
-	DEBUG_PRINT (2, "Writing query string: %s", r->args ? r->args : "");
-	if (write_data_string_no_prefix (fd, r->args) < 0)
-		return -1;
+	DEBUG_PRINT (2, "Done headers (init2)");
 
-	DEBUG_PRINT (2, "Writing protocol: %s", r->protocol);
-	if (write_data_string_no_prefix (fd, r->protocol) <= 0)
-		return -1;
-	
-	DEBUG_PRINT (2, "Sending headers");
-	if (!send_headers (r, fd))
-		return -1;
+	size = strlen (r->connection->local_ip) + sizeof (int);
+	size += sizeof (int);
+	size += strlen (r->connection->remote_ip) + sizeof (int);
+	size += sizeof (int);
+	size += strlen (connection_get_remote_name (r)) + sizeof (int);
 
-	DEBUG_PRINT (2, "Sending local address");
-	if (write_data_string (fd, r->connection->local_ip) < 0)
-		return -1;
-
-	DEBUG_PRINT (2, "Sending server port");
+	ptr = str = apr_pcalloc (r->pool, size);
+	ptr += write_string_to_buffer (ptr, 0, r->connection->local_ip);
 	i = request_get_server_port (r);
 	i = LE_FROM_INT (i);
-	if (write_data (fd, &i, sizeof (int)) != sizeof (int))
-		return -1;
-
-	DEBUG_PRINT (2, "Sending remote address");
-	if (write_data_string (fd, r->connection->remote_ip) < 0)
-		return -1;
-
-	DEBUG_PRINT (2, "Sending remote port");
+	(*(int *) ptr) = i;
+	ptr += sizeof (int);
+	ptr += write_string_to_buffer (ptr, 0, r->connection->remote_ip);
 	i = connection_get_remote_port (r->connection);
 	i = LE_FROM_INT (i);
-	if (write_data (fd, &i, sizeof (int)) != sizeof (int))
+	(*(int *) ptr) = i;
+	ptr += sizeof (int);
+	ptr += write_string_to_buffer (ptr, 0, connection_get_remote_name (r));
+
+	DEBUG_PRINT (2, "Sending init3");
+	if (write_data (sock, str, size) != size)
 		return -1;
 
-	DEBUG_PRINT (2, "Sending remote name");
-	str = (char *) connection_get_remote_name (r);
-	if (write_data_string (fd, str) < 0)
-		return -1;
+	DEBUG_PRINT (2, "Done init3");
 
 	return 0;
 }
@@ -891,13 +1007,11 @@ static int
 mono_execute_request (request_rec *r)
 {
 	apr_socket_t *sock;
-	apr_os_sock_t fd;
 	apr_status_t rv;
 	int command;
 	int result;
-	int input;
+	apr_status_t input;
 	int status;
-	char *str;
 	mono_server_rec *server_conf;
 
 	server_conf = ap_get_module_config (r->server->module_config, &mono_module);
@@ -909,22 +1023,21 @@ mono_execute_request (request_rec *r)
 	if (rv != APR_SUCCESS)
 		return HTTP_SERVICE_UNAVAILABLE;
 
-	apr_os_sock_get (&fd, sock);
-	if (send_initial_data (r, fd) != 0) {
+	if (send_initial_data (r, sock) != 0) {
 		apr_socket_close (sock);
 		return HTTP_SERVICE_UNAVAILABLE;
 	}
 	
 	do {
-		input = read (fd, &command, sizeof (int));
-		if (input > 0) {
+		input = read_data (sock, (char *) &command, sizeof (int));
+		if (input == sizeof (int)) {
 			command = INT_FROM_LE (command);
-			result = do_command (command, fd, r, &status);
+			result = do_command (command, sock, r, &status);
 		}
-	} while (input > 0 && result == TRUE);
+	} while (input == sizeof (int) && result == TRUE);
 
 	apr_socket_close (sock);
-	if (input <= 0)
+	if (input != sizeof (int))
 		status = HTTP_INTERNAL_SERVER_ERROR;
 
 	DEBUG_PRINT (2, "Done. Status: %d", status);
@@ -948,6 +1061,7 @@ mono_init_handler (server_rec *s, pool *p)
 	DEBUG_PRINT (0, "Initializing handler");
 	ap_add_version_component ("mod_mono/" VERSION);
 	pconf = p;
+	server_timeout = s->timeout * 1000;
 }
 #else
 static int
@@ -959,6 +1073,7 @@ mono_init_handler (apr_pool_t *p,
 	DEBUG_PRINT (0, "Initializing handler");
 	ap_add_version_component (p, "mod_mono/" VERSION);
 	pconf = s->process->pconf;
+	server_timeout = s->timeout * 1000;
 	return OK;
 }
 #endif
@@ -1079,7 +1194,7 @@ MAKE_CMD (MonoMaxCPUTime, max_cpu_time,
 	" Default value: system default"
 	),
 #endif
-NULL
+	{ NULL }
 };
 
 #ifdef APACHE13

@@ -11,3 +11,5 @@ configure
 include
 libtool
 ltmain.sh
+mod_mono.conf
+

@@ -1,5 +1,14 @@
 2004-09-09 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
+	* src/mod_mono.c: FLUSH is a noop now. Will be removed. Added send, recv
+	and timeout functions for apache 1.3 module. Buffer initial data for
+	writing. Every read/write may timeout now.
+
+	* src/mod_mono.h: added new declarations and headers to fix all
+	warnings.
+
+2004-09-09 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
 	* INSTALL: renamed libmod_mono.so to mod_mono.so.
 	* configure.in: removed old module stuff. Fixed apr_socket_connect
 	test, check for http_protocol.h
