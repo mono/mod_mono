@@ -40,5 +40,26 @@ The following should fix it
 
 chown -R apache.apache /home/user/mono/install/xsp/server/test
 
+3) System.Web.HttpException: String returned by HttpRuntime.GetResourceStringFromResourceManager
+
+Make sure a valid machine.config file is present 
+As of Mono 0.18, the rpm version installs it in /etc/mono/machine.config,
+but the runtime expects it in /usr/etc/mono/machine.config, make sure you copy it there
+
+4) I just get a blank page, and no error in the error_log
+
+This is a bug that needs to be tracked down. For now try commenting the following in the machine.config file
+Remove or comment out the following from the machine.config file
+
+ <section name="authentication" type="System.Web.Configuration.AuthenticationConfigHandler, System.Web" />
+
+ <add name="FormsAuthentication" type="System.Web.Security.FormsAuthenticationModule" />
+ <authentication mode="Forms">
+     <forms name=".MONOAUTH" loginUrl="login.aspx" protection="All" timeout="30" path="/">
+         <credentials passwordFormat="Clear">
+            <!--<user name="gonzalo" password="gonz"/>-->
+         </credentials>
+     </forms>
+ </authentication>
 
 
