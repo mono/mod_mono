@@ -634,7 +634,9 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	pid_t pid;
 	int status;
 	int i;
-	char *argv [14];
+	const int maxargs = 14;
+	char *argv [maxargs];
+	int argi;
 	char *path;
 	char *tmp;
 	char *monodir;
@@ -691,36 +693,36 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	mkdir (wapidir, 0700);
 	chmod (wapidir, 0700);
 	setenv ("MONO_SHARED_DIR", server_conf->wapidir, 1);
-	argv [0] = server_conf->executable_path;
-	argv [1] = server_conf->server_path;
-	argv [2] = "--filename";
-	argv [3] = server_conf->filename;
-	argv [4] = "--applications";
-	argv [5] = server_conf->applications;
-	argv [6] = "--nonstop";
+
+	memset (argv, 0, sizeof (char *) * maxargs);
+	argi = 0;
+	argv [argi++] = server_conf->executable_path;
+	argv [argi++] = server_conf->server_path;
+	argv [argi++] = "--filename";
+	argv [argi++] = server_conf->filename;
+	argv [argi++] = "--applications";
+	argv [argi++] = server_conf->applications;
+	argv [argi++] = "--nonstop";
         if (server_conf->document_root != NULL) {
-                argv [7] = "--root";
-                argv [8] = server_conf->document_root;
-        } else {
-                argv[7] = NULL;
-                argv[8] = NULL;
+                argv [argi++] = "--root";
+                argv [argi++] = server_conf->document_root;
         }
+
 	if (server_conf->appconfig_file != NULL) {
-		argv[9] = "--appconfigfile";
-		argv[10] = server_conf->appconfig_file;
-	} else {
-		argv[9] = NULL;
-		argv[10] = NULL;
-	}
-	if (server_conf->appconfig_dir != NULL) {
-		argv[11] = "--appconfigdir";
-		argv[12] = server_conf->appconfig_dir;
-	} else {
-		argv[11] = NULL;
-		argv[12] = NULL;
+		argv [argi++] = "--appconfigfile";
+		argv [argi++] = server_conf->appconfig_file;
 	}
 
-        argv [13] = NULL;
+	if (server_conf->appconfig_dir != NULL) {
+		argv [argi++] = "--appconfigdir";
+		argv [argi++] = server_conf->appconfig_dir;
+	}
+	// The last element in the argv array must always be NULL
+	// to terminate the array for execv().
+
+	// Any new argi++'s that are added here must also increase
+	// the maxargs argument at the top of this method to prevent
+	// array out-of-bounds. 
 
 	ap_log_error (APLOG_MARK, APLOG_DEBUG,
 		      STATUS_AND_SERVER,

@@ -1,3 +1,8 @@
+2004-05-25  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: patch from Andrew Arnott that fixes parameters passed
+	to mod-mono-server.
+
 2004-05-19  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* NEWS: updated
