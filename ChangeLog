@@ -1,3 +1,20 @@
+2004-09-09 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* INSTALL: renamed libmod_mono.so to mod_mono.so.
+	* configure.in: removed old module stuff. Fixed apr_socket_connect
+	test, check for http_protocol.h
+	* mod_mono.conf.in: renamed libmod_mono.so to mod_mono.so.
+	* src/.cvsignore:  renamed libmod_mono.so to mod_mono.so.
+	* src/Makefile.am: removed old module stuff, renamed to mod_mono.so,
+	added -Wall.
+
+	* src/ApacheApplicationHost.cs: Removed.
+	* src/ApacheWorkerRequest.cs: Removed.
+	* src/IApplicationHost.cs: Removed.
+	* src/MonoWorkerRequest.cs: Removed.
+	* src/Request.cs: Removed.
+	* src/makedll.mak: Removed.
+	* src/mod_mono_old.c: Removed.
 
 2004-08-25 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 

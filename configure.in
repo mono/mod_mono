@@ -250,22 +250,6 @@ AC_ARG_WITH(crosspkgdir, [  --with-crosspkgdir=/path/to/pkg-config/dir],
         fi
 )
 
-dnl Check for mono.pc if building mod_mono_old is requested
-MONO_CFLAGS=""
-MONO_LIBS=""
-dnl if test "yes" = "$enable_old_module" ; then
-dnl 	MONO_REQUIRED_VERSION=0.28.99
-dnl 	PKG_CHECK_MODULES(MONO,
-dnl 			  mono >= $MONO_REQUIRED_VERSION,
-dnl 			  enable_old_module="yes",
-dnl 			  enable_old_module="no")
-
-dnl 	if test "$enable_old_module" = "no" ; then
-dnl 		AC_MSG_ERROR([Building old module requested but no mono.pc found. $MONO_PKG_ERRORS])
-dnl 	fi
-dnl fi
-
-dnl AM_CONDITIONAL(BUILD_OLD_MODULE, test "yes" = "$enable_old_module")
 AM_CONDITIONAL(APACHE2, test "$APACHE_VER" = "2.0")
 if test "$APACHE_VER" = "2.0" ; then
 dnl Sources are recompiled if we change the target version
@@ -276,7 +260,7 @@ AC_C_BIGENDIAN
 AC_CHECK_FUNCS([setenv putenv setrlimit])
 
 found_apr_socket_connect=no
-AC_CHECK_LIB(apr, apr_socket_connect, found_apr_socket_connect=yes)
+AC_CHECK_LIB(apr-0, apr_socket_connect, found_apr_socket_connect=yes)
 if test x$found_apr_socket_connect = xyes ; then
 	AC_DEFINE([HAVE_APR_SOCKET_CONNECT],,[apr_socket_connect is present])
 fi
@@ -307,15 +291,17 @@ fi
 AC_MSG_RESULT($MONO_PREFIX)
 AC_DEFINE_UNQUOTED([MONO_PREFIX],"$MONO_PREFIX",[Mono installation prefix])
 
+dnl Prevent the 'not found by the preprocessor' message.
+CPPFLAGS="$CPPFLAGS $CFLAGS `$APXS -q EXTRA_CPPFLAGS`"
+CFLAGS="$CFLAGS `$APXS -q EXTRA_CFLAGS`"
+AC_CHECK_HEADERS([http_protocol.h])
+
 
 AC_SUBST(APXS_LIBEXECDIR)
 AC_SUBST(APXS_SYSCONFDIR)
 AC_SUBST(APXS)
 AC_SUBST(AP_INCLUDES)
 AC_SUBST(CFLAGS)
-AC_SUBST(MONO_CFLAGS)
-AC_SUBST(MONO_LIBS)
-AC_SUBST(MONO_PREFIX)
 
 AC_OUTPUT(
 Makefile

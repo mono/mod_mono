@@ -1,1 +1,1 @@
-LoadModule mono_module @APXS_LIBEXECDIR@/libmod_mono.so
+LoadModule mono_module @APXS_LIBEXECDIR@/mod_mono.so

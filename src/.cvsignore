@@ -2,8 +2,6 @@
 .libs
 Makefile
 Makefile.in
-ModMono.dbg
-ModMono.dll
-libmod_mono.la
-libmod_mono_old.la
+mod_mono.la
+mod_mono_old.la
 mod_mono.lo
