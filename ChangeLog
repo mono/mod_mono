@@ -1,3 +1,9 @@
+2004-07-10 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: added listen port and listen address used when communicating
+	with mod-mono-server over a TCP socket. Implemented apr_sockaddr_info_get and
+	apr_socket_connect for apache 1.3. Pass --debug option when forking mono.
+
 2004-07-08 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: removed more commands and send their data upon

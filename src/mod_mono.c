@@ -25,6 +25,7 @@
 #endif
 
 #include <errno.h>
+#include <netdb.h>
 #include <sys/wait.h>
 #include <sys/un.h>
 #include <sys/select.h>
@@ -71,6 +72,15 @@ struct apr_socket {
 
 #define apr_os_sock_get(fdptr, sock) (*(fdptr) = (sock)->fd)
 #define apr_socket_close(sock) (ap_pclosesocket ((sock)->pool, (sock)->fd))
+#define APR_INET PF_INET
+
+struct mysockaddr {
+	apr_pool_t *pool;
+	size_t  addrlen;
+	struct sockaddr *addr;
+};
+
+typedef struct mysockaddr apr_sockaddr_t;
 
 #include <ap_alloc.h>
 /* End Apache 1.3 only */
@@ -94,6 +104,7 @@ struct apr_socket {
 #define APPCONFIG_FILE		NULL
 #define APPCONFIG_DIR		NULL
 #define SOCKET_FILE		"/tmp/mod_mono_server"
+#define LISTEN_ADDRESS		"127.0.0.1"
 
 /* Converts every int sent into little endian */
 #ifdef WORDS_BIGENDIAN
@@ -190,6 +201,8 @@ typedef struct {
 	char *document_root;
 	char *appconfig_file;
 	char *appconfig_dir;
+	char *listen_port;
+	char *listen_address;
 } mono_server_rec;
 
 CONFIG_FUNCTION (unix_socket, filename)
@@ -202,6 +215,8 @@ CONFIG_FUNCTION (wapidir, wapidir)
 CONFIG_FUNCTION (document_root, document_root)
 CONFIG_FUNCTION (appconfig_file, appconfig_file)
 CONFIG_FUNCTION (appconfig_dir, appconfig_dir)
+CONFIG_FUNCTION (listen_port, listen_port)
+CONFIG_FUNCTION (listen_address, listen_address)
 
 static void *
 create_mono_server_config (apr_pool_t *p, server_rec *s)
@@ -211,7 +226,7 @@ create_mono_server_config (apr_pool_t *p, server_rec *s)
 	DEBUG_PRINT (1, "create_mono_server_config");
 
 	server = apr_pcalloc (p, sizeof (mono_server_rec));
-	server->filename = SOCKET_FILE;
+	server->filename = NULL;
 	server->run_xsp = "True";
 	server->executable_path = EXECUTABLE_PATH;
 	server->path = MONO_PATH;
@@ -221,6 +236,8 @@ create_mono_server_config (apr_pool_t *p, server_rec *s)
 	server->document_root = DOCUMENT_ROOT;
 	server->appconfig_file = APPCONFIG_FILE;
 	server->appconfig_dir = APPCONFIG_DIR;
+	server->listen_port = NULL;
+	server->listen_address = NULL;
 
 	return server;
 }
@@ -491,20 +508,98 @@ do_command (int command, int fd, request_rec *r, int *result)
 	return TRUE;
 }
 
+#ifndef APACHE2
+static apr_status_t
+apr_sockaddr_info_get (apr_sockaddr_t **sa, const char *hostname,
+			int family, int port, int flags, apr_pool_t *p)
+{
+	struct addrinfo hints, *list;
+	int error;
+	struct sockaddr_in *addr;
+
+	if (port < 0 || port > 65535)
+		return EINVAL;
+
+
+	memset (&hints, 0, sizeof (hints));
+	hints.ai_family = family;
+	hints.ai_socktype = SOCK_STREAM;
+	error = getaddrinfo (hostname, NULL, &hints, &list);
+	if (error != 0) {
+		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+			"mod_mono: getaddrinfo failed (%s) hostname: '%s' port: '%d'.",
+			strerror (error), hostname, port);
+
+		return error;
+	}
+
+	*sa = apr_pcalloc (p, sizeof (apr_sockaddr_t));
+	(*sa)->pool = p;
+	(*sa)->addrlen = list->ai_addrlen;
+	(*sa)->addr = apr_pcalloc (p, list->ai_addrlen);
+	memcpy ((*sa)->addr, list->ai_addr, list->ai_addrlen);
+	addr = (struct sockaddr_in *) (*sa)->addr;
+	addr->sin_port = htons (port);
+
+	freeaddrinfo (list);
+
+	return APR_SUCCESS;
+}
+
+static apr_status_t
+apr_socket_connect (apr_socket_t *sock, apr_sockaddr_t *sa)
+{
+	int sock_fd;
+
+	apr_os_sock_get (&sock_fd, sock);
+	if (connect (sock_fd, sa->addr, sa->addrlen) != 0)
+		return errno;
+
+	return APR_SUCCESS;
+}
+
+#endif
+
 static apr_status_t 
-try_connect (const char *filename, apr_socket_t **sock)
+try_connect (mono_server_rec *server_conf, apr_socket_t **sock, apr_pool_t *pool)
 {
 	char *error;
-	struct sockaddr_un address;
+	struct sockaddr_un unix_address;
 	struct sockaddr *ptradd;
-	apr_os_sock_t sock_fd;
 
-	apr_os_sock_get (&sock_fd, *sock);
-	ptradd = (struct sockaddr *) &address;
-	address.sun_family = PF_UNIX;
-	memcpy (address.sun_path, filename, strlen (filename) + 1);
-	if (connect (sock_fd, ptradd, sizeof (address)) != -1)
-		return APR_SUCCESS;
+	if (server_conf->listen_port == NULL) {
+		apr_os_sock_t sock_fd;
+
+		apr_os_sock_get (&sock_fd, *sock);
+		unix_address.sun_family = PF_UNIX;
+		memcpy (unix_address.sun_path, server_conf->filename, strlen (server_conf->filename) + 1);
+		ptradd = (struct sockaddr *) &unix_address;
+		if (connect (sock_fd, ptradd, sizeof (unix_address)) != -1)
+			return APR_SUCCESS;
+	} else {
+		apr_status_t rv;
+		apr_sockaddr_t *sa;
+
+		rv = -1;
+		if (server_conf->listen_address != NULL &&
+		    server_conf->listen_port != NULL) {
+			rv = apr_sockaddr_info_get (&sa, server_conf->listen_address, APR_INET,
+						atoi (server_conf->listen_port), 0, 
+						pool);
+		}
+
+		if (rv != APR_SUCCESS) {
+			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+				      "mod_mono: error in address ('%s') or port ('%s').",
+				      server_conf->listen_address, server_conf->listen_port);
+			return -2;
+		}
+
+		rv = apr_socket_connect (*sock, sa);
+		if (rv == APR_SUCCESS)
+			return APR_SUCCESS;
+		errno = rv;
+	}
 
 	switch (errno) {
 	case ENOENT:
@@ -512,19 +607,29 @@ try_connect (const char *filename, apr_socket_t **sock)
 		return -1; /* Can try to launch mod-mono-server */
 	case EPERM:
 		error = strerror (errno);
-		ap_log_error (APLOG_MARK,
-			      APLOG_ERR,
-			      STATUS_AND_SERVER,
-			      "mod_mono: file %s exists, but wrong permissions.", filename);
+		if (server_conf->listen_port == NULL)
+			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+				      "mod_mono: file %s exists, but wrong permissions.",
+				      server_conf->filename);
+		else
+			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+				      "mod_mono: no permission to listen on %s.",
+				      server_conf->listen_port);
+
 
 		apr_socket_close (*sock);
 		return -2; /* Unrecoverable */
 	default:
 		error = strerror (errno);
-		ap_log_error (APLOG_MARK,
-			      APLOG_ERR,
-			      STATUS_AND_SERVER,
-			      "mod_mono: connect error (%s). File: %s", error, filename);
+		if (server_conf->listen_port == NULL)
+			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+				      "mod_mono: connect error (%s). File: %s",
+				      error, server_conf->filename);
+		else
+			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+				      "mod_mono: connect error (%s). Address: %s Port: %s",
+				      error, server_conf->listen_address, server_conf->listen_port);
+
 
 		apr_socket_close (*sock);
 		return -2; /* Unrecoverable */
@@ -572,8 +677,8 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	pid_t pid;
 	int status;
 	int i;
-	const int maxargs = 14;
-	char *argv [maxargs];
+	const int MAXARGS = 20;
+	char *argv [MAXARGS];
 	int argi;
 	char *path;
 	char *tmp;
@@ -632,12 +737,21 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	chmod (wapidir, 0700);
 	SETENV (pool, "MONO_SHARED_DIR", server_conf->wapidir);
 
-	memset (argv, 0, sizeof (char *) * maxargs);
+	memset (argv, 0, sizeof (char *) * MAXARGS);
 	argi = 0;
 	argv [argi++] = server_conf->executable_path;
+	argv [argi++] = "--debug";
 	argv [argi++] = server_conf->server_path;
-	argv [argi++] = "--filename";
-	argv [argi++] = server_conf->filename;
+	if (server_conf->listen_port != NULL) {
+		argv [argi++] = "--address";
+		argv [argi++] = server_conf->listen_address;
+		argv [argi++] = "--port";
+		argv [argi++] = server_conf->listen_port;
+	} else {
+		argv [argi++] = "--filename";
+		argv [argi++] = server_conf->filename;
+	}
+
 	if (server_conf->applications != NULL) {
 		argv [argi++] = "--applications";
 		argv [argi++] = server_conf->applications;
@@ -668,16 +782,14 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
  	 * array out-of-bounds. 
 	 */
 
-	ap_log_error (APLOG_MARK, APLOG_DEBUG,
-		      STATUS_AND_SERVER,
+	ap_log_error (APLOG_MARK, APLOG_DEBUG, STATUS_AND_SERVER,
                       "running '%s %s %s %s %s %s %s %s %s %s %s %s %s'",
                       argv [0], argv [1], argv [2], argv [3], argv [4],
 		      argv [5], argv [6], argv [7], argv [8], 
 		      argv [9], argv [10], argv [11], argv [12]);
 
 	execv (argv [0], argv);
-	ap_log_error (APLOG_MARK, APLOG_ERR,
-		      STATUS_AND_SERVER,
+	ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
                       "Failed running '%s %s %s %s %s %s %s %s %s %s %s %s %s'. Reason: %s",
                       argv [0], argv [1], argv [2], argv [3], argv [4],
 		      argv [5], argv [6], argv [7], argv [8],
@@ -694,24 +806,24 @@ setup_socket (apr_socket_t **sock, mono_server_rec *server_conf, apr_pool_t *poo
 	int status;
 	int i;
 	apr_status_t rv;
+	int family;
 
+	family = (server_conf->listen_port != NULL) ? PF_INET : PF_UNIX;
 #ifdef APACHE2
-	rv = apr_socket_create (sock, PF_UNIX, SOCK_STREAM, pool);
+	rv = apr_socket_create (sock, family, SOCK_STREAM, pool);
 #else
-	(*sock)->fd = ap_psocket (pool, PF_UNIX, SOCK_STREAM, 0);
+	(*sock)->fd = ap_psocket (pool, family, SOCK_STREAM, 0);
 	(*sock)->pool = pool;
 	rv = ((*sock)->fd != -1) ? APR_SUCCESS : -1;
 #endif
 	if (rv != APR_SUCCESS) {
-		ap_log_error (APLOG_MARK,
-			      APLOG_ERR,
-			      STATUS_AND_SERVER,
+		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
 			      "mod_mono: error creating socket.");
 
 		return rv;
 	}
 
-	rv = try_connect (server_conf->filename, sock);
+	rv = try_connect (server_conf, sock, pool);
 	DEBUG_PRINT (1, "try_connect: %d", (void *) rv);
 	if (rv == APR_SUCCESS)
 		return rv;
@@ -722,8 +834,7 @@ setup_socket (apr_socket_t **sock, mono_server_rec *server_conf, apr_pool_t *poo
 	/* Running mod-mono-server not requested */
 	if (!strcasecmp (server_conf->run_xsp, "false")) {
 		DEBUG_PRINT (1, "Not running mod-mono-server: %s", server_conf->run_xsp);
-		ap_log_error (APLOG_MARK, APLOG_DEBUG,
-			      STATUS_AND_SERVER,
+		ap_log_error (APLOG_MARK, APLOG_DEBUG, STATUS_AND_SERVER,
 			      "Not running mod-mono-server.exe");
 
 		apr_socket_close (*sock);
@@ -746,19 +857,43 @@ setup_socket (apr_socket_t **sock, mono_server_rec *server_conf, apr_pool_t *poo
 		return -1;
 	}
 
+	/* Only one of MonoUnixSocket and MonoListenPort. */
+	DEBUG_PRINT (1, "Listen port: %s", server_conf->listen_port);
+	if (server_conf->listen_port != NULL && server_conf->filename != NULL) {
+		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+			      "Not running mod-mono-server.exe because both MonoUnixSocket and "
+			      "MonoListenPort specified.");
+		apr_socket_close (*sock);
+		return -1;
+	}
+
+	/* MonoListenAddress must be used together with MonoListenPort */
+	DEBUG_PRINT (1, "Listen address: %s", server_conf->listen_address);
+	if (server_conf->listen_port == NULL && server_conf->listen_address != NULL) {
+		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+			      "Not running mod-mono-server.exe because MonoListenAddress "
+			      "is present and there is no MonoListenPort.");
+		apr_socket_close (*sock);
+		return -1;
+	}
+
+
 	fork_mod_mono_server (pool, server_conf);
 
 	DEBUG_PRINT (1, "parent waiting");
 	for (i = 0; i < 3; i++) {
 		sleep (1);
 		DEBUG_PRINT (1, "try_connect %d", i);
-		if (try_connect (server_conf->filename, sock) == APR_SUCCESS) {
+		rv = try_connect (server_conf, sock, pool);
+		if (rv == APR_SUCCESS)
 			return APR_SUCCESS;
-		}
+
+		if (rv == -2)
+			break;
 	}
 
 	ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-		      "Failed connecting and child didn't exit!");
+		      "Failed connecting. %s", strerror (errno));
 
 	apr_socket_close (*sock);
 	return -1;
@@ -864,6 +999,10 @@ mono_execute_request (request_rec *r)
 	mono_server_rec *server_conf;
 
 	server_conf = ap_get_module_config (r->server->module_config, &mono_module);
+	if (server_conf->filename == NULL && server_conf->listen_port == NULL)
+		server_conf->filename = SOCKET_FILE;
+	else if (server_conf->listen_address == NULL)
+		server_conf->listen_address = LISTEN_ADDRESS;
 
 #ifdef APACHE13
 	sock = apr_pcalloc (r->pool, sizeof (apr_socket_t));
@@ -949,7 +1088,18 @@ mono_register_hooks (apr_pool_t * p)
 
 static const command_rec mono_cmds [] = {
 MAKE_CMD (MonoUnixSocket, unix_socket,
-	"Named pipe file name. Default: /tmp/mod_mono_server"
+	"Named pipe file name. Mutually exclusive with MonoListenPort. "
+	"Default: /tmp/mod_mono_server"
+	),
+
+MAKE_CMD (MonoListenPort, listen_port,
+	"TCP port for mod-mono-server to listen on. Mutually exclusive with "
+	"MonoUnixSocket. Default: none"
+	),
+
+MAKE_CMD (MonoListenAddress, listen_address,
+	"IP address for mod-mono-server to listen on. Must be used together with "
+	"MonoListenPort.  Default: 127.0.0.1 (if MonoListenPort specified)"
 	),
 
 MAKE_CMD (MonoRunXSP, run_xsp,
