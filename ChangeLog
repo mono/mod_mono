@@ -1,3 +1,6 @@
+2003-01-09  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
+	* mcs/ApacheWorkerRequest.cs : Fixed typo, thanks Sergio Luis Valle Mayorga for catching it
+
 2003-01-07  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
 	* INSTALL: Add new config instructions. Only a MonoApplication directive is needed right now
 	* src/mod_mono.c: Get rid of LoadModMonoDll, per Miguel suggestion, we look for the assembly

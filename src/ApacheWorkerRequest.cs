@@ -217,7 +217,7 @@ namespace Apache.Web
 			return request.GetRequestHeader (GetKnownRequestHeaderName (index));
 		}
 
-		public override SendCalculatedContentLength (int contentLength) 
+		public override void SendCalculatedContentLength (int contentLength) 
 		{
 		  // Do nothing, it will be set correctly by Apache in the output content length filter
 		}
