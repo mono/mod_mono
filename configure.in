@@ -1,0 +1,53 @@
+AC_INIT(src/mod_mono.c)
+AM_INIT_AUTOMAKE(mod_mono, 0.1)
+AM_CONFIG_HEADER(include/mod_mono_config.h:config.in)
+
+
+AC_PROG_CC
+AM_PROG_LIBTOOL
+
+AC_MSG_CHECKING(for Apache 2)
+AC_ARG_WITH(apache2,   [  --with-apache2 Specify path to apache2 installation directory ],
+[
+	header="$withval/include/httpd.h"
+	if test -f $header ; then
+		APACHE2_DIR=`cd $withval; pwd`
+		CFLAGS="$CFLAGS -I$APACHE2_DIR/include"
+	else
+		AC_MSG_ERROR($header not found)
+	fi
+        AC_MSG_RESULT(found $APACHE2_DIR)
+],[
+	AC_MSG_ERROR(--with-apache2 not given)
+])
+AC_PATH_PROG(PKG_CONFIG, pkg-config, no)
+if test "x$PKG_CONFIG" = "xno"; then
+        AC_MSG_ERROR([You need to install pkg-config])
+fi
+
+PKG_PATH=
+AC_ARG_WITH(crosspkgdir, [  --with-crosspkgdir=/path/to/pkg-config/dir],
+        if test x$with_crosspkgdir = "x"; then
+                if test -s $PKG_CONFIG_PATH; then
+                        PKG_PATH=$PKG_CONFIG_PATH
+                fi
+        else
+                PKG_PATH=$with_crosspkgdir
+                PKG_CONFIG_PATH=$PKG_PATH
+                export PKG_CONFIG_PATH
+        fi
+)
+
+CFLAGS="$CFLAGS `$PKG_CONFIG --cflags mono`"
+MONO_LIBS=`$PKG_CONFIG --libs mono`
+
+MODMONO_BUILDDIR='pwd'
+CFLAGS="$CFLAGS -I$MODMONO_BUILDDIR/include"
+
+AC_SUBST(MODMONO_BUILDDIR)
+AC_SUBST(APACHE2_DIR)
+AC_SUBST(CFLAGS)
+AC_SUBST(MONO_LIBS)
+
+AC_OUTPUT(Makefile src/Makefile)
+

@@ -1,0 +1,132 @@
+
+mod_mono 0.1
+
+Daniel Lopez Ridruejo <daniel @ rawbyte.com> 
+http://www.apacheworld.org
+
+The following are instructions for getting mod_mono working with Apache 2
+and serving ASP.NET pages. This was developed in Red Hat 8.0,
+using the Mono version from CVS, but it should work in any Unix platform
+that Apache and Mono support. If you get to work in one of these platforms,
+or Windows, please let me know, or even better send patches.
+It has also been compiled and tested in Slackware 7.0 using the Mono 0.17 release
+(thanks John Barbee)
+
+The steps are as follow:
+- Install mono
+- Install Apache 2 with loadable module support
+- Build mod_mono and ModMono.dll (or download the binaries)
+- Configure Apache
+- Install XSP from the Mono CVS repository
+- Configure Apache
+- Test the examples
+
+INSTALLING FROM SOURCE
+======================
+
+1. Install Mono
+
+For instructions, go to http://www.go-mono.com
+
+2. Install Apache 2, with loadable module support
+
+Go to http://www.apache.org and download Apache 2,
+the filename will be something like httpd-2.0.43.tar.gz
+
+Unpack it :
+
+tar xvfz httpd-2.0.43.tar.gz
+cd httpd-2.0.43
+./configure --prefix=/home/username/apache2 --enable-so
+make 
+make install
+
+3. Building and installing mod_mono
+
+Go to http://www.apacheworld.org/modmono/ and download mod_mono
+(although if you are reading this you probably already did it)
+
+tar xvfz mod_mono*.tgz
+cd mod_mono*
+./configure --with-apache2=/home/username/apache2
+make
+make install
+
+If everything goes well, you will have the following library:
+/home/user/mono/mod_mono/src/.libs/libmod_mono.so
+
+Mono needs to be correctly installed for building mod_mono, this means among other things
+that pkgconfig is accessible and knows about mono (that is 'pkgconfig --cflags mono' returns
+something meaningful)
+
+NOTE:
+If you installed Mono form CVS in a non standard location, you can use --with-crosspkgdir 
+For example: I use the following line to build:
+PKG_CONFIG_PATH=/home/user/mono/install/lib/pkgconfig/ ./configure --with-apache2=/home/user/mono/install/apache2 --with-crosspkgdir=/home/user/mono/install/lib/pkgconfig
+
+If it complains about config.h, copy the config.h in the mono/ directory to /home/user/mono/install/include
+It will tell you about duplication, but it will compile.
+
+4. Building ModMono.dll
+
+The ModMono.cs file is located in the src/ directory
+This is the command I use to build ModMono.dll:
+
+mcs ModMono.cs -target:library -reference:/home/user/mono/install/lib/System.Web.dll
+
+
+INSTALLING BINARIES
+========================
+
+o Go to http://www.apacheworld.org/modmono and download the mod_mono binaries.
+Currently the binary files are libmodmono.so (for Red Hat 8.0 on Intel) and ModMono.dll
+
+
+ASP.NET support
+===============
+
+You need the XSP package, currently available in the Mono CVs. GO to 
+http://www.go-mono.com for instructions on how to download and install
+the package. The rest of this document assumes it is installed in 
+/home/user/mono/install/xsp/
+
+cd /home/user/mono/install/xsp/
+make 
+make install
+
+Now in /home/user/mono/install/xsp/server/test you have a directory with ASP pages
+
+
+CONFIGURING APACHE
+==================
+
+Copy the file /home/user/mono/mod_mono/src/.libs/libmod_mono.so to /home/user/mono/install/apache2/lib/
+Copy ModMono.dll to /home/user/mono/xsp/server/test/ModMono.dll
+
+Edit /home/user/mono/install/apache2/conf/httpd.conf :
+
+Listen 8080   
+LoadModule mono_module /home/user/mono/install/apache2/lib/libmod_mono.so
+LoadModMonoDll /home/user/mono/xsp/server/test/ModMono.dll
+
+Alias /mono /home/user/mono/xsp/server/test
+<location /mono/*.aspx>
+        SetHandler application/x-httpd-mono
+</location>
+
+You can now start Apache with 
+/home/user/mono/install/apache2/bin/apachectl start
+
+TESTING THE EXAMPLES
+====================
+
+Point your web browser to
+
+http://127.0.0.1:8080/mono/index.aspx
+
+and you should get the example index.
+If you get a Internal Server Error page instead, take a look at 
+/home/user/mono/install/apache2/logs/error_log
+for indications of what may have gone wrong
+
+
