@@ -177,6 +177,7 @@ APPENDIX B: Typical configuration
 
       LoadModule mono_module modules/libmod_mono.so
       Alias /mono "/usr/share/doc/xsp/test"
+      MonoApplications "/mono:/usr/share/doc/xsp/test"
       <Location /mono>
               SetHandler mono
       </Location>
