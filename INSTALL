@@ -83,6 +83,8 @@ INSTALLING mod_mono
             <Location /mono>
 	          SetHandler mono
             </Location>
+
+	Take a look at Appendix A below for typical configuration samples.
     
   4. Run mod-mono-server.
 
@@ -162,6 +164,11 @@ APPENDIX B: Typical configuration
       <Location /mono>
               SetHandler mono
       </Location>
+
+  If you don't want mod-mono-server to handle all the files, but only
+  ASP.NET ones, you can replace the 'SetHandler mono' by:
+
+       AddHandler mono .aspx .ascx .asax .ashx .config .cs .asmx
 
   
 CREDITS
