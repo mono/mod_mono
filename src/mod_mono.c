@@ -212,12 +212,10 @@ write_data_string (apr_socket_t *sock, const char *str)
 static int
 read_data (apr_socket_t *sock, void *ptr, int size)
 {
-	int prevsize = size;
-
 	if (apr_socket_recv (sock, ptr, &size) != APR_SUCCESS)
 		return -1;
 
-	return (prevsize == size) ? size : -1;
+	return size;
 }
 
 static char *

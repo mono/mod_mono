@@ -1,3 +1,8 @@
+2004-10-27 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: patch by alois.belaska@monetplus.cz that fixes
+	mod_mono wrong behavior for big pages. Closes bugs #67938 and #68554.
+
 2004-09-24 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: double fork is back. When the configuration pool is
