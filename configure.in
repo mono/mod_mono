@@ -291,6 +291,10 @@ AC_ARG_WITH(mono-prefix,
 		MONO_PREFIX=$with_mono_prefix
         fi
 )
+
+if test "$MONO_PREFIX" = NONE ; then
+	MONO_PREFIX=$ac_default_prefix
+fi
 AC_MSG_RESULT($MONO_PREFIX)
 AC_DEFINE_UNQUOTED([MONO_PREFIX],"$MONO_PREFIX",[Mono installation prefix])
 
