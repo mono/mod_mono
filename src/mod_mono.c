@@ -947,7 +947,7 @@ mono_register_hooks (apr_pool_t * p)
 	{ #name, CONFIG_FUNCTION_NAME (function_name), NULL, RSRC_CONF, TAKE1, description }
 #else
 #define MAKE_CMD(name, function_name, description) \
-	AP_INIT_TAKE1 (#name, CONFIG_FUNCTION_NAME(unix_socket), NULL, RSRC_CONF, description)
+	AP_INIT_TAKE1 (#name, CONFIG_FUNCTION_NAME(function_name), NULL, RSRC_CONF, description)
 #endif
 
 static const command_rec mono_cmds [] = {
