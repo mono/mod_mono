@@ -186,6 +186,8 @@ APPENDIX B: Typical configuration
 
        AddHandler mono .aspx .ascx .asax .ashx .config .cs .asmx
 
+  but this will break PathInfo
+
 APPENDIX C: Configuration directives for mod_mono
 ---------------------------------------------------
 

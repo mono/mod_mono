@@ -1,0 +1,94 @@
+.\" 
+.\" mod_mono manual page.
+.\" (C) 2004 Novell, Inc. 
+.\" Author:
+.\"   Gonzalo Paniagua Javier (gonzalo@ximian.com)
+.\"
+.de Sp \" Vertical space (when we can't use .PP)
+.if t .sp .5v
+.if n .sp
+..
+.TH mod_mono 0.x "mod_mono 0.x"
+.SH NAME
+mod_mono \- apache module that enables ASP.NET pages. Works together with mod-mono-server.exe
+.SH DESCRIPTION
+\fImod_mono\fP is a simple module that works with both 1.3 and 2.0
+versions of apache.
+.PP
+It needs mod-mono-server.exe installed on the system. By default, it
+will attemp to run mod-mono-server.exe if it doesn't find it's running.
+The runtime contains a native code generator that transforms the
+Common Intermediate Language into native code.
+.SH CONFIGURATION DIRECTIVES
+.TP
+.I "MonoUnixSocket"
+It accepts a file name as argument. That file will be a named pipe
+used to send/receive data from/to mod_mono to/from mod-mono-server.
+Default value: "/tmp/mod_mono_server".
+.TP
+.I "MonoRunXSP"
+If the value is True, it tells mod_mono to spawn mod-mono-server.exe
+if it's not already running. If set to False, mod_mono won't do
+that.
+Default value: True
+.TP
+.I "MonoExecutablePath (used only when MonoRunXSP is True)"
+The full path to mono executable.
+Default value: "/usr/bin/mono"
+.TP
+.I "MonoPath (used only when MonoRunXSP is True)"
+This value will be used to set the MONO_PATH environment variable.
+Default value: ""
+.TP
+.I "MonoServerPath (used only when MonoRunXSP is True)"
+The full path to mod-mono-server.exe.
+Default value: "/usr/bin/mod-mono-server.exe"
+.TP
+.I "MonoApplications (used only when MonoRunXSP is True)"
+This value will be passed to mod-mono-server.exe in the
+--applications option. It is
+.I mandatory
+if MonoRunXSP is True.
+.TP
+.I "MonoWapiDir"
+The directory where mono runtime will create the ".wapi" directory
+used to emulate windows I/O. It's used to set MONO_SHARED_DIR.
+Default value: "/tmp"
+.SH SAMPLE CONFIGURATION
+For Apache 1.3, with mod-mono-server.exe from package xsp installed in
+prefix=/usr:
+.nf
+      LoadModule mono_module /usr/lib/apache/1.3/libmod_mono.so
+      AddModule mod_mono.c
+      Alias /mono "/usr/share/doc/xsp/test"
+      MonoApplications "/mono:/usr/share/doc/xsp/test"
+      <Directory /usr/share/doc/xsp/test>
+              SetHandler mono
+              <IfModule mod_dir.c>
+                    DirectoryIndex index.aspx
+              </IfModule>
+      </Directory>
+.fi
+For Apache 2.0, with mod-mono-server.exe from package xsp installed in
+prefix=/usr:
+.nf
+      LoadModule mono_module modules/libmod_mono.so
+      Alias /mono "/usr/share/doc/xsp/test"
+      MonoApplications "/mono:/usr/share/doc/xsp/test"
+      <Directory /usr/share/doc/xsp/test>
+              SetHandler mono
+      </Directory>
+.fi
+.SH ENVIRONMENT VARIABLES
+.TP
+It may modify MONO_PATH, PATH and MONO_SHARED_DIR.
+.SH FILES
+.PP
+httpd.conf
+.SH MAILING LISTS
+Visit http://mail.ximian.com/mailman/mono-list for details.
+.SH WEB SITE
+Visit: http://www.go-mono.com for details
+.SH SEE ALSO
+.BR mcs(1), mono(1), xsp(1)
+

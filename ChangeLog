@@ -1,3 +1,8 @@
+2004-04-16  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* INSTALL: small update on PathInfo.
+	* man/mod_mono.8: documented.
+
 2004-04-15  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* INSTALL: updated with new configuration information.
