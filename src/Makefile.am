@@ -1,4 +1,4 @@
-CLEANFILES = .libs/libmod_mono.so .libs/libmod_mono_unix.so *~
+CLEANFILES = .libs/libmod_mono.so .libs/libmod_mono_old.so *~
 
 EXTRA_DIST = ApacheApplicationHost.cs \
              IApplicationHost.cs \
@@ -8,20 +8,18 @@ EXTRA_DIST = ApacheApplicationHost.cs \
 	     MonoWorkerRequest.cs
 
 libmod_mono_la_SOURCES = mod_mono.c
-libmod_mono_la_LIBADD = $(MONO_LIBS)
 
-libmod_mono_unix_la_SOURCES = mod_mono_unix.c
+libmod_mono_old_la_SOURCES = mod_mono_old.c
+libmod_mono_old_la_LIBADD = $(MONO_LIBS)
 
 INCLUDES=$(MONO_CFLAGS)
-
-lib_LTLIBRARIES = libmod_mono.la \
-		  libmod_mono_unix.la
-
+lib_LTLIBRARIES = libmod_mono.la libmod_mono_old.la
 
 make_so:
 	@if test ! -L mod_mono.so ; then ln -s .libs/libmod_mono.so mod_mono.so ; fi
-	@if test ! -L mod_mono_unix.so ; then ln -s .libs/libmod_mono_unix.so mod_mono_unix.so ; fi
+	@if test ! -L mod_mono_old.so ; then ln -s .libs/libmod_mono_old.so mod_mono_old.so ; fi
 
 install:
 	$(INSTALL) -m 644 .libs/libmod_mono.so $(LIBEXECDIR)/mod_mono.so
-	$(INSTALL) -m 644 .libs/libmod_mono_unix.so $(LIBEXECDIR)/mod_mono_unix.so
+	$(INSTALL) -m 644 .libs/libmod_mono_old.so $(LIBEXECDIR)/mod_mono_old.so
+

@@ -1,3 +1,19 @@
+2003-10-02  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* FAQ.txt: moved...
+	* FAQ-old.txt: ...here.
+	* INSTALL: only include installation instructions for mod_mono.
+	* INSTALL-old: this contains instructions for mod_mono_old
+	* NEWS: updated.
+	* README: updated.
+	* configure.in: Modified file.
+	* src/Makefile.am: Modified file.
+	* src/mod_mono.c: moved to mod_mono_old.c
+	* src/mod_mono_old.c:
+	* src/mod_mono_unix.c: moved to mod_mono.
+
+	Renamed mod_mono to mod_mono_old and mod_mono_unix to mod_mono.
+
 2003-09-20  Pedro Martínez Juliá  <yoros@wanadoo.es>
 
 	* INSTALL: Remove the doc lines related to <Location> directive

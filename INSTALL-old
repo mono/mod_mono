@@ -1,0 +1,331 @@
+
+[please take a look at doc/ for latest documentation]
+
+mod_mono and mod_mono_unix
+-------------------------------
+
+Daniel Lopez Ridruejo <daniel @ rawbyte.com> 
+http://www.apacheworld.org
+
+Gonzalo Paniagua Javier <gonzalo @ ximian.com>
+
+  We provide two different modules for apache:
+
+    -mod_mono: this one uses the embedding API of the mono runtime so
+    it needs the mono runtime libraries. as of now, it has some problems
+    with caching of pages already compiled.
+    
+    -mod_mono_unix: it uses a unix socket to communicate with a backend
+    process, mod-mono-server.exe (it's in xsp module in CVS), which is
+    in charge of the real process of the ASP.NET requests. It does not
+    depend on mono runtime libraries, so it's easier to install.
+
+  The following are instructions for getting mod_mono and/or
+  mod_mono_unix working with Apache 2 and serving ASP.NET pages. This
+  was developed in Red Hat 8.0, using the Mono version from CVS, but it
+  should work in any Unix platform that Apache and Mono support. If you
+  get to work in one of these platforms, or Windows, please let me know,
+  or even better send patches.  It has also been compiled and tested in
+  Slackware 7.0 (thanks John Barbee)
+
+  The steps are as follow:
+    - Install mono
+    - Install Apache 2 with loadable module support
+    - Build mod_mono, mod_mono_unix and ModMono.dll (or download the
+      binaries)
+    - Configure Apache
+    - Install XSP from the Mono CVS repository
+    - Configure Apache
+    - Test the examples
+
+  There's also a section about using mod_mono with the Apache 2 that
+  comes with your Linux distribution. Finally, if you are using Red Hat
+  8.0 there's an appendix covering this platform.
+
+  mod_mono and mod_mono_unix are still in its infancy and Mono is a
+  moving target, there's still a lot to be done!  If you have
+  suggestions, bugs or patches you can reach me at daniel @ rawbyte.com
+  It may take me a bit, but I try to reply to all mod_mono related email
+
+INSTALLING FROM SOURCE
+======================
+
+  Steps marked with (both) should be followed for installing mod_mono,
+  mod_mono_unix or both.
+
+  1. (both) Install Mono
+
+    For instructions, go to http://www.go-mono.com
+
+  2. (both) Install Apache 2, with loadable module support
+
+    Go to http://www.apache.org and download Apache 2, the filename will
+    be something like httpd-2.0.43.tar.gz
+
+    Unpack it:
+
+      tar xvfz httpd-2.0.43.tar.gz
+      cd httpd-2.0.43
+      ./configure --prefix=/home/username/apache2 --enable-so
+      make 
+      make install
+
+3. (both) Building and installing mod_mono and mod_mono_unix
+
+  Go to http://www.apacheworld.org/modmono/ and download mod_mono
+  (although if you are reading this you probably already did it). You
+  can also get mod_mono sources from mono CVS (see
+  http://www.go-mono.com/anoncvs.html)
+
+      tar xvfz mod_mono*.tgz
+      cd mod_mono*
+(1)   ./configure --with-apxs=/home/username/apache2/bin/apxs
+      make
+      make install
+
+(1) If you get the sources from CVS, change 'configure' in that line by
+autogen.sh
+
+  If everything goes well, you will have the following libraries:
+
+    /home/user/mono/mod_mono/src/.libs/libmod_mono.so
+    /home/user/mono/mod_mono/src/.libs/libmod_mono_unix.so
+
+
+  Mono needs to be correctly installed for building mod_mono, this means
+  among other things that pkgconfig is accessible and knows about mono
+  (that is 'pkgconfig --cflags mono' returns something meaningful)
+
+  mod_mono_unix doesn't need mono installed at build time.
+
+  NOTE:
+    If you installed Mono form CVS in a non standard location, you can
+    use --with-crosspkgdir For example: I use the following line to
+    build:
+
+    PKG_CONFIG_PATH=/home/user/mono/install/lib/pkgconfig/ ./configure --with-apxs=/home/user/mono/install/apache2/bin/apxs --with-crosspkgdir=/home/user/mono/install/lib/pkgconfig
+
+  If it complains about config.h, copy the config.h in the mono/
+  directory to /home/user/mono/install/include It will tell you about
+  duplication, but it will compile. This should have been fixed as of
+  Mono 0.18.
+
+4. (mod_mono) Building ModMono.dll
+
+  The ModMono.cs file is located in the src/ directory.
+
+  This is the command to build ModMono.dll:
+
+    make -f makedll.mak
+
+5. (mod_mono_unix) Getting mod-mono-server.exe
+
+  Get xsp module from mono CVS [1].
+
+
+
+INSTALLING BINARIES
+========================
+
+  Go to http://www.apacheworld.org/modmono and download the mod_mono
+  binaries.  Currently the binary files are libmod_mono.so (for Red Hat
+  8.0 on Intel) and ModMono.dll
+
+
+USING THE APACHE 2 THAT COMES WITH YOUR DISTRIBUTION
+====================================================
+
+Newer versions of Linux distributions, such as Red Hat 8.0 come with Apache 2.
+You can use this Apache: for that you need to install the apxs tool, which 
+is usually included in the Apache dev rpm. For example, in the case of Red Hat 8.0,
+you need the following dev package installed: httpd-devel-2.0.40-8.i386.rpm
+
+You can then build mod_mono as explained previously using 
+
+./configure --with-apxs=/usr/sbin/apxs
+
+Red Hat 8.0 is so common that I have included a section at the end with step by
+step instructions for this platform.
+
+ASP.NET support
+===============
+
+  You need the XSP package, currently available in the Mono CVS. Go to
+  http://www.go-mono.com for instructions on how to download and install
+  the package. The rest of this document assumes it is installed in
+  /home/user/mono/install/xsp/
+
+    cd /home/user/mono/install/xsp/
+    make 
+    make install
+
+   Now in /home/user/mono/install/xsp/server/test you have a directory
+   with ASP pages and mod-mono-server.exe, mod_mono_unix companion.
+
+   mod-mono-server.exe must be running in order for mod_mono_unix to
+   work.
+
+
+CONFIGURING APACHE
+==================
+
+  Run 'make && make install' in mod_mono directory. This will install
+  the 2 modules for apache.
+  
+  mod_mono
+  ---------
+    Copy ModMono.dll to a place where the Mono runtime will find it,
+    usually this means /usr/lib/ or wherever the rest of assemblies are
+    located.
+
+    Edit /home/user/mono/install/apache2/conf/httpd.conf :
+
+      Listen 8080   
+      LoadModule mono_module /home/user/mono/install/apache2/modules/mod_mono.so
+      MonoApplication /mono /home/user/mono/install/xsp/server/test
+
+    The MonoApplication directive takes two arguments. The first one is
+    the virtual path, which is part of the URL used to access your
+    application. The second one is the physical path, the directory
+    where the application resides. In this case is the directory
+    containing the XSP test pages.  Only one MonoApplication directive
+    is currently allowed.
+
+    NOTE: If a machine.config is not installed in your path, which
+    normally occurs during Mono installation, you may need to create a
+    ModMono.exe.config. This file needs to be placed in the application
+    base dir, in this case /home/user/mono/install/xsp/server/test/ You
+    can find an example for the contents of this file in the
+    data/machine.config subdirectory of the Mono distribution.
+
+  mod_mono_unix
+  ---------------
+
+    Edit /home/user/mono/install/apache2/conf/httpd.conf:
+
+      AddType application/x-asp-net .aspx .ashx .asmx .config .asax .ascx
+      Listen 8080   
+      LoadModule mono_unix_module /home/user/mono/install/apache2/modules/mod_mono_unix.so
+      MonoApplicationUnix /tmp/mod_mono_server
+
+    You may also want to add an Alias like:
+
+      Alias /mono "home/user/xsp/server/test"
+
+    so that apache redirects requests from, for example, /mono to /mono/ .
+    
+    The parameter of MonoApplicationUnix is the unix socket filename that will
+    be set up by mod-mono-server. You can use any valid file name here.  Just
+    use the same file in httpd.conf and in mod-mono-server.exe (--file argument
+    or UnixSocketFileName in mod-mono-server.exe.config <appSettings>). Be sure
+    that both apache and mod-mono-server have write permission to the socket.
+
+    When running mod-mono-server.exe, you must  use '--applications /mono:.'
+    command line argument too.
+
+  You can now start Apache with 
+
+    /home/user/mono/install/apache2/bin/apachectl start
+
+
+TESTING THE EXAMPLES
+====================
+
+  Point your web browser to
+
+    http://127.0.0.1:8080/mono/index.aspx
+
+  and you should get the example index.
+  If you get a Internal Server Error page instead, take a look at
+  /home/user/mono/install/apache2/logs/error_log for indications of what
+  may have gone wrong
+
+
+APPENDIX: RED HAT 8.0
+=====================
+
+a) Install Mono
+
+  Install the Mono rpms from http://www.go-mono.com/download.html
+
+b) Install Apache
+
+  Make sure the followings rpms are installed
+
+    httpd-2.0.40-8.i386.rpm
+    httpd-devel-2.0.40-8.i386.rpm
+
+  You can find a copy of them at
+  
+    http://www.rpmfind.net/linux/RPM/redhat/8.0/i386/httpd-2.0.40-8.i386.html
+    http://www.rpmfind.net//linux/RPM/redhat/8.0/i386/httpd-devel-2.0.40-8.i386.html
+
+  To install them: 
+
+    rpm -i httpd-2.0.40-8.i386.rpm httpd-devel-2.0.40-8.i386.rpm
+
+c) mod_mono
+
+  Follow the instructions at http://www.go-mono.com/anoncvs.html,
+  which is as follows:
+
+    export CVSROOT=:pserver:anonymous@anoncvs.go-mono.com:/mono
+    cvs login
+    cvs -z3 co mod_mono
+
+  Now cd into the mod_mono directory
+
+    ./autogen.sh --with-apxs=/usr/sbin/apxs
+    make
+    make install
+
+  You need to become root (use the 'su' command) to do make install, as
+  it will try to copy mod_mono.so to the /usr/lib/httpd/modules/
+  directory
+
+  To build ModMono.dll, cd into mod_mono/src and type
+
+    make -f makedll.make
+    cp ModMono.dll /usr/lib/ModMono.dll
+
+d) XSP server pages
+
+  Follow the general instructions explained earlier in the document You
+  need to make sure the directory where the aspx files are is writable
+  by the user Apache will be running as:
+
+    chown -R apache.apache /home/user/mono/install/xsp/server/test
+
+e) Configure Apache
+
+  Edit the /etc/httpd/conf/httpd.conf file and add the following:
+
+    LoadModule mono_module mod_mono.so
+    MonoApplication /mono /home/user/mono/install/xsp/server/test
+
+  The following is a temporary hack, will not be necessary in the future:
+
+    mkdir /var/www/.wapi/
+    chown apache.apache /var/www/.wapi
+    chmod 700 /var/www/.wapi
+
+f) Start apache 
+
+  As root, type:
+
+    /etc/init.d/httpd start
+
+g) Browse the examples
+
+    http://127.0.0.1/mono/index.aspx
+
+
+  If you find any problems, take a look at /var/log/httpd/error_log and
+  also read the FAQ.txt document included with mod_mono
+
+
+URLS
+-----
+
+[1] Mono CVS: http://www.go-mono.com/anoncvs.html
+

@@ -122,3 +122,12 @@ AC_SUBST(MONO_LIBS)
 
 AC_OUTPUT(Makefile src/Makefile)
 
+echo "---"
+echo "Configuration summary for mod_mono"
+echo ""
+echo "   * Installation prefix = $prefix"
+echo "   * Apache version = $APACHE_VER"
+echo "   * Apache modules directory = $LIBEXECDIR"
+echo ""
+echo "---"
+
