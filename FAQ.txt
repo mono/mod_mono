@@ -63,3 +63,7 @@ Remove or comment out the following from the machine.config file
  </authentication>
 
 
+5) I get an error complaining about IntPtr serialization constructor
+
+This has been fixed in CVS, if you use a precompiled Mono 0.20 you need to substitute your corlib.dll
+with the one in http://apacheworld.org/modmono/

@@ -9,8 +9,7 @@ and serving ASP.NET pages. This was developed in Red Hat 8.0,
 using the Mono version from CVS, but it should work in any Unix platform
 that Apache and Mono support. If you get to work in one of these platforms,
 or Windows, please let me know, or even better send patches.
-It has also been compiled and tested in Slackware 7.0 using the Mono 0.17 release
-(thanks John Barbee)
+It has also been compiled and tested in Slackware 7.0 (thanks John Barbee)
 
 The steps are as follow:
 - Install mono
