@@ -27,7 +27,7 @@ if test -z "$APXS"; then
   AC_MSG_CHECKING(for apxs in /usr/local/apache/sbin)
   if test -x /usr/local/apache/sbin/apxs; then
     APXS=/usr/local/apache/sbin/apxs
-    AC_MSG_RESULT([found, we'll use this. Use --with-apxs to specify another.])
+    AC_MSG_RESULT([found, we'll use this. Use --with-apxs to specify another.])    
   else
     AC_MSG_RESULT(no)
   fi
@@ -75,8 +75,17 @@ AC_MSG_RESULT($LIBEXECDIR)
 AC_MSG_CHECKING([for Apache include directory])
 AP_INCLUDES="-I`${APXS} -q INCLUDEDIR`"
 AC_MSG_RESULT($AP_INCLUDES)
-
 CFLAGS="$CFLAGS $AP_INCLUDES"
+
+AC_MSG_CHECKING([Apache version])
+if test ! -f "$APACHE_INCLUDES/apr.h"; then
+   APACHE_VER=1.3
+   CFLAGS="$CFLAGS -DAPACHE13"
+else
+   APACHE_VER=2.0
+fi			
+AC_MSG_RESULT($APACHE_VER)
+
 
 AC_PATH_PROG(PKG_CONFIG, pkg-config, no)
 if test "x$PKG_CONFIG" = "xno"; then

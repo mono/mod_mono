@@ -54,13 +54,30 @@
  */
 
 #include <httpd.h>
-#include <http_core.h>
-#include <http_protocol.h>
 #include <http_config.h>
+#ifdef APACHE13
+
+/* Functions needed for making Apache 1.3 module as similar
+as possible to Apache 2 module, reducing ifdefs in the code itself*/
+
+#define TRUE 1
+#define FALSE 0
+
+#define apr_pool_t pool
+#define apr_pcalloc_t ap_pcalloc
+#define apr_table_setn ap_table_setn
+#define APR_SUCCESS 0
+
+#else
+#include <http_protocol.h>
+#endif
+
+#include <http_core.h>
 #include <http_log.h>
 #include <mod_mono_config.h>
 #include <sys/un.h>
 #include <sys/select.h>
+//#include <httpd/apr_network_io.h>
 
 enum Cmd {
 	FIRST_COMMAND,
@@ -120,7 +137,11 @@ char *cmdNames [] = {
 	"ALIAS_MATCHES"
 };
 
+#ifdef APACHE13
+module MODULE_VAR_EXPORT mono_unix_module;
+#else 
 module AP_MODULE_DECLARE_DATA mono_unix_module;
+#endif
 
 typedef struct {
 	const char *virtual;
@@ -206,30 +227,46 @@ request_get_server_port (request_rec *r)
 
 static int
 connection_get_remote_port (conn_rec *c)
-{
-	apr_port_t port;
-	apr_sockaddr_port_get (&port, c->remote_addr);
-	return port;
+{ 
+#ifdef APACHE13
+  return  ntohs(c->remote_addr.sin_port);
+#else
+  apr_port_t port;
+  apr_sockaddr_port_get (&port, c->remote_addr);
+  return port;
+#endif
+  
 }
 
+#ifdef APACHE13  
 static int
-connection_get_local_port (conn_rec *c)
+connection_get_local_port (request_rec *r)
 {
-	apr_port_t port;
-	apr_sockaddr_port_get (&port, c->local_addr);
-	return port;
+  return ap_get_server_port(r);
 }
+#else
+static int
+connection_get_local_port (conn_rec *c) {
+  apr_port_t port;
+  apr_sockaddr_port_get (&port, c->local_addr);
+  return port;  
+}
+#endif
 
 static const char *
 connection_get_remote_name (request_rec *r)
 {
-	return ap_get_remote_host (r->connection, r->per_dir_config, REMOTE_NAME, NULL);
+#ifdef APACHE13
+  return ap_get_remote_host (r->connection, r->per_dir_config, REMOTE_NAME);
+#else
+  return ap_get_remote_host (r->connection, r->per_dir_config, REMOTE_NAME, NULL);
+#endif
 }
 
 static void
 connection_flush (conn_rec *c)
 {
-	ap_flush_conn (c);
+  ap_flush_conn (c);
 }
 
 static void
@@ -251,7 +288,7 @@ set_response_header (request_rec *r,
 static const char *
 request_get_request_header (request_rec *r, const char *header_name)
 {
-	return apr_table_get (r->headers_in, header_name);
+  return apr_table_get (r->headers_in, header_name);
 }
 
 static const char *
@@ -282,7 +319,7 @@ static int
 setup_client_block (request_rec *r)
 {
 	if (r->read_length) {
-		return APR_SUCCESS;
+	  return APR_SUCCESS;
 	} else {
 		return ap_setup_client_block (r, REQUEST_CHUNKED_ERROR);
 	}
@@ -429,7 +466,11 @@ do_command (int command, int fd, request_rec *r, int *result)
 		break;
 	case GET_LOCAL_PORT:
 		write_ok (fd);
+#ifdef APACHE13		
+		i = connection_get_local_port (r);
+#else
 		i = connection_get_local_port (r->connection);
+#endif
 		write_data (fd, &i, sizeof (int));
 		break;
 	case GET_REMOTE_NAME:
@@ -567,44 +608,99 @@ modmono_handler (request_rec *r)
 	return modmono_execute_request (r);
 }
 
+#ifdef APACHE13
+static void
+modmono_init_handler (server_rec *s, pool *p)
+{
+	ap_add_version_component ("mod_mono_unix/" VERSION);
+}
+#else
 static int
 modmono_init_handler (apr_pool_t *p,
 		      apr_pool_t *plog,
 		      apr_pool_t *ptemp,
 		      server_rec *s)
 {
-	ap_add_version_component (p, "mod_mono_unix/" VERSION);
-	return OK;
+  ap_add_version_component (p, "mod_mono_unix/" VERSION);
+  return OK;
 }
+#endif
 
+#ifdef APACHE13
+static const handler_rec modmono_handlers[] =
+  {
+    {"modmono-handler", modmono_handler},
+    {NULL}
+  };
+#else
 static void
 register_modmono_hooks (apr_pool_t * p)
 {
-	ap_hook_handler (modmono_handler, NULL, NULL, APR_HOOK_FIRST);
-	ap_hook_post_config (modmono_init_handler, NULL, NULL, APR_HOOK_MIDDLE);
+  ap_hook_handler (modmono_handler, NULL, NULL, APR_HOOK_FIRST);
+  ap_hook_post_config (modmono_init_handler, NULL, NULL, APR_HOOK_MIDDLE);
 }
+#endif
 
+#ifdef APACHE13
 static const command_rec
 modmono_cmds [] =
 {
-	AP_INIT_TAKE2 ("MonoApplicationUnix",
-			modmono_application_directive,
-			NULL,
-			RSRC_CONF,
-			"Create a Mono Application. The first argument is the virtual "
-			"path and the second the directory on disk."),
-	NULL
+	{"MonoApplicationUnix",
+	 modmono_application_directive,
+	 NULL,
+	 RSRC_CONF,
+	 TAKE2,
+	 "Create a Mono Application. The first argument is the virtual "
+	 "path and the second the directory on disk."},
+	{NULL}
 };
 
+module MODULE_VAR_EXPORT mono_unix_module =
+  {
+    STANDARD_MODULE_STUFF,
+    modmono_init_handler,       /* initializer */
+    NULL,      /* dir config creater */
+    NULL,      /* dir merger --- default is to override */
+    create_modmono_server_config,	/* server config */
+    NULL,                       /* merge server configs */
+    modmono_cmds,            /* command table */
+    modmono_handlers,         /* handlers */
+    NULL,                       /* filename translation */
+    NULL,                       /* check_user_id */
+    NULL,                       /* check auth */
+    NULL,                       /* check access */
+    NULL,                       /* type_checker */
+    NULL,           /* fixups */
+    NULL,                       /* logger */
+    NULL,                       /* header parser */
+    NULL,                       /* child_init */
+    NULL,                       /* child_exit */
+    NULL                        /* post read-request */
+  };
+#else
+static const command_rec
+modmono_cmds [] =
+  {
+    AP_INIT_TAKE2 ("MonoApplicationUnix",
+		   modmono_application_directive,
+		   NULL,
+		   RSRC_CONF,
+		   "Create a Mono Application. The first argument is the virtual "
+		   "path and the second the directory on disk."),
+    NULL
+
+  };
+
 module AP_MODULE_DECLARE_DATA mono_unix_module =
-{
-	STANDARD20_MODULE_STUFF,
-	NULL,				/* dir config creater */
-	NULL,				/* dir merger --- default is to override */
-	create_modmono_server_config,	/* server config */
-	NULL,				/* merge server configs */
-	modmono_cmds,			/* command apr_table_t */
-	register_modmono_hooks		/* register hooks */
-};
+  {
+    STANDARD20_MODULE_STUFF,
+    NULL,/* dir config creater */
+    NULL,/* dir merger --- default is to override */
+    create_modmono_server_config,/* server config */
+    NULL,/* merge server configs */
+    modmono_cmds,/* command apr_table_t */
+    register_modmono_hooks/* register hooks */
+  };
+#endif
 
 
