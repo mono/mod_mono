@@ -194,7 +194,7 @@ CONFIGURING APACHE
     Edit /home/user/mono/install/apache2/conf/httpd.conf:
 
       Listen 8080   
-      LoadModule mono_module /home/user/mono/install/apache2/lib/libmod_mono.so
+      LoadModule mono_unix_module /home/user/mono/install/apache2/lib/libmod_mono_unix.so
       MonoApplicationUnix /mono /tmp/mod_mono_server
 
     The first parameter of MonoApplicationUnix is the same as for
