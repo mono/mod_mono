@@ -802,22 +802,14 @@ setup_socket (apr_pool_t *pool, mono_server_rec *server_conf)
 		return -1;
 	}
 
-	/* Either MonoApplications, MonoApplicationsConfigFile or MonoApplicationsConfigDir
-	 * must be specified */
+	/* At least one of MonoApplications, MonoApplicationsConfigFile or
+	 * MonoApplicationsConfigDir must be specified */
 	DEBUG_PRINT (1, "Applications: %s", server_conf->applications);
 	DEBUG_PRINT (1, "Config file: %s", server_conf->appconfig_file);
 	DEBUG_PRINT (1, "Config dir.: %s", server_conf->appconfig_dir);
-	i = 0;
-	if (server_conf->applications != NULL)
-		i++;
-	
-	if (server_conf->appconfig_file != NULL)
-		i++;
-	
-	if (server_conf->appconfig_dir != NULL)
-		i++;
-
-	if (i == 0) {
+	if (server_conf->applications == NULL &&
+	    server_conf->appconfig_file == NULL &&
+	    server_conf->appconfig_dir == NULL) {
 		ap_log_error (APLOG_MARK, APLOG_ERR,
 			      STATUS_AND_SERVER,
 			      "Not running mod-mono-server.exe because no MonoApplications, "
@@ -825,14 +817,6 @@ setup_socket (apr_pool_t *pool, mono_server_rec *server_conf)
 		return -1;
 	}
 
-	if (i != 1) {
-		ap_log_error (APLOG_MARK, APLOG_ERR,
-			      STATUS_AND_SERVER,
-			      "Not running mod-mono-server.exe because you specified more than one of "
-			      "MonoApplications, MonoApplicationsConfigFile or MonoApplicationConfigDir.");
-		return -1;
-	}
-	
 	fork_mod_mono_server (pool, server_conf);
 	DEBUG_PRINT (1, "parent waiting");
 	for (i = 0; i < 3; i++) {

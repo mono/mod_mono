@@ -223,8 +223,8 @@ APPENDIX B: Configuration directives for mod_mono
     specified directory DIR. Files must have '.webapp' extension.
     Default value: ""
 
-  Note that only one of MonoApplications, MonoApplicationsConfigFile and
-  MonoApplicationsConfigDir is allowed.
+  Note that you must specify at least one of MonoApplications,
+  MonoApplicationsConfigFile and MonoApplicationsConfigDir.
 
 
 APPENDIX C: Webapp file format

@@ -65,10 +65,8 @@ Default value: NULL.
 The argument passed in --appconfigdir argument to mod-mono-server.
 Default value: NULL.
 .PP
-Note that only 
-.B one
-of MonoApplications, MonoApplicationsConfigFile or
-MonoApplicationsConfigDir can be specified.
+Note that you must specify at least one of MonoApplications,
+MonoApplicationsConfigFile and MonoApplicationsConfigDir.
 .SH SAMPLE CONFIGURATION
 For Apache 1.3, with mod-mono-server.exe from package xsp installed in
 prefix=/usr:

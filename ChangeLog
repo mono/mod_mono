@@ -3,9 +3,8 @@
 	* man/mod_mono.8.in: 
 	* INSTALL: added .webapp sample. MonoApplications is not mandatory.
 
-	* src/mod_mono.c: only one of MonoApplications,
-	MonoApplicationsConfigFile and MonoApplicationsConfigDir is allowed.
-	MonoApplications is no longer mandatory.
+	* src/mod_mono.c: at least one of MonoApplications,
+	MonoApplicationsConfigFile and MonoApplicationsConfigDir is mandatory.
 
 2004-06-02  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
