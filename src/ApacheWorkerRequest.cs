@@ -217,6 +217,12 @@ namespace Apache.Web
 			return request.GetRequestHeader (GetKnownRequestHeaderName (index));
 		}
 
+		public override SendCalculatedContentLength (int contentLength) 
+		{
+		  // Do nothing, it will be set correctly by Apache in the output content length filter
+		}
+
+
 		public override int ReadEntityBody (byte [] buffer, int size)
 		{
 		  if (buffer == null || size <= 0 || request.SetupClientBlock() != 0 /* APR_SUCCESS */)

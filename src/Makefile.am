@@ -3,6 +3,7 @@ CLEANFILES = .libs/libmod_mono.so *~
 EXTRA_DIST = ApacheApplicationHost.cs \
              IApplicationHost.cs \
 	     Request.cs \
+	     makedll.mak \
 	     ApacheWorkerRequest.cs \
 	     MonoWorkerRequest.cs
 

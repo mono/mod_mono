@@ -99,19 +99,62 @@ EXPOSE_CONNECTION_FIELD_STRING_GET(mono_apache_connection_get_remote_address, re
 EXPOSE_CONNECTION_FIELD_STRING_GET(mono_apache_connection_get_local_address, local_ip);
 
 typedef struct {
-  const char *modmono_dll;
+  const char *virtual;
+  const char *app_base_dir;
 } modmono_server_rec;
+
+/* From mod_alias */
+static int alias_matches(const char *uri, const char *alias_fakename)
+{
+  const char *aliasp = alias_fakename, *urip = uri;
+
+  while (*aliasp) {
+    if (*aliasp == '/') {
+      /* any number of '/' in the alias matches any number in
+       * the supplied URI, but there must be at least one...
+       */
+      if (*urip != '/')
+	return 0;
+
+      do {
+	++aliasp;
+      } while (*aliasp == '/');
+      do {
+	++urip;
+      } while (*urip == '/');
+    }
+    else {
+      /* Other characters are compared literally */
+      if (*urip++ != *aliasp++)
+	return 0;
+    }
+  }
+
+  /* Check last alias path component matched all the way */
+
+  if (aliasp[-1] != '/' && *urip != '\0' && *urip != '/')
+    return 0;
+  /* Return number of characters from URI which matched (may be
+   * greater than length of alias, since we may have matched
+   * doubled slashes)
+   */
+
+  return urip - uri;
+}
 
 
 static MonoObject *ApacheApplicationHost;
 
-static const char *load_modmono_dll(cmd_parms *cmd, void *config,
-                                        const char *name)
+/* For now we only allow one application domain */
+static const char *modmono_application_directive(cmd_parms *cmd, void *config,
+						 const char *virtual, const char *app_base_dir)
 {
   modmono_server_rec *server_rec = (modmono_server_rec *)
     ap_get_module_config(cmd->server->module_config,
 			 &mono_module);
-  server_rec->modmono_dll = name;
+  /* TODO: Check they are sensible, they exist, etc. */
+  server_rec->virtual = virtual;
+  server_rec->app_base_dir = app_base_dir;
   return NULL;
 }
 
@@ -177,7 +220,7 @@ static conn_rec *mono_apache_request_get_connection (request_rec *r) {
   return r->connection;
 }
 
-static conn_rec *mono_apache_connection_close (conn_rec *c) {
+static void mono_apache_connection_close (conn_rec *c) {
   ap_lingering_close(c);
 }
 
@@ -238,7 +281,8 @@ void register_wrappers () {
 }
 
 static MonoObject *
-modmono_create_application_host (MonoDomain *domain, MonoAssembly *assembly)
+modmono_create_application_host (MonoDomain *domain, MonoAssembly *assembly,
+				 const char *virtual, const char *app_base_dir)
 {
   MonoMethodDesc *desc;
   MonoClass *class;
@@ -251,26 +295,27 @@ modmono_create_application_host (MonoDomain *domain, MonoAssembly *assembly)
 
   desc = mono_method_desc_new ("::CreateApplicationHost(string,string)", 0);
   method = mono_method_desc_search_in_class (desc, class);
-
-  params[0] = mono_string_new (domain, "/"); /* FIXME: this path should be configurable */
-  params[1] = mono_string_new (domain, assembly->basedir); /* FIXME: this path should be configurable */;
-
+  params[0] = mono_string_new (domain, virtual); 
+  params[1] = mono_string_new (domain, app_base_dir); 
   return mono_runtime_invoke (method, NULL, params, NULL);
 }
 
 static MonoAssembly *
-modmono_assembly_setup (MonoDomain *domain, const char *file) {
+modmono_assembly_setup (MonoDomain *domain, char *app_base_dir) {
   MonoAssembly *assembly;
   gchar *path;
   gchar *with_extension;
-
-  if ((assembly = mono_domain_assembly_open(domain, file)) == NULL) {
+  MonoAssemblyName aname;
+  
+  aname.name = "ModMono.dll";
+  /* Specifying NULL base dir means it will look in path */
+  if ((assembly = (MonoAssembly *)mono_assembly_load (&aname, NULL, NULL)) == NULL) {
     return NULL;
   }
-  /* See object.c, usually setup when executing assembly, necesary because vpath will be obtained from there*/
+
   domain->entry_assembly = assembly;
-  domain->setup->application_base = mono_string_new (domain, assembly->basedir);
-  path = g_build_path (assembly->basedir, assembly->aname.name, NULL);
+  domain->setup->application_base = mono_string_new (domain, app_base_dir);
+  path = g_build_path (app_base_dir, assembly->aname.name, NULL);
   with_extension = g_strconcat (path, ".exe.config", NULL);
   domain->setup->configuration_file = mono_string_new (domain, with_extension);
   g_free (with_extension);
@@ -285,30 +330,30 @@ create_application_host (request_rec *r)
   MonoAssembly *assembly;
   gchar *str;
   modmono_server_rec *server_conf;
-  const char *file;
+  const char *app_base_dir;
   int retval = 5;
   int result;
   
   server_conf = ap_get_module_config(r->server->module_config, &mono_module);
-  file = server_conf->modmono_dll;
-  if (file == NULL) {
-    ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_mono: No LoadModMonoDLL directive found");
+  app_base_dir = server_conf->app_base_dir;
+  if (app_base_dir == NULL) {
+    ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_mono: No MonoApplication directive found");
     return HTTP_INTERNAL_SERVER_ERROR;
   }
   register_wrappers();
-  domain = mono_jit_init (file);
+  domain = mono_jit_init (app_base_dir);
 
   if (domain == NULL) {
     ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_mono: Could not initialize domain");
     return HTTP_INTERNAL_SERVER_ERROR;
   }
-  assembly = modmono_assembly_setup(domain, file);
+  assembly = modmono_assembly_setup(domain, app_base_dir);
   if (assembly == NULL) {
-    ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_mono: Could not initialize assembly: %s", file);
+    ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_mono: Could not initialize ModMono.dll. Is it in your path?", app_base_dir);
     return HTTP_INTERNAL_SERVER_ERROR;
   }
 
-  ApacheApplicationHost = modmono_create_application_host (domain, assembly);
+  ApacheApplicationHost = modmono_create_application_host (domain, assembly, server_conf->virtual, app_base_dir);
   if (ApacheApplicationHost == NULL) {
     ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_mono: Could not create ApacheApplicationHost");
     return HTTP_INTERNAL_SERVER_ERROR;
@@ -317,19 +362,26 @@ create_application_host (request_rec *r)
   return OK;
 }
 
-int modmono_handler (request_rec* r) {
-    if (strcmp(r->handler,MODMONO_MAGIC_TYPE)) {
-      return DECLINED;
-    } else {
-      if (ApacheApplicationHost == NULL) { /* TODO: locking */
-	      int res;
-	      res = create_application_host (r);
-	      if (res != OK)
-		      return res;
-	}
 
-      return modmono_request_handler(r);
+int modmono_handler (request_rec* r) {
+  modmono_server_rec *server_conf = ap_get_module_config(r->server->module_config, &mono_module);
+  int l = alias_matches(r->uri, server_conf->virtual);
+  char *path;
+  /* Does the request match the application virtual path? */
+  if (server_conf->virtual == NULL || l < 0) {
+    return DECLINED;
+  } else {
+    path =  apr_pstrcat(r->pool, server_conf->app_base_dir, r->uri + l, NULL);
+    r->filename = ap_server_root_relative(r->pool, path);
+    if (ApacheApplicationHost == NULL) { /* TODO: locking */
+      int res;
+      res = create_application_host (r);
+      if (res != OK)
+	return res;
     }
+    
+    return modmono_request_handler(r);
+  }
 }
 
 int modmono_execute_request(MonoObject *ApacheApplicationHost, request_rec *r) {
@@ -339,7 +391,7 @@ int modmono_execute_request(MonoObject *ApacheApplicationHost, request_rec *r) {
   gpointer args [1];
   gchar *cwd;
   MonoClass *mclass;
-
+  modmono_server_rec *server_conf;
   desc = mono_method_desc_new ("::ProcessRequest(intptr)", 0);
   
   processRequestMethod = mono_method_desc_search_in_class(desc, mono_object_class(ApacheApplicationHost));
@@ -351,7 +403,8 @@ int modmono_execute_request(MonoObject *ApacheApplicationHost, request_rec *r) {
     ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_mono: Could not get current working directory");
     return HTTP_INTERNAL_SERVER_ERROR;
   }
-  chdir (ApacheApplicationHost->vtable->klass->image->assembly->basedir); /* weird, huh? */
+  server_conf = ap_get_module_config(r->server->module_config, &mono_module);
+  chdir (server_conf->app_base_dir); 
   args[0] = &r;
   mono_runtime_invoke (processRequestMethod, ApacheApplicationHost, args, NULL);
   chdir(cwd);
@@ -363,7 +416,6 @@ int modmono_execute_request(MonoObject *ApacheApplicationHost, request_rec *r) {
 int modmono_request_handler (request_rec* r) {
   MonoDomain *domain;
   gchar *str;
-  modmono_server_rec *server_conf;
   const char *file;
   int retval = 5;
   int result;
@@ -381,7 +433,7 @@ int modmono_request_handler (request_rec* r) {
 
 static int modmono_init_handler (apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp,
 			  server_rec *s) {
-  ap_add_version_component(p, "mod_mono/0.1");  
+  ap_add_version_component(p, "mod_mono/" VERSION );  
   return OK;
 }
 
@@ -393,8 +445,8 @@ static void register_modmono_hooks(apr_pool_t * p)
 
 static const command_rec modmono_cmds[] =
   {
-    AP_INIT_TAKE1("LoadModMonoDLL", load_modmono_dll, NULL, RSRC_CONF,
-                  "Path to ModMono.dll"),
+    AP_INIT_TAKE2("MonoApplication", modmono_application_directive, NULL, RSRC_CONF,
+                  "Create a Mono Application. The first argument is the virtual path and the second the directory on disk."),
     NULL
   };
 

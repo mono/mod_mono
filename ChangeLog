@@ -1,3 +1,10 @@
+2003-01-07  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
+	* INSTALL: Add new config instructions. Only a MonoApplication directive is needed right now
+	* src/mod_mono.c: Get rid of LoadModMonoDll, per Miguel suggestion, we look for the assembly
+	in the assembly path now. Add MonoApplication directive, this simplies compfiguration greatly.
+	* src/Makefile.am : makedll.mak was not being included in the distribution
+	* src/ApacheWorkerRequest.cs : Do nothing with Content-Length, it will be set by Apache
+	
 2003-01-06  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
 	* src/mod_mono.c: Added setter macros and allow setting status
 	line and status code. Set r->content_type when Content-Type is set
