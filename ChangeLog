@@ -1,3 +1,8 @@
+2003-01-14  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/ApacheWorkerRequest.cs: added FIXME.
+	* src/MonoWorkerRequest.cs: synched with the one in xsp.
+
 2003-01-09  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
 	* mcs/ApacheWorkerRequest.cs : Fixed typo, thanks Sergio Luis Valle Mayorga for catching it
 

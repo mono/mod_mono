@@ -212,6 +212,16 @@ namespace Apache.Web
 			return request.GetRequestHeader (name);
 		}
 
+		public override string [][] GetUnknownRequestHeaders ()
+		{
+			/**
+			 *FIXME: this should return all the headers whose index in:
+			 *   HttpWorkerRequest.GetKnownRequestHeaderIndex (headerName);
+			 * is -1. Once we get the value, keep it in a class field.
+			 */
+			return null;
+		}
+
 		public override string GetKnownRequestHeader (int index)
 		{
 			return request.GetRequestHeader (GetKnownRequestHeaderName (index));
