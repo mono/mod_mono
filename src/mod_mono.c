@@ -1093,13 +1093,17 @@ MAKE_CMD (MonoUnixSocket, unix_socket,
 	),
 
 MAKE_CMD (MonoListenPort, listen_port,
-	"TCP port for mod-mono-server to listen on. Mutually exclusive with "
-	"MonoUnixSocket. Default: none"
+	"TCP port on which mod-mono-server should/is listen on. Mutually "
+	"exclusive with MonoUnixSocket. "
+	"When this options is specified, "
+	"mod-mono-server and mod_mono will use a TCP socket for communication. "
+	"Default: none"
 	),
 
 MAKE_CMD (MonoListenAddress, listen_address,
-	"IP address for mod-mono-server to listen on. Must be used together with "
-	"MonoListenPort.  Default: 127.0.0.1 (if MonoListenPort specified)"
+	"IP address where mod-mono-server should listen/is listening on. Can "
+	"only be used when MonoListenPort is specified."
+	"Default: \"127.0.0.1\""
 	),
 
 MAKE_CMD (MonoRunXSP, run_xsp,

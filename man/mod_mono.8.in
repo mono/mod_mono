@@ -9,7 +9,7 @@
 .if n .sp
 ..
 
-.TH mod_mono "8" "3 Jun 2004" "mod_mono @VERSION@" "ASP.NET Support for Apache"
+.TH mod_mono "8" "10 Jul 2004" "mod_mono @VERSION@" "ASP.NET Support for Apache"
 .SH NAME
 mod_mono \- apache module that enables ASP.NET pages. Works together with mod-mono-server.exe
 .SH DESCRIPTION
@@ -25,7 +25,19 @@ Common Intermediate Language into native code.
 .I "MonoUnixSocket"
 It accepts a file name as argument. That file will be a named pipe
 used to send/receive data from/to mod_mono to/from mod-mono-server.
+You cannot use MonoListenPort and MonoUnixSocket at the same time.
 Default value: "/tmp/mod_mono_server".
+.TP
+.I "MonoListenPort"
+TCP port on which mod-mono-server should listen/is listening on. Mutually
+exclusive with MonoUnixSocket. When this options is specified,
+mod-mono-server and mod_mono will use a TCP socket for communication.
+Default value: none
+.TP
+.I "MonoListenAddress"
+IP address where mod-mono-server should listen/is listening on. Can only be
+used when MonoListenPort is specified.
+Default value: "127.0.0.1"
 .TP
 .I "MonoRunXSP"
 If the value is True, it tells mod_mono to spawn mod-mono-server.exe
