@@ -1,0 +1,9 @@
+.deps
+.libs
+Makefile
+Makefile.in
+ModMono.dbg
+ModMono.dll
+config.h
+libmod_mono.la
+mod_mono.lo
