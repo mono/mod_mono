@@ -6,7 +6,7 @@
  * 	Gonzalo Paniagua Javier
  *
  * Copyright (c) 2002 Daniel Lopez Ridruejo
- *           (c) 2002-2004 Novell, Inc.
+ *           (c) 2002-2005 Novell, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -53,6 +53,7 @@ typedef struct {
 	char *debug;
 } mono_server_rec;
 
+/* */
 CONFIG_FUNCTION (unix_socket, filename)
 CONFIG_FUNCTION (run_xsp, run_xsp)
 CONFIG_FUNCTION (executable_path, executable_path)
@@ -302,8 +303,7 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 		i = LE_FROM_INT (i);
 		status = write_data (sock, &i, sizeof (int));
 		break;
-	case FLUSH: /* The case will be removed after next release */
-		/* connection_flush (r); */
+	case FLUSH:
 		break;
 	case CLOSE:
 		return FALSE;
@@ -654,6 +654,46 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	int max_cpu_time = 0;
 	int status;
 
+	/* Running mod-mono-server not requested */
+	if (!strcasecmp (server_conf->run_xsp, "false")) {
+		DEBUG_PRINT (1, "Not running mod-mono-server: %s", server_conf->run_xsp);
+		ap_log_error (APLOG_MARK, APLOG_DEBUG, STATUS_AND_SERVER,
+				"Not running mod-mono-server.exe");
+		return;
+	}
+
+	/* At least one of MonoApplications, MonoApplicationsConfigFile or
+	* MonoApplicationsConfigDir must be specified */
+	DEBUG_PRINT (1, "Applications: %s", server_conf->applications);
+	DEBUG_PRINT (1, "Config file: %s", server_conf->appconfig_file);
+	DEBUG_PRINT (1, "Config dir.: %s", server_conf->appconfig_dir);
+	if (server_conf->applications == NULL && server_conf->appconfig_file == NULL &&
+		server_conf->appconfig_dir == NULL) {
+		ap_log_error (APLOG_MARK, APLOG_ERR,
+				STATUS_AND_SERVER,
+				"Not running mod-mono-server.exe because no MonoApplications, "
+				"MonoApplicationsConfigFile or MonoApplicationConfigDir specified.");
+		return;
+	}
+
+	/* Only one of MonoUnixSocket and MonoListenPort. */
+	DEBUG_PRINT (1, "Listen port: %s", server_conf->listen_port);
+	if (server_conf->listen_port != NULL && server_conf->filename != NULL) {
+		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+				"Not running mod-mono-server.exe because both MonoUnixSocket and "
+				"MonoListenPort specified.");
+		return;
+	}
+
+	/* MonoListenAddress must be used together with MonoListenPort */
+	DEBUG_PRINT (1, "Listen address: %s", server_conf->listen_address);
+	if (server_conf->listen_port == NULL && server_conf->listen_address != NULL) {
+		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+			"Not running mod-mono-server.exe because MonoListenAddress "
+			"is present and there is no MonoListenPort.");
+		return;
+	}
+
 	if (server_conf->max_memory != NULL)
 		max_memory = atoi (server_conf->max_memory);
 
@@ -666,6 +706,7 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 		return;
 	}
 
+	/* Double fork to prevent defunct/zombie processes */
 	pid = fork ();
 	if (pid > 0)
 		exit (0);
@@ -674,7 +715,10 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	chdir ("/");
 	umask (0077);
 	DEBUG_PRINT (1, "child started");
-	
+
+#ifdef DEBUG
+	dup2 (2, 1);
+#endif
 	for (i = getdtablesize () - 1; i >= 3; i--)
 		close (i);
 
@@ -689,14 +733,11 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	serverdir = get_directory (pool, server_conf->server_path);
 	DEBUG_PRINT (1, "serverdir: %s", serverdir);
 	if (strcmp (monodir, serverdir)) {
-		path = apr_pcalloc (pool, strlen (tmp) + 1 +
-					  strlen (monodir) + 1 +
-					  strlen (serverdir) + 1);
+		path = apr_pcalloc (pool, strlen (tmp) + strlen (monodir) +
+					strlen (serverdir) + 3);
 		sprintf (path, "%s:%s:%s", monodir, serverdir, tmp);
 	} else {
-		path = apr_pcalloc (pool, strlen (tmp) + 1 +
-					  strlen (monodir) + 1);
-
+		path = apr_pcalloc (pool, strlen (tmp) + strlen (monodir) + 2);
 		sprintf (path, "%s:%s", monodir, tmp);
 	}
 
@@ -707,11 +748,11 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	sprintf (wapidir, "%s/%s", server_conf->wapidir, ".wapi");
 	mkdir (wapidir, 0700);
 	if (chmod (wapidir, 0700) != 0 && (errno == EPERM || errno == EACCES)) {
-		ap_log_error (APLOG_MARK, APLOG_DEBUG, STATUS_AND_SERVER,
-			"%s: %s", wapidir, strerror (errno));
+		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+				"%s: %s", wapidir, strerror (errno));
 		exit (1);
 	}
-	
+
 	SETENV (pool, "MONO_SHARED_DIR", server_conf->wapidir);
 
 	memset (argv, 0, sizeof (char *) * MAXARGS);
@@ -719,7 +760,7 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	argv [argi++] = server_conf->executable_path;
 	if (!strcasecmp (server_conf->debug, "True"))
 		argv [argi++] = "--debug";
-	
+
 	argv [argi++] = server_conf->server_path;
 	if (server_conf->listen_port != NULL) {
 		char *la;
@@ -745,10 +786,10 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	}
 
 	argv [argi++] = "--nonstop";
-        if (server_conf->document_root != NULL) {
-                argv [argi++] = "--root";
-                argv [argi++] = server_conf->document_root;
-        }
+	if (server_conf->document_root != NULL) {
+		argv [argi++] = "--root";
+		argv [argi++] = server_conf->document_root;
+	}
 
 	if (server_conf->appconfig_file != NULL) {
 		argv [argi++] = "--appconfigfile";
@@ -763,34 +804,33 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	}
 
 	/*
-	 * The last element in the argv array must always be NULL
-	 * to terminate the array for execv().
-	 *
-	 * Any new argi++'s that are added here must also increase
-	 * the maxargs argument at the top of this method to prevent
- 	 * array out-of-bounds. 
-	 */
+	* The last element in the argv array must always be NULL
+	* to terminate the array for execv().
+	*
+	* Any new argi++'s that are added here must also increase
+	* the maxargs argument at the top of this method to prevent
+	* array out-of-bounds. 
+	*/
 
 	ap_log_error (APLOG_MARK, APLOG_DEBUG, STATUS_AND_SERVER,
-                      "running '%s %s %s %s %s %s %s %s %s %s %s %s %s'",
-                      argv [0], argv [1], argv [2], argv [3], argv [4],
-		      argv [5], argv [6], argv [7], argv [8], 
-		      argv [9], argv [10], argv [11], argv [12]);
+			"running '%s %s %s %s %s %s %s %s %s %s %s %s %s'",
+			argv [0], argv [1], argv [2], argv [3], argv [4],
+			argv [5], argv [6], argv [7], argv [8], 
+			argv [9], argv [10], argv [11], argv [12]);
 
 	execv (argv [0], argv);
 	ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-                      "Failed running '%s %s %s %s %s %s %s %s %s %s %s %s %s'. Reason: %s",
-                      argv [0], argv [1], argv [2], argv [3], argv [4],
-		      argv [5], argv [6], argv [7], argv [8],
-		      argv [9], argv [10], argv [11], argv [12],
-		      strerror (errno));
+			"Failed running '%s %s %s %s %s %s %s %s %s %s %s %s %s'. Reason: %s",
+			argv [0], argv [1], argv [2], argv [3], argv [4],
+			argv [5], argv [6], argv [7], argv [8],
+			argv [9], argv [10], argv [11], argv [12],
+			strerror (errno));
 	exit (1);
 }
 
 static apr_status_t
 setup_socket (apr_socket_t **sock, mono_server_rec *server_conf, apr_pool_t *pool, int dontfork)
 {
-	int i;
 	apr_status_t rv;
 	int family;
 
@@ -811,78 +851,7 @@ setup_socket (apr_socket_t **sock, mono_server_rec *server_conf, apr_pool_t *poo
 
 	rv = try_connect (server_conf, sock, pool);
 	DEBUG_PRINT (1, "try_connect: %d", (int) rv);
-	if (rv == APR_SUCCESS || dontfork)
-		return rv;
-
-	if (rv == -2)
-		return -1;
-
-	/* Running mod-mono-server not requested */
-	if (!strcasecmp (server_conf->run_xsp, "false")) {
-		DEBUG_PRINT (1, "Not running mod-mono-server: %s", server_conf->run_xsp);
-		ap_log_error (APLOG_MARK, APLOG_DEBUG, STATUS_AND_SERVER,
-			      "Not running mod-mono-server.exe");
-
-		apr_socket_close (*sock);
-		return -1;
-	}
-
-	/* At least one of MonoApplications, MonoApplicationsConfigFile or
-	 * MonoApplicationsConfigDir must be specified */
-	DEBUG_PRINT (1, "Applications: %s", server_conf->applications);
-	DEBUG_PRINT (1, "Config file: %s", server_conf->appconfig_file);
-	DEBUG_PRINT (1, "Config dir.: %s", server_conf->appconfig_dir);
-	if (server_conf->applications == NULL &&
-	    server_conf->appconfig_file == NULL &&
-	    server_conf->appconfig_dir == NULL) {
-		ap_log_error (APLOG_MARK, APLOG_ERR,
-			      STATUS_AND_SERVER,
-			      "Not running mod-mono-server.exe because no MonoApplications, "
-			      "MonoApplicationsConfigFile or MonoApplicationConfigDir specified.");
-		apr_socket_close (*sock);
-		return -1;
-	}
-
-	/* Only one of MonoUnixSocket and MonoListenPort. */
-	DEBUG_PRINT (1, "Listen port: %s", server_conf->listen_port);
-	if (server_conf->listen_port != NULL && server_conf->filename != NULL) {
-		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-			      "Not running mod-mono-server.exe because both MonoUnixSocket and "
-			      "MonoListenPort specified.");
-		apr_socket_close (*sock);
-		return -1;
-	}
-
-	/* MonoListenAddress must be used together with MonoListenPort */
-	DEBUG_PRINT (1, "Listen address: %s", server_conf->listen_address);
-	if (server_conf->listen_port == NULL && server_conf->listen_address != NULL) {
-		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-			      "Not running mod-mono-server.exe because MonoListenAddress "
-			      "is present and there is no MonoListenPort.");
-		apr_socket_close (*sock);
-		return -1;
-	}
-
-
-	fork_mod_mono_server (pool, server_conf);
-
-	DEBUG_PRINT (1, "parent waiting");
-	for (i = 0; i < 3; i++) {
-		apr_sleep (apr_time_from_sec (1));
-		DEBUG_PRINT (1, "try_connect %d", i);
-		rv = try_connect (server_conf, sock, pool);
-		if (rv == APR_SUCCESS)
-			return APR_SUCCESS;
-
-		if (rv == -2)
-			break;
-	}
-
-	ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-		      "Failed connecting. %s", strerror (errno));
-
-	apr_socket_close (*sock);
-	return -1;
+	return rv;
 }
 
 static int
@@ -1015,7 +984,7 @@ mono_execute_request (request_rec *r)
 	apr_socket_t *sock;
 	apr_status_t rv;
 	int command;
-	int result;
+	int result = FALSE;
 	apr_status_t input;
 	int status;
 	mono_server_rec *server_conf;
@@ -1069,6 +1038,8 @@ terminate_xsp (void *data)
 	apr_status_t rv;
 	char *termstr = "";
 
+	DEBUG_PRINT (0, "Terminate XSP");
+
 	mono_conf = ap_get_module_config (server->module_config, &mono_module);
 	if (mono_conf->run_xsp && !strcasecmp (mono_conf->run_xsp, "false"))
 		return APR_SUCCESS;
@@ -1093,7 +1064,7 @@ mono_init_handler (server_rec *s, pool *p)
 	DEBUG_PRINT (0, "Initializing handler");
 	ap_add_version_component ("mod_mono/" VERSION);
 	pconf = p;
-	ap_register_cleanup (p, s, terminate_xsp, ap_null_cleanup);
+	ap_register_cleanup (p, s, (void (*)(void *)) terminate_xsp, ap_null_cleanup);
 }
 #else
 static int
@@ -1102,13 +1073,49 @@ mono_init_handler (apr_pool_t *p,
 		      apr_pool_t *ptemp,
 		      server_rec *s)
 {
+	void *data;
+	const char *userdata_key = "mono_module_init";
+
+	/*
+	 * mono_init_handler() will be called twice, and if it's a DSO then all
+	 * static data from the first call will be lost. Only set up our static
+	 * data on the second call.
+	 */
+	apr_pool_userdata_get (&data, userdata_key, s->process->pool);
+	if (!data) {
+		apr_pool_userdata_set ((const void *) 1, userdata_key,
+					apr_pool_cleanup_null, s->process->pool);
+		return OK;
+	}
+
 	DEBUG_PRINT (0, "Initializing handler");
+
 	ap_add_version_component (p, "mod_mono/" VERSION);
 	pconf = s->process->pconf;
 	apr_pool_cleanup_register (pconf, s, terminate_xsp, apr_pool_cleanup_null);
+
 	return OK;
 }
 #endif
+
+static void
+mono_child_init (
+#ifdef APACHE2
+	apr_pool_t *p, server_rec *s
+#else
+	server_rec *s, apr_pool_t *p
+#endif
+	)
+{
+	mono_server_rec *mono_conf;
+
+	DEBUG_PRINT (0, "Mono Child Init");
+
+	mono_conf = ap_get_module_config (s->module_config, &mono_module);
+
+	/* NOTE: this should have tighter syncronization */
+	fork_mod_mono_server (pconf, mono_conf);
+}
 
 #ifdef APACHE13
 static const handler_rec mono_handlers [] = {
@@ -1121,6 +1128,7 @@ mono_register_hooks (apr_pool_t * p)
 {
 	ap_hook_handler (mono_handler, NULL, NULL, APR_HOOK_FIRST);
 	ap_hook_post_config (mono_init_handler, NULL, NULL, APR_HOOK_MIDDLE);
+	ap_hook_child_init (mono_child_init, NULL, NULL, APR_HOOK_MIDDLE);
 }
 #endif
 
@@ -1237,22 +1245,22 @@ MAKE_CMD (MonoDebug, debug,
 module MODULE_VAR_EXPORT mono_module =
   {
     STANDARD_MODULE_STUFF,
-    mono_init_handler,       /* initializer */
-    NULL,      /* dir config creater */
-    NULL,      /* dir merger --- default is to override */
+    mono_init_handler,		/* initializer */
+    NULL,			/* dir config creater */
+    NULL,			/* dir merger --- default is to override */
     create_mono_server_config,	/* server config */
     NULL,                       /* merge server configs */
-    mono_cmds,            /* command table */
-    mono_handlers,         /* handlers */
+    mono_cmds,			/* command table */
+    mono_handlers,		/* handlers */
     NULL,                       /* filename translation */
     NULL,                       /* check_user_id */
     NULL,                       /* check auth */
     NULL,                       /* check access */
     NULL,                       /* type_checker */
-    NULL,           /* fixups */
+    NULL,			/* fixups */
     NULL,                       /* logger */
     NULL,                       /* header parser */
-    NULL,                       /* child_init */
+    mono_child_init,		/* child_init */
     NULL,                       /* child_exit */
     NULL                        /* post read-request */
   };

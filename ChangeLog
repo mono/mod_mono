@@ -1,3 +1,10 @@
+2005-02-04 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* configure.in: 1.0.5.99
+	* src/mod_mono.c: start mod-mono-server in the child_init step. This
+	makes mod_mono work on all apache 2 MPM models and also works for 1.3.
+	Thanks to Rob Lyon for most of the patch.
+
 2005-01-08 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: patch by Raffaelle Sandrini that adds a new MonoDebug
