@@ -65,7 +65,7 @@ something meaningful)
 NOTE:
 If you installed Mono form CVS in a non standard location, you can use --with-crosspkgdir 
 For example: I use the following line to build:
-PKG_CONFIG_PATH=/home/user/mono/install/lib/pkgconfig/ ./configure --with-apache2=/home/user/mono/install/apache2 --with-crosspkgdir=/home/user/mono/install/lib/pkgconfig
+PKG_CONFIG_PATH=/home/user/mono/install/lib/pkgconfig/ ./configure --with-apxs=/home/user/mono/install/apache2/bin/apxs --with-crosspkgdir=/home/user/mono/install/lib/pkgconfig
 
 If it complains about config.h, copy the config.h in the mono/ directory to /home/user/mono/install/include
 It will tell you about duplication, but it will compile. This should have been fixed as of Mono 0.18
