@@ -1,3 +1,13 @@
+2005-02-09 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* configure.in: fixed autoscan warning and use 'if test'.
+	* src/mod_mono.[ch]: added support for starting more than one
+	mod-mono-server. All the existing directives can take now 2 parameters,
+	the first being an alias for a mod-mono-server instance. Added
+	MonoSetServerAlias to be used inside Location/Directory to choose which
+	mod-mono-server instance will be used. The alias 'default' is assumed
+	if the alias argument is omitted.
+
 2005-02-08 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: removed MonoDebug stuff and unused

@@ -85,6 +85,11 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #define apr_socket_close(sock) (ap_pclosesocket ((sock)->pool, (sock)->fd))
 #define APR_INET PF_INET
 #define apr_time_from_sec(x)	(x * 1000000)
+#define APR_OFFSET(p_type,field) \
+        ((long) (((char *) (&(((p_type)NULL)->field))) - ((char *) NULL)))
+
+#define APR_OFFSETOF(s_type,field) APR_OFFSET(s_type*,field)
+
 
 typedef time_t apr_interval_time_t;
 typedef size_t apr_size_t;
@@ -156,23 +161,6 @@ apr_socket_recv (apr_socket_t *sock, char *buf, apr_size_t *len);
 #define INT_FROM_LE(val) val
 #endif
 
-/* Configuration functions that only set a field */
-#define CONFIG_FUNCTION_NAME(directive) mono_config_ ##directive
-#define CONFIG_FUNCTION(directive, field) \
-	static const char *\
-	mono_config_ ##directive (cmd_parms *cmd, void *config,\
-				const char *parm) \
-	{ \
-		mono_server_rec *sr; \
-		sr = (mono_server_rec *) \
-			ap_get_module_config (cmd->server->module_config, \
-					&mono_module); \
-		sr->field = (char *) parm; \
-		DEBUG_PRINT (0, #directive ": %s", parm == NULL ? "(null)" : \
-				parm); \
-		return NULL; \
-	}
-
 /* Commands */
 enum Cmd {
 	FIRST_COMMAND,
@@ -215,17 +203,29 @@ static char *cmdNames [] = {
 
 /* Directives */
 #ifdef APACHE13
-#define MAKE_CMD(name, function_name, description) \
-	{ #name, CONFIG_FUNCTION_NAME (function_name), NULL, RSRC_CONF, TAKE1, description }
+#define MAKE_CMD_ACCESS(name, function_name, description) \
+	{ #name, function_name, NULL, ACCESS_CONF, TAKE12, description }
 
-#define MAKE_CMD_ITERATE2(name, function_name, description) \
-	{ name, function_name, NULL, RSRC_CONF, ITERATE2, description }
-#else
-#define MAKE_CMD(name, function_name, description) \
-	AP_INIT_TAKE1 (#name, CONFIG_FUNCTION_NAME(function_name), NULL, RSRC_CONF, description)
+#define MAKE_CMD12(name, field_name, description) \
+	{ #name, store_config_xsp, (void *) APR_OFFSETOF (xsp_data, field_name), \
+	RSRC_CONF, TAKE12, description }
 
-#define MAKE_CMD_ITERATE2(name, function_name, description) \
-	AP_INIT_ITERATE2 (name, function_name, NULL , RSRC_CONF, description)
+#define MAKE_CMD_ITERATE2(name, field_name, description) \
+	{ #name, store_config_xsp, (void *) APR_OFFSETOF (xsp_data, field_name), \
+	RSRC_CONF, ITERATE2, description }
+
+#else /* APACHE2 */
+
+#define MAKE_CMD_ACCESS(name, function_name, description) \
+	AP_INIT_TAKE1 (#name, function_name, NULL, ACCESS_CONF, description)
+
+#define MAKE_CMD12(name, field_name, description) \
+	AP_INIT_TAKE12 (#name, store_config_xsp, \
+	(void *) APR_OFFSETOF (xsp_data, field_name), RSRC_CONF, description)
+
+#define MAKE_CMD_ITERATE2(name, field_name, description) \
+	AP_INIT_ITERATE2 (#name, store_config_xsp, \
+	(void *) APR_OFFSETOF (xsp_data, field_name), RSRC_CONF, description)
 #endif
 
 /* Debugging */
