@@ -279,6 +279,13 @@ APPENDIX B: Configuration directives for mod_mono
     <Location>.
     Default value: 'default' if the directive is not used.
 
+  MonoSetEnv
+
+    Takes a string of 'name=value' pairs separated by semicolons. For
+    each pair, it calls setenv (name, value) before running
+    mod-mono-server.
+
+
 APPENDIX C: Webapp file format
 ---------------------------------
 

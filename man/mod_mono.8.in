@@ -109,6 +109,10 @@ Default value: false.
 Takes a server alias name. This is to be used inside <Directory> or
 <Location>.
 Default value: 'default' if the directive is not used.
+.TP
+.I MonoSetEnv
+Takes a string of 'name=value' pairs separated by semicolons. For each
+pair, it calls setenv (name, value) before running mod-mono-server.
 .SH SAMPLE CONFIGURATION
 This one using <Directory>:
 .nf

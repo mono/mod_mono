@@ -1,3 +1,8 @@
+2005-03-14 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* INSTALL:
+	* man/mod_mono.8.in: documented MonoSetEnv.
+
 2005-03-11 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: added MonoSetEnv directive. From a patch by Joel
