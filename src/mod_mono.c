@@ -401,10 +401,11 @@ static int
 write_data_string_no_prefix (int fd, const char *str)
 {
 	int l;
+	int lel;
 
 	l = (str == NULL) ? 0 : strlen (str);
-	l = LE_FROM_INT (l);
-	if (write (fd, &l, sizeof (int)) != sizeof (int))
+	lel = LE_FROM_INT (l);
+	if (write (fd, &lel, sizeof (int)) != sizeof (int))
 		return -1;
 
 	if (l == 0)
@@ -940,8 +941,10 @@ mono_execute_request (request_rec *r)
 		
 	do {
 		input = read (fd, &command, sizeof (int));
-		if (input > 0)
+		if (input > 0) {
+			command = INT_FROM_LE (command);
 			result = do_command (command, fd, r, &status);
+		}
 	} while (input > 0 && result == TRUE);
 
 	close (fd);
