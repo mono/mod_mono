@@ -504,7 +504,7 @@ setup_socket (const char *filename)
 	if (connect (fd, (struct sockaddr *) &address, sizeof (struct sockaddr_un)) == -1) {
 		char *s = strerror (errno);
 		ap_log_error (APLOG_MARK,
-			      APLOG_ERR,
+			      APLOG_DEBUG,
 			      0,
 			      NULL,
 			      "mod_mono_unix: connect error (%s). File: %s", s, filename);
@@ -548,6 +548,9 @@ modmono_execute_request (request_rec *r)
 static int
 modmono_handler (request_rec *r)
 {
+	if (strcmp (r->content_type, "application/x-asp-net"))
+		return DECLINED;
+
 	return modmono_execute_request (r);
 }
 

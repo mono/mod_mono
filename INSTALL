@@ -203,10 +203,17 @@ CONFIGURING APACHE
 
     Edit /home/user/mono/install/apache2/conf/httpd.conf:
 
+      AddType application/x-asp-net .aspx .ashx .asmx .config .asax .ascx
       Listen 8080   
       LoadModule mono_unix_module /home/user/mono/install/apache2/modules/mod_mono_unix.so
       MonoApplicationUnix /tmp/mod_mono_server
 
+    You may also want to add an Alias like:
+
+      Alias /mono "home/user/xsp/server/test"
+
+    so that apache redirects requests from, for example, /mono to /mono/ .
+    
     The parameter of MonoApplicationUnix is the unix socket filename that will
     be set up by mod-mono-server. You can use any valid file name here.  Just
     use the same file in httpd.conf and in mod-mono-server.exe (--file argument
