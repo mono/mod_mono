@@ -128,7 +128,7 @@ namespace Apache.Web
 		public string RemovePrefix (string uri, string appPrefix)
 		{
 		  int l = AliasMatches(uri, appPrefix);
-		  if (l < 0) {
+		  if (l == 0) {
 		    return uri;
 		  } else {
 		    return uri.Substring(l + 1);

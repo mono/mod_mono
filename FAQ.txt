@@ -1,7 +1,39 @@
 
 FAQ
 
-Installation and troubleshooting
+1. General questions
+
+1.1) Does mod_mono run on Apache 1.3?
+
+Not yet, but support is planned. The reason for choosing Apache 2 was
+better threading and Windows support.
+
+1.2) But I really need to use Apache 1.3
+
+You can always run an Apache 2 in a different ip/port combination and
+forward ASP.NET related request to it 
+For example, you can have an Apache 1.3 listening on port 80 and Apache 2
+with mod_mono on port 8000. You want all requests directed to 
+http://example.com/mono/ served by Apache 2.
+You can do so by adding the following to the Apache 1.3 configuration
+
+ProxyPass /mono/ http://127.0.0.1:8000
+ProxyPassReverse /mono/ http://127.0.0.1:8000
+
+1.3) Does mod_mono run on Windows?
+
+Not yet, can you contribute a Windows makefile?
+
+1.4) Does it support more than one MonoApplication directives?
+
+Not yet
+
+1.5) Is there a Debian mod_mono package?
+
+No, but several people has expressed interest. Can you contribute one?
+
+
+2. Installation and troubleshooting
 
 If you get a blank page or a stack trace instead of the page you expected,
 something went wrong. To find out what, the most useful place to look at is the 
@@ -9,7 +41,7 @@ Apache error_log file. If you installed Apache from source as explained it
 will be in /usr/local/apache2/logs, if you use Red Hat, it will be in 
 /var/logs/httpd/
 
-1) I get an error about a .wapi/ directory
+2.1) I get an error about a .wapi/ directory
 
 Mono creates that directory in the home of the current user. When you are running
 Mono inside Apache, it tries to create that directory in the home of the user
@@ -27,7 +59,7 @@ chown apache.apache /var/www/.wapi
 chmod 700 /var/www/.wapi
 
 
-2) I get an error about a missing tmpxxxxxxxxx.dll
+2.2) I get an error about a missing tmpxxxxxxxxx.dll
 
 Something along the lines of
 
@@ -40,13 +72,13 @@ The following should fix it
 
 chown -R apache.apache /home/user/mono/install/xsp/server/test
 
-3) System.Web.HttpException: String returned by HttpRuntime.GetResourceStringFromResourceManager
+2.3) System.Web.HttpException: String returned by HttpRuntime.GetResourceStringFromResourceManager
 
 Make sure a valid machine.config file is present 
 As of Mono 0.18, the rpm version installs it in /etc/mono/machine.config,
 but the runtime expects it in /usr/etc/mono/machine.config, make sure you copy it there
 
-4) I just get a blank page, and no error in the error_log
+2.4) I just get a blank page, and no error in the error_log
 
 This is a bug that needs to be tracked down. For now try commenting the following in the machine.config file
 Remove or comment out the following from the machine.config file
@@ -63,7 +95,7 @@ Remove or comment out the following from the machine.config file
  </authentication>
 
 
-5) I get an error complaining about IntPtr serialization constructor
+2.5) I get an error complaining about IntPtr serialization constructor
 
 This has been fixed in CVS, if you use a precompiled Mono 0.20 you need to substitute your corlib.dll
 with the one in http://apacheworld.org/modmono/

@@ -1,3 +1,10 @@
+2003-03-11  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
+	* src/Request.cs: We need to check for length returned equal to 0 in alias_matches
+	* src/mod_mono.c: fixed bug when matching prefix that made mod_mono handle all pages even those
+	outside MonoApplication scope. Also fixed the way alias_matches is exposed to Request
+	* FAQ.txt: Added some answers about Apache 1.3 and how to use proxypass
+	* packaging/redhat/mod_mono.spec: Update to 0.3.6
+	
 2003-02-25  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
 	Bring it up to date with Mono 0.20
 	* src/mod_mono.c: added mono_thread_attach (thanks Dick). Return NULL if header not found.

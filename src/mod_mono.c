@@ -103,11 +103,15 @@ typedef struct {
   const char *app_base_dir;
 } modmono_server_rec;
 
+static int alias_matches_managed(MonoString *uri, MonoString *alias_fakename) {
+  return alias_matches(mono_string_to_utf8(uri),
+		       mono_string_to_utf8(alias_fakename));
+}
+
 /* From mod_alias */
 static int alias_matches(const char *uri, const char *alias_fakename)
 {
-  const char *aliasp = alias_fakename, *urip = uri;
-
+  const char *aliasp= alias_fakename , *urip = uri;
   while (*aliasp) {
     if (*aliasp == '/') {
       /* any number of '/' in the alias matches any number in
@@ -279,7 +283,7 @@ void register_wrappers () {
   mono_add_internal_call("Apache.Web.Request::GetClientBlockInternal", mono_apache_get_client_block);
   mono_add_internal_call("Apache.Web.Request::SetStatusLineInternal", mono_apache_request_set_status_line);
   mono_add_internal_call("Apache.Web.Request::SetStatusCodeInternal", mono_apache_request_set_status_code);
-  mono_add_internal_call("Apache.Web.Request::AliasMatches", alias_matches);
+  mono_add_internal_call("Apache.Web.Request::AliasMatches", alias_matches_managed);
 }
 
 static MonoObject *
@@ -371,7 +375,7 @@ int modmono_handler (request_rec* r) {
   int l = alias_matches(r->uri, server_conf->virtual);
   char *path;
   /* Does the request match the application virtual path? */
-  if (server_conf->virtual == NULL || l < 0) {
+  if (server_conf->virtual == NULL || l == 0) {
     return DECLINED;
   } else {
     path =  apr_pstrcat(r->pool, server_conf->app_base_dir, r->uri + l, NULL);
