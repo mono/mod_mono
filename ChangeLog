@@ -1,6 +1,6 @@
 2003-01-06  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
 	* src/mod_mono.c: Added setter macros and allow setting status
-	line and status code
+	line and status code. Set r->content_type when Content-Type is set
 	* src/Request.cs: Added SetStatusLine and SetStatusCode
 	* src/ApacheWorkerRequest.cs: Added SendStatus
 	

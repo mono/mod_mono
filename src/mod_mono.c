@@ -65,7 +65,7 @@ module AP_MODULE_DECLARE_DATA mono_module;
 
 #define EXPOSE_REQUEST_FIELD_STRING_GET(funcname, fieldname) static MonoString * funcname (request_rec *r) {  return mono_string_new(mono_domain_get(), r->fieldname);}
 
-#define EXPOSE_REQUEST_FIELD_STRING_SET(funcname, fieldname) static void funcname (request_rec *r, MonoString *value) { r->fieldname = apr_pstrdup(r->pool, (const char *)mono_string_to_utf8(value));}
+#define EXPOSE_REQUEST_FIELD_STRING_SET(funcname, fieldname) static void funcname (request_rec *r, MonoString *value) { r->fieldname = (char *)apr_pstrdup(r->pool, (const char *)mono_string_to_utf8(value));}
 
 #define EXPOSE_REQUEST_FIELD_INT_GET(funcname, fieldname) static int funcname (request_rec *r) {  return r->fieldname; }
 #define EXPOSE_REQUEST_FIELD_INT_SET(funcname, fieldname) static void funcname (request_rec *r, int value) { r->fieldname = value; }
@@ -156,7 +156,17 @@ static void mono_apache_connection_flush (conn_rec *c) {
 }
 
 static void mono_apache_request_set_response_header(request_rec *r, MonoString *header_name, MonoString *header_value) {
-  apr_table_setn(r->headers_out, mono_string_to_utf8(header_name), mono_string_to_utf8(header_value));
+  char *name = mono_string_to_utf8(header_name);
+  char *value = mono_string_to_utf8(header_value);
+  /* Is there a more efficient way to do this w/o breaking encapsulation at HttpWorkerRequest level?. 
+   Apache requires content_type to be set and will insert content type header itself later on.
+   -- daniel
+  */
+  if (!strcmp(name,"Content-Type")) {
+    r->content_type = value;
+  } else {
+    apr_table_setn(r->headers_out, name, value);
+  }
 }
 
 static MonoString *mono_apache_request_get_request_header(request_rec *r, MonoString *header_name) {
@@ -363,7 +373,6 @@ int modmono_request_handler (request_rec* r) {
     return HTTP_INTERNAL_SERVER_ERROR;
   }
 
-  r->content_type = "text/html"; /* FIXME: we should make SendHeader treat the case when the header to be sent is Content-Type */
   result = modmono_execute_request(ApacheApplicationHost, r);
   /*mono_jit_cleanup(domain); Goes in infinite loop*/
   return result;
