@@ -136,7 +136,7 @@ apr_socket_recv (apr_socket_t *sock, char *buf, apr_size_t *len);
 
 #define EXECUTABLE_PATH 	MONO_PREFIX "/bin/mono"
 #define MONO_PATH		MONO_PREFIX "/lib"
-#define MODMONO_SERVER_PATH 	MONO_PREFIX "/bin/mod-mono-server.exe"
+#define MODMONO_SERVER_PATH 	MONO_PREFIX "/lib/mono/1.0/mod-mono-server.exe"
 #define WAPIDIR				"/tmp"
 #define DOCUMENT_ROOT		NULL
 #define APPCONFIG_FILE		NULL

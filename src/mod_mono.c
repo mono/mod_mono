@@ -1156,7 +1156,7 @@ MAKE_CMD (MonoPath, path,
 
 MAKE_CMD (MonoServerPath, server_path,
 	"If MonoRunXSP is True, this is the full path to mod-mono-server.exe. "
-	"Default: /usr/bin/mod-mono-server.exe"
+	"Default: " MODMONO_SERVER_PATH
 	),
 
 MAKE_CMD (MonoApplications, applications,
