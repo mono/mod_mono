@@ -1,3 +1,4 @@
+MKINSTALLDIRS=@top_builddir@mkinstalldirs
 CLEANFILES = .libs/libmod_mono.so .libs/libmod_mono_old.so *~
 
 EXTRA_DIST = ApacheApplicationHost.cs \
@@ -20,6 +21,7 @@ make_so:
 	@if test ! -L mod_mono_old.so ; then ln -s .libs/libmod_mono_old.so mod_mono_old.so ; fi
 
 install:
-	$(INSTALL) -m 644 .libs/libmod_mono.so $(LIBEXECDIR)/mod_mono.so
-	$(INSTALL) -m 644 .libs/libmod_mono_old.so $(LIBEXECDIR)/mod_mono_old.so
+	$(MKINSTALLDIRS) $(DESTDIR)$(LIBEXECDIR)
+	$(INSTALL) -m 644 .libs/libmod_mono.so $(DESTDIR)$(LIBEXECDIR)/mod_mono.so
+	$(INSTALL) -m 644 .libs/libmod_mono_old.so $(DESTDIR)$(LIBEXECDIR)/mod_mono_old.so
 

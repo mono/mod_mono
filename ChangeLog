@@ -1,3 +1,7 @@
+2003-11-17  Duncan Mak  <duncan@ximian.com>
+
+	* src/Makefile.am (install): Fix install target.
+	
 2003-11-15  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* configure.in: be smarter about apr-config.
