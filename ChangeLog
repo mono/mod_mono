@@ -1,6 +1,10 @@
 2004-05-14  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
-	* src/Makefile.am: added -module flag to libtool to fix the PPC install.
+	* src/mod_mono.c: patch by Christopher McGinnis
+	<christopherm@neopets.com> that adds MonoDocumentRootDir directive which
+	maps to --root argument for mod-mono-server.
+
+	* man/mod_mono.8: updated manual page.
 
 2004-04-19  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 

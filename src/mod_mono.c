@@ -108,6 +108,7 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #define MONO_PATH		PREFIX "/lib"
 #define MODMONO_SERVER_PATH 	PREFIX "/bin/mod-mono-server.exe"
 #define WAPIDIR				"/tmp"
+#define DOCUMENT_ROOT		NULL
 #define SOCKET_FILE		"/tmp/mod_mono_server"
 
 /* define this to get tons of messages in the log */
@@ -205,6 +206,7 @@ typedef struct {
 	char *server_path;
 	char *applications;
 	char *wapidir;
+	char *document_root;
 } mono_server_rec;
 
 CONFIG_FUNCTION (unix_socket, filename)
@@ -214,6 +216,7 @@ CONFIG_FUNCTION (path, path)
 CONFIG_FUNCTION (server_path, server_path)
 CONFIG_FUNCTION (applications, applications)
 CONFIG_FUNCTION (wapidir, wapidir)
+CONFIG_FUNCTION (document_root, document_root)
 
 static void *
 create_mono_server_config (apr_pool_t *p, server_rec *s)
@@ -230,6 +233,7 @@ create_mono_server_config (apr_pool_t *p, server_rec *s)
 	server->server_path = MODMONO_SERVER_PATH;
 	server->applications = NULL;
 	server->wapidir = WAPIDIR;
+	server->document_root = DOCUMENT_ROOT;
 
 	return server;
 }
@@ -622,7 +626,7 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	pid_t pid;
 	int status;
 	int i;
-	char *argv [8];
+	char *argv [10];
 	char *path;
 	char *tmp;
 	char *monodir;
@@ -686,17 +690,28 @@ fork_mod_mono_server (apr_pool_t *pool, mono_server_rec *server_conf)
 	argv [4] = "--applications";
 	argv [5] = server_conf->applications;
 	argv [6] = "--nonstop";
-	argv [7] = NULL;
+        if (server_conf->document_root != NULL) {
+                argv [7] = "--root";
+                argv [8] = server_conf->document_root;
+        } else {
+                argv[7] = NULL;
+                argv[8] = NULL;
+        }
+
+        argv [9] = NULL;
 
 	ap_log_error (APLOG_MARK, APLOG_DEBUG,
 		      STATUS_AND_SERVER,
-		      "running '%s %s %s %s %s %s %s'",
-		      argv [0], argv [1], argv [2], argv [3], argv [4], argv [5], argv [6]);
+                      "running '%s %s %s %s %s %s %s %s %s'",
+                      argv [0], argv [1], argv [2], argv [3], argv [4],
+		      argv [5], argv [6], argv [7], argv[8]);
+
 	execv (argv [0], argv);
 	ap_log_error (APLOG_MARK, APLOG_ERR,
 		      STATUS_AND_SERVER,
-		      "Failed running '%s %s %s %s %s %s %s'. Reason: %s",
-		      argv [0], argv [1], argv [2], argv [3], argv [4], argv [5], argv [6],
+                      "Failed running '%s %s %s %s %s %s %s %s %s'. Reason: %s",
+                      argv [0], argv [1], argv [2], argv [3], argv [4],
+		      argv [5], argv [6], argv [7], argv [8],
 		      strerror (errno));
 	exit (1);
 }
@@ -962,6 +977,14 @@ static const command_rec mono_cmds [] = {
 	TAKE1,
 	"See MONO_SHARED_DIR in the mono manual page. Default: \"/tmp\""
 	},
+	{"MonoDocumentRootDir",
+	CONFIG_FUNCTION_NAME (document_root),
+	NULL,
+	RSRC_CONF,
+	TAKE1,
+	"The argument passed in --root argument to mod-mono-server. Default: /"
+	},
+
 	{NULL}
 };
 
@@ -1037,6 +1060,13 @@ static const command_rec mono_cmds [] =
 		   RSRC_CONF,
 		   "See MONO_SHARED_DIR in the mono manual page. Default: \"/tmp\""
 		  ),
+   AP_INIT_TAKE1 ("MonoDocumentRootDir",
+		  CONFIG_FUNCTION_NAME (document_root),
+		  NULL,
+		  RSRC_CONF,
+		  "The argument passed in --root argument to mod-mono-server. Default: /"
+		  ),
+
     NULL
 };
 

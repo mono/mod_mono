@@ -54,6 +54,9 @@ if MonoRunXSP is True.
 The directory where mono runtime will create the ".wapi" directory
 used to emulate windows I/O. It's used to set MONO_SHARED_DIR.
 Default value: "/tmp"
+.TP
+.I "MonoDocumentRootDir (used only when MonoRunXSP is True)"
+The directory passed in --root argument when launching mod-mono-server.
 .SH SAMPLE CONFIGURATION
 For Apache 1.3, with mod-mono-server.exe from package xsp installed in
 prefix=/usr:
