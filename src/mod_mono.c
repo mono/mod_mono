@@ -51,6 +51,7 @@
 
 #include <httpd.h>
 #include <http_core.h>
+#include <http_protocol.h>
 #include <http_config.h>
 #include <http_log.h>
 #include <mono/jit/jit.h>
@@ -117,7 +118,7 @@ static void *create_modmono_server_config(apr_pool_t *p, server_rec *s)
 
 static void mono_apache_request_send_response_from_memory (request_rec *r, MonoArray* byteArray, int size)
 {
-  ap_rwrite(mono_array_to_lparray(byteArray), size, r);
+  ap_rwrite((const void*)mono_array_to_lparray(byteArray), size, r);
 }
 
 /*Not connection because actual port will vary depending on Apache configuration*/
@@ -172,6 +173,23 @@ static MonoString *mono_apache_request_get_path_translated(request_rec *r) {
 static MonoString *mono_apache_request_get_query_string(request_rec *r) {
   return mono_string_new(mono_domain_get(), r->parsed_uri.query);
 }
+
+static int mono_apache_should_client_block( request_rec *r ) {
+  return  r->read_length || ap_should_client_block(r);
+}
+
+static int mono_apache_setup_client_block( request_rec *r ) {
+  if (r->read_length) {
+    return APR_SUCCESS;
+  } else {
+    return ap_setup_client_block(r, REQUEST_CHUNKED_ERROR);
+  }
+}
+
+static int mono_apache_get_client_block( request_rec *r, MonoArray *byteArray, apr_size_t size ) {
+  return ap_get_client_block(r, (char *)mono_array_to_lparray(byteArray), size);
+}
+
 void register_wrappers () {
   mono_add_internal_call("Apache.Web.Request::GetHttpVersionInternal", mono_apache_request_get_protocol);
   mono_add_internal_call("Apache.Web.Request::GetHttpVerbNameInternal", mono_apache_request_get_method);
@@ -193,6 +211,9 @@ void register_wrappers () {
   mono_add_internal_call("Apache.Web.Request::GetRemoteNameInternal", mono_apache_connection_get_remote_name);
   mono_add_internal_call("Apache.Web.Request::FlushInternal", mono_apache_connection_flush);
   mono_add_internal_call("Apache.Web.Request::CloseInternal", mono_apache_connection_close);
+  mono_add_internal_call("Apache.Web.Request::ShouldClientBlockInternal", mono_apache_should_client_block);
+  mono_add_internal_call("Apache.Web.Request::SetupClientBlockInternal", mono_apache_setup_client_block);
+  mono_add_internal_call("Apache.Web.Request::GetClientBlockInternal", mono_apache_get_client_block);
 }
 
 static MonoObject *

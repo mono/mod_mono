@@ -214,6 +214,21 @@ namespace Apache.Web
 		{
 			return request.GetRequestHeader (GetKnownRequestHeaderName (index));
 		}
+
+		public override int ReadEntityBody (byte [] buffer, int size)
+		{
+		  if (buffer == null || size <= 0 || request.SetupClientBlock() != 0 /* APR_SUCCESS */)
+		    return 0;
+		  byte [] bytes = new byte [size];
+		  int read = 0;
+		  if (request.ShouldClientBlock()) {
+		    read = request.GetClientBlock(bytes, size);
+		  }
+		  if ( read > 0 ) {
+		    bytes.CopyTo (buffer, 0);
+		  }
+		  return read;
+		}
 	}
 }
 

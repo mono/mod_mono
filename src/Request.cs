@@ -209,6 +209,31 @@ namespace Apache.Web
 		{
 			CloseInternal (Conn);
 		}
+
+		[MethodImplAttribute(MethodImplOptions.InternalCall)]
+		extern static int SetupClientBlockInternal (IntPtr request);
+
+		public int SetupClientBlock() 
+		{
+		  return SetupClientBlockInternal(request);
+		} 
+
+		[MethodImplAttribute(MethodImplOptions.InternalCall)]
+		extern static int ShouldClientBlockInternal (IntPtr request);
+
+		public bool ShouldClientBlock() 
+		{
+		  return ShouldClientBlockInternal(request) != 0;
+		} 
+
+		[MethodImplAttribute(MethodImplOptions.InternalCall)]
+		extern static int GetClientBlockInternal (IntPtr request, byte[] bytes, uint size);
+
+		public int GetClientBlock(byte[] bytes, int size) 
+		{
+		  return GetClientBlockInternal(request, bytes, (uint)size);
+		} 
+
 	}
 }
 
