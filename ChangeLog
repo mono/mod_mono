@@ -1,3 +1,8 @@
+2005-02-24 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: make the new 'several mod-mono-server' schema work
+	when directives are inside <virtualhost>.
+
 2005-02-16 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: prevent execution of 'init' twice (parent and child)

@@ -41,6 +41,14 @@ typedef struct per_dir_config {
 	char *alias;
 } per_dir_config;
 
+enum {
+	FORK_NONE,
+	FORK_INPROCESS,
+	FORK_ATTEMPTED,
+	FORK_FAILED,
+	FORK_SUCCEEDED
+};
+
 typedef struct xsp_data {
 	char *alias;
 	char *filename;
@@ -58,6 +66,9 @@ typedef struct xsp_data {
 	char *max_cpu_time;
 	char *max_memory;
 	char *debug;
+	char status; /* One of the FORK_* in the enum above.
+		      * Don't care if run_xsp is "false" */
+	char is_virtual; /* is the server virtual? */
 } xsp_data;
 
 typedef struct {
@@ -101,7 +112,7 @@ set_alias (cmd_parms *cmd, void *mconfig, const char *alias)
 }
 
 static int
-add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config)
+add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_virtual)
 {
 	xsp_data *server;
 	xsp_data *servers;
@@ -133,6 +144,8 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config)
 	server->max_cpu_time = NULL;
 	server->max_memory = NULL;
 	server->debug = "False";
+	server->status = FORK_NONE;
+	server->is_virtual = is_virtual;
 
 	nservers = config->nservers + 1;
 	servers = config->servers;
@@ -170,7 +183,7 @@ store_config_xsp (cmd_parms *cmd, void *offset, const char *first, const char *s
 
 	idx = search_for_alias (alias, config);
 	if (idx == -1)
-		idx = add_xsp_server (cmd->pool, alias, config);
+		idx = add_xsp_server (cmd->pool, alias, config, cmd->server->is_virtual);
 
 	ptr = (char *) &config->servers [idx];
 	ptr += (int) cmd->info;
@@ -188,6 +201,31 @@ store_config_xsp (cmd_parms *cmd, void *offset, const char *first, const char *s
 	*((char **) ptr) = new_value;
 	DEBUG_PRINT (1, "store_config end: %s", new_value);
 	return NULL;
+}
+
+static void *
+merge_config (apr_pool_t *p, void *base_conf, void *new_conf)
+{
+	module_cfg *base_module = (module_cfg *) base_conf;
+	module_cfg *new_module = (module_cfg *) new_conf;
+	xsp_data *base_config;
+	xsp_data *new_config;
+	int nservers;
+
+	if (new_module->nservers == 0)
+		return new_module;
+
+	base_config = base_module->servers;
+	new_config = new_module->servers;
+	nservers = base_module->nservers + new_module->nservers;
+
+	//FIXME: error out on duplicate aliases.
+	base_module->servers = apr_pcalloc (p, sizeof (xsp_data) * nservers);
+	memcpy (base_module->servers, base_config, sizeof (xsp_data) * base_module->nservers);
+	memcpy (&base_module->servers [base_module->nservers], new_config, new_module->nservers * sizeof (xsp_data));
+	base_module->nservers = nservers;
+	DEBUG_PRINT (1, "Total mod-mono-servers to spawn so far: %d", nservers);
+	return new_module;
 }
 
 static void *
@@ -209,12 +247,7 @@ create_mono_server_config (apr_pool_t *p, server_rec *s)
 {
 	module_cfg *server;
 
-	DEBUG_PRINT (1, "create_mono_server_config");
-
 	server = apr_pcalloc (p, sizeof (module_cfg));
-	add_xsp_server (p, "default", server);
-
-	DEBUG_PRINT (1, "create_mono_server_config done");
 	return server;
 }
 
@@ -613,6 +646,7 @@ try_connect (xsp_data *conf, apr_socket_t **sock, apr_pool_t *pool)
 	struct sockaddr *ptradd;
 	char *fn = NULL;
 	char *la = NULL;
+	int err;
 
 	if (conf->listen_port == NULL) {
 		apr_os_sock_t sock_fd;
@@ -650,12 +684,14 @@ try_connect (xsp_data *conf, apr_socket_t **sock, apr_pool_t *pool)
 		errno = rv;
 	}
 
-	switch (errno) {
+	err = errno;
+	DEBUG_PRINT (1, "errno in try_connect %d %s", err, strerror (err));
+	switch (err) {
 	case ENOENT:
 	case ECONNREFUSED:
 		return -1; /* Can try to launch mod-mono-server */
 	case EPERM:
-		error = strerror (errno);
+		error = strerror (err);
 		if (conf->listen_port == NULL)
 			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
 				      "mod_mono: file %s exists, but wrong permissions.", fn);
@@ -668,7 +704,7 @@ try_connect (xsp_data *conf, apr_socket_t **sock, apr_pool_t *pool)
 		apr_socket_close (*sock);
 		return -2; /* Unrecoverable */
 	default:
-		error = strerror (errno);
+		error = strerror (err);
 		if (conf->listen_port == NULL)
 			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
 				      "mod_mono: connect error (%s). File: %s",
@@ -1098,9 +1134,11 @@ mono_execute_request (request_rec *r)
 	int idx;
 
 	config = ap_get_module_config (r->server->module_config, &mono_module);
+	DEBUG_PRINT (2, "config = %d", (int) config);
 	if (r->per_dir_config != NULL)
 		dir_config = ap_get_module_config (r->per_dir_config, &mono_module);
 
+	DEBUG_PRINT (2, "dir_config = %d", (int) dir_config);
 	if (dir_config != NULL && dir_config->alias != NULL)
 		idx = search_for_alias (dir_config->alias, config);
 	else
@@ -1115,11 +1153,15 @@ mono_execute_request (request_rec *r)
 	if (rv != APR_SUCCESS)
 		return HTTP_SERVICE_UNAVAILABLE;
 
+	DEBUG_PRINT (2, "Sending init data");
 	if (send_initial_data (r, sock) != 0) {
+		int err = errno;
+		DEBUG_PRINT (1, "%d: %s", err, strerror (err));
 		apr_socket_close (sock);
 		return HTTP_SERVICE_UNAVAILABLE;
 	}
 	
+	DEBUG_PRINT (2, "Loop");
 	do {
 		input = read_data (sock, (char *) &command, sizeof (int));
 		if (input == sizeof (int)) {
@@ -1164,7 +1206,6 @@ terminate_xsp (void *data)
 		xsp = &config->servers [i];
 		if (xsp->run_xsp && !strcasecmp (xsp->run_xsp, "false"))
 			continue;
-
 #ifdef APACHE13
 		sock = apr_pcalloc (pconf, sizeof (apr_socket_t));
 #endif
@@ -1178,7 +1219,7 @@ terminate_xsp (void *data)
 	}
 
 	apr_sleep (apr_time_from_sec (1));
-	/* apr_socket_close (sock); Don't want a reset before reading */
+	/* apr_socket_close (sock); don't bother closing */
 
 	return APR_SUCCESS;
 }
@@ -1238,13 +1279,27 @@ mono_child_init (
 {
 	int i;
 	module_cfg *config;
+	xsp_data *xsp;
 
 	DEBUG_PRINT (0, "Mono Child Init");
 	config = ap_get_module_config (s->module_config, &mono_module);
 
-	/* NOTE: this should have tighter syncronization */
-	for (i = 0; i < config->nservers; i++)
-		fork_mod_mono_server (pconf, &config->servers [i]);
+	/*****
+	 * NOTE: we might be trying to start the same mod-mono-server in several
+	 * different apache child processes. xsp->status tries to help avoiding this
+	 * and mod-mono-server uses a lock that checks for same command line, same
+	 * user...
+	 *****/
+	for (i = 0; i < config->nservers; i++) {
+		xsp = &config->servers [i];
+		if (xsp->status != FORK_NONE)
+			continue;
+
+		xsp->status = FORK_INPROCESS;
+		DEBUG_PRINT (0, "Forking %s", xsp->alias);
+		fork_mod_mono_server (pconf, xsp);
+		xsp->status = FORK_SUCCEEDED;
+	}
 }
 
 #ifdef APACHE13
@@ -1388,7 +1443,7 @@ module MODULE_VAR_EXPORT mono_module =
     create_dir_config,		/* dir config creater */
     NULL,			/* dir merger --- default is to override */
     create_mono_server_config,	/* server config */
-    NULL,                       /* merge server configs */
+    merge_config,		/* merge server configs */
     mono_cmds,			/* command table */
     mono_handlers,		/* handlers */
     NULL,                       /* filename translation */
@@ -1409,7 +1464,7 @@ module AP_MODULE_DECLARE_DATA mono_module = {
 	create_dir_config,		/* dir config creater */
 	NULL,				/* dir merger --- default is to override */
 	create_mono_server_config,	/* server config */
-	NULL,				/* merge server configs */
+	merge_config,			/* merge server configs */
 	mono_cmds,			/* command apr_table_t */
 	mono_register_hooks		/* register hooks */
 };
