@@ -1,5 +1,14 @@
 2004-05-19  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
+	* NEWS: updated
+	* configure.in:
+	* man/Makefile.am:
+	* man/mod_mono.8.in: updated man page.
+
+	* man/mod_mono.8: Removed.
+
+2004-05-19  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
 	* src/mod_mono.c: support for MonoApplicationsConfigFile and
 	MonoApplicationsConfigDir directives by Andrew Arnott.
 

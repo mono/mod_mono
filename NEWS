@@ -1,3 +1,9 @@
+May 19, 2004 - Gonzalo Paniagua
+---------------------------------------
+Added MonoApplicationsConfigFile and MonoApplicationsConfigDir
+directives that use the new --appconfigfile and --appconfigdir
+options of mod-mono-server to support virtual hosts.
+
 April 16, 2004 - Gonzalo Paniagua
 ---------------------------------------
 More existing installation breakage. From now on, mod_mono is able to
