@@ -554,10 +554,10 @@ do_command (int command, int fd, request_rec *r, int *result)
 		break;
 	case GET_CLIENT_BLOCK:
 		status = read_data (fd, &i, sizeof (int));
-		status = INT_FROM_LE (status);
 		if (status == -1)
 			break;
 
+		i = INT_FROM_LE (i);
 		str = apr_pcalloc (r->pool, i);
 		i = ap_get_client_block (r, str, i);
 		i = LE_FROM_INT (i);
