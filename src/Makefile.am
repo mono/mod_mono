@@ -17,7 +17,7 @@ lib_LTLIBRARIES = libmod_mono.la
 libmod_mono_old_la_SOURCES =
 endif
 
-libmod_mono_la_SOURCES = mod_mono.c
+libmod_mono_la_SOURCES = mod_mono.c mod_mono.h
 libmod_mono_la_LDFLAGS = -module
 
 libmod_mono_old_la_LIBADD = $(MONO_LIBS)

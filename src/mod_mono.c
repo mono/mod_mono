@@ -24,169 +24,13 @@
 #include "mod_mono_config.h"
 #endif
 
-#include <errno.h>
-#include <netdb.h>
-#include <sys/wait.h>
-#include <sys/un.h>
-#include <sys/select.h>
-#include "httpd.h"
-#include "http_core.h"
-#include "http_log.h"
-#include "http_config.h"
-
-
-#ifdef APACHE13
-/* Apache 1.3 only */
-/* Functions needed for making Apache 1.3 module as similar
-as possible to Apache 2 module, reducing ifdefs in the code itself*/
-
-#define STATUS_AND_SERVER NULL
-#ifndef TRUE
-#define TRUE 1
-#define FALSE 0
-#endif
-
-#include "multithread.h"
-#define apr_pool_t ap_pool
-#define apr_pcalloc_t ap_pcalloc_t
-#define apr_pcalloc ap_pcalloc
-
-#define apr_table_setn ap_table_setn
-#define apr_table_get ap_table_get
-#define apr_table_elts ap_table_elts
-#define apr_table_entry_t table_entry
-
-#define apr_array_header array_header
-#define apr_array_header_t array_header
-#define apr_pstrdup ap_pstrdup
-#define apr_psprintf ap_psprintf
-#define apr_status_t int
-#define apr_os_sock_t int
-#define APR_SUCCESS 0
-
-typedef struct apr_socket apr_socket_t;
-struct apr_socket {
-	apr_pool_t *pool;
-	int fd;
-};
-
-#define apr_os_sock_get(fdptr, sock) (*(fdptr) = (sock)->fd)
-#define apr_socket_close(sock) (ap_pclosesocket ((sock)->pool, (sock)->fd))
-#define APR_INET PF_INET
-
-struct mysockaddr {
-	apr_pool_t *pool;
-	size_t  addrlen;
-	struct sockaddr *addr;
-};
-
-typedef struct mysockaddr apr_sockaddr_t;
-
-#include <ap_alloc.h>
-/* End Apache 1.3 only */
-#else
-/* Apache 2 only */
-#define STATUS_AND_SERVER 0, NULL
-#include <http_protocol.h>
-#include <apr_strings.h>
-/* End Apache 2 only */
-#endif
-
-#ifndef MONO_PREFIX
-#define MONO_PREFIX "/usr"
-#endif
-
-#define EXECUTABLE_PATH 	MONO_PREFIX "/bin/mono"
-#define MONO_PATH		MONO_PREFIX "/lib"
-#define MODMONO_SERVER_PATH 	MONO_PREFIX "/bin/mod-mono-server.exe"
-#define WAPIDIR				"/tmp"
-#define DOCUMENT_ROOT		NULL
-#define APPCONFIG_FILE		NULL
-#define APPCONFIG_DIR		NULL
-#define SOCKET_FILE		"/tmp/mod_mono_server"
-#define LISTEN_ADDRESS		"127.0.0.1"
-
-/* Converts every int sent into little endian */
-#ifdef WORDS_BIGENDIAN
-#define INT_FROM_LE(val) LE_FROM_INT (val)
-#define LE_FROM_INT(val)	((unsigned int) ( \
-    (((unsigned int) (val) & (unsigned int) 0x000000ffU) << 24) | \
-    (((unsigned int) (val) & (unsigned int) 0x0000ff00U) <<  8) | \
-    (((unsigned int) (val) & (unsigned int) 0x00ff0000U) >>  8) | \
-    (((unsigned int) (val) & (unsigned int) 0xff000000U) >> 24)))
-
-#else
-#define LE_FROM_INT(val) val
-#define INT_FROM_LE(val) val
-#endif
-
 /* define this to get tons of messages in the log */
-#undef DEBUG
+#define DEBUG
+#define DEBUG_LEVEL 1
 
-#define DEBUG_LEVEL 0
+#include "mod_mono.h"
 
-#ifdef DEBUG
-#define DEBUG_PRINT(a,...) if (a >= DEBUG_LEVEL) { \
-				errno = 0; \
-				ap_log_error (APLOG_MARK, APLOG_WARNING, STATUS_AND_SERVER, __VA_ARGS__); \
-			}
-#else
-#define DEBUG_PRINT dummy_print
-static void
-dummy_print (int a, ...)
-{
-}
-#endif
-
-#define CONFIG_FUNCTION_NAME(directive) mono_config_ ##directive
-#define CONFIG_FUNCTION(directive, field) static const char *\
-			mono_config_ ##directive (cmd_parms *cmd, void *config, const char *parm) \
-			{ \
-				mono_server_rec *sr; \
-				sr = (mono_server_rec *) \
-					ap_get_module_config (cmd->server->module_config, &mono_module); \
- 			\
-				sr->field = (char *) parm; \
-				DEBUG_PRINT (0, #directive ": %s", parm == NULL ? "(null)" : parm); \
-				return NULL; \
-			}
-
-enum Cmd {
-	FIRST_COMMAND,
-	SEND_FROM_MEMORY = 0,
-	GET_SERVER_VARIABLE,
-	SET_RESPONSE_HEADER,
-	GET_LOCAL_PORT,
-	FLUSH,
-	CLOSE,
-	SHOULD_CLIENT_BLOCK,
-	SETUP_CLIENT_BLOCK,
-	GET_CLIENT_BLOCK,
-	SET_STATUS,
-	DECLINE_REQUEST,
-	NOT_FOUND,
-	LAST_COMMAND
-};
-
-static char *cmdNames [] = {
-	"SEND_FROM_MEMORY",
-	"GET_SERVER_VARIABLE",
-	"SET_RESPONSE_HEADER",
-	"GET_LOCAL_PORT",
-	"FLUSH",
-	"CLOSE",
-	"SHOULD_CLIENT_BLOCK",
-	"SETUP_CLIENT_BLOCK",
-	"GET_CLIENT_BLOCK",
-	"SET_STATUS",
-	"DECLINE_REQUEST"
-};
-
-#ifdef APACHE13
-module MODULE_VAR_EXPORT mono_module;
-#else 
-module AP_MODULE_DECLARE_DATA mono_module;
-#endif
+DEFINE_MODULE (mono_module);
 
 /* Configuration pool. Cleared on restart. */
 static apr_pool_t *pconf;
@@ -322,24 +166,6 @@ set_response_header (request_rec *r,
 	}
 }
 
-static const char *
-request_get_request_header (request_rec *r, const char *header_name)
-{
-	return apr_table_get (r->headers_in, header_name);
-}
-
-static const char *
-request_get_server_variable (request_rec *r, const char *name)
-{
-	return apr_table_get (r->subprocess_env, name);
-}
-
-static char *
-request_get_query_string (request_rec *r)
-{
-	return r->args ? r->args : "";
-}
-
 static int
 setup_client_block (request_rec *r)
 {
@@ -440,7 +266,7 @@ do_command (int command, int fd, request_rec *r, int *result)
 		if (read_data_string (r->pool, fd, &str, NULL) == NULL) {
 			break;
 		}
-		str = (char *) request_get_server_variable (r, str);
+		str = (char *) apr_table_get (r->subprocess_env, str);
 		status = write_data_string (fd, str);
 		break;
 	case SET_RESPONSE_HEADER:
@@ -508,13 +334,13 @@ do_command (int command, int fd, request_rec *r, int *result)
 	case DECLINE_REQUEST:
 		*result = DECLINED;
 		return FALSE;
-	case NOT_FOUND:
+	case MYNOT_FOUND:
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
 				"No application found for %s", r->uri);
 
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
 				"Host header was %s",
-				request_get_request_header (r, "host"));
+				apr_table_get (r->headers_in, "host"));
 
 		*result = HTTP_NOT_FOUND;
 		return FALSE;
@@ -949,7 +775,6 @@ send_headers (request_rec *r, int fd)
 		if (write_data_string_no_prefix (fd, t_elt->val) < 0)
 			return FALSE;
 
-
 		t_elt++;
 	} while (t_elt < t_end);
 
@@ -970,8 +795,8 @@ send_initial_data (request_rec *r, int fd)
 	if (write_data_string_no_prefix (fd, r->uri) <= 0)
 		return -1;
 
-	DEBUG_PRINT (2, "Writing query string: %s", request_get_query_string (r));
-	if (write_data_string_no_prefix (fd, request_get_query_string (r)) < 0)
+	DEBUG_PRINT (2, "Writing query string: %s", r->args ? r->args : "");
+	if (write_data_string_no_prefix (fd, r->args) < 0)
 		return -1;
 
 	DEBUG_PRINT (2, "Writing protocol: %s", r->protocol);
@@ -1096,9 +921,6 @@ static const handler_rec mono_handlers [] = {
 	{ "mono", mono_handler },
 	{ NULL }
 };
-
-#define MAKE_CMD(name, function_name, description) \
-	{ #name, CONFIG_FUNCTION_NAME (function_name), NULL, RSRC_CONF, TAKE1, description }
 #else
 static void
 mono_register_hooks (apr_pool_t * p)
@@ -1106,9 +928,6 @@ mono_register_hooks (apr_pool_t * p)
 	ap_hook_handler (mono_handler, NULL, NULL, APR_HOOK_FIRST);
 	ap_hook_post_config (mono_init_handler, NULL, NULL, APR_HOOK_MIDDLE);
 }
-
-#define MAKE_CMD(name, function_name, description) \
-	AP_INIT_TAKE1 (#name, CONFIG_FUNCTION_NAME(function_name), NULL, RSRC_CONF, description)
 #endif
 
 static const command_rec mono_cmds [] = {
@@ -1133,7 +952,7 @@ MAKE_CMD (MonoListenAddress, listen_address,
 
 MAKE_CMD (MonoRunXSP, run_xsp,
 	"It can be False or True. If it is True, asks the module to "
-	"start mod-mono-server.exe if it's not already there. Default: False"
+	"start mod-mono-server.exe if it's not already there. Default: True"
 	),
 
 MAKE_CMD (MonoExecutablePath, executable_path,
