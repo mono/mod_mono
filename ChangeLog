@@ -1,4 +1,8 @@
 2003-01-18  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
+	* INSTALL: Updated install instructions to cover --with-apxs
+	* configure.in: Check in /usr/sbin/apxs
+	
+2003-01-18  Daniel Lopez Ridruejo <daniel @ rawbyte.com>
 	Submitted by Alp Toker <alp@atoker.com> :
 	* configure.in: Use --with-apxs instead of --with-apache2 
 	* src/Makefile.am: Install target

@@ -21,6 +21,9 @@ The steps are as follow:
 - Configure Apache
 - Test the examples
 
+There's also a section about using mod_mono with the Apache 2 that comes
+with your Linux distribution, such as Red Hat 8.0
+
 INSTALLING FROM SOURCE
 ======================
 
@@ -48,7 +51,7 @@ Go to http://www.apacheworld.org/modmono/ and download mod_mono
 
 tar xvfz mod_mono*.tgz
 cd mod_mono*
-./configure --with-apache2=/home/username/apache2
+./configure --with-apxs=/home/username/apache2/bin/apxs
 make
 make install
 
@@ -65,7 +68,7 @@ For example: I use the following line to build:
 PKG_CONFIG_PATH=/home/user/mono/install/lib/pkgconfig/ ./configure --with-apache2=/home/user/mono/install/apache2 --with-crosspkgdir=/home/user/mono/install/lib/pkgconfig
 
 If it complains about config.h, copy the config.h in the mono/ directory to /home/user/mono/install/include
-It will tell you about duplication, but it will compile.
+It will tell you about duplication, but it will compile. This should have been fixed as of Mono 0.18
 
 4. Building ModMono.dll
 
@@ -79,6 +82,18 @@ INSTALLING BINARIES
 
 o Go to http://www.apacheworld.org/modmono and download the mod_mono binaries.
 Currently the binary files are libmodmono.so (for Red Hat 8.0 on Intel) and ModMono.dll
+
+USING THE APACHE 2 THAT COMES WITH YOUR DISTRIBUTION
+====================================================
+
+Newer versions of Linux distributions, such as Red Hat 8.0 come with Apache 2.
+You can use this Apache: for that you need to install the apxs tool, which 
+is usually included in the Apache dev rpm. For example, in the case of Red Hat 8.0,
+you need the following dev package installed: httpd-devel-2.0.40-8.i386.rpm
+
+You can then build mod_mono as explained previously using 
+
+./configure --with-apxs=/usr/sbin/apxs
 
 
 ASP.NET support

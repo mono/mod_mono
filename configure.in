@@ -43,6 +43,16 @@ if test -z "$APXS"; then
   fi
 fi
 
+if test -z "$APXS"; then
+  AC_MSG_CHECKING(for apxs in /usr/sbin)
+  if test -x /usr/sbin/apxs; then
+    APXS=/usr/sbin/apxs
+    AC_MSG_RESULT([found, we'll use this. Use --with-apxs to specify another.])
+  else
+    AC_MSG_RESULT(no)
+  fi
+fi
+
 # last resort
 if test -z "$APXS"; then
   AC_MSG_CHECKING(for apxs in your PATH)
