@@ -68,6 +68,7 @@ CONFIG_FUNCTION (listen_port, listen_port)
 CONFIG_FUNCTION (listen_address, listen_address)
 CONFIG_FUNCTION (max_cpu_time, max_cpu_time)
 CONFIG_FUNCTION (max_memory, max_memory)
+CONFIG_FUNCTION (debug, debug)
 
 static const char *
 add_applications (cmd_parms *cmd, void *m, const char *first, const char *second)
@@ -1225,6 +1226,10 @@ MAKE_CMD (MonoMaxCPUTime, max_cpu_time,
 	" Default value: system default"
 	),
 #endif
+MAKE_CMD (MonoDebug, debug,
+       "If MonoDebug is true, mono will be run in debug mode."
+       " Default value: False"
+       ),
 MAKE_CMD_ITERATE2 ("AddMonoApplications", add_applications,
 	"Appends an application."
 	),
