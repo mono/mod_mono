@@ -1,3 +1,11 @@
+2003-09-19  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* configure.in: set version to 0.4.99.
+	* src/mod_mono_unix.c: ap_log_error is different in 1.3 and 2.0. Fixed.
+	It really works now for apache 1.3: send the headers, handle
+	ap_log_error difference between 1.3 and 2.0, set the mime type for the
+	handler.
+
 2003-09-19  Pedro Martínez Juliá  <yoros@wanadoo.es>
 
 	* src/mod_mono_unix.c: Added #ifdef for adapt all the module to

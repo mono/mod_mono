@@ -60,6 +60,7 @@
 /* Functions needed for making Apache 1.3 module as similar
 as possible to Apache 2 module, reducing ifdefs in the code itself*/
 
+#define STATUS_AND_SERVER NULL
 #define TRUE 1
 #define FALSE 0
 
@@ -71,6 +72,7 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #define APR_SUCCESS 0
 
 #else
+#define STATUS_AND_SERVER 0, NULL
 #include <http_protocol.h>
 #endif
 
@@ -171,6 +173,11 @@ create_modmono_server_config (apr_pool_t *p, server_rec *s)
 static void
 request_send_response_from_memory (request_rec *r, char *byteArray, int size)
 {
+#ifdef APACHE13
+	if (r->sent_bodyct == 0)
+		ap_send_http_header (r);
+#endif
+
 	ap_rwrite (byteArray, size, r);
 }
 
@@ -235,7 +242,7 @@ set_response_header (request_rec *r,
 	Apache requires content_type to be set and will insert content type header itself later on.
 	-- daniel
 	*/
-	if (!strcmp(name,"Content-Type")) {
+	if (!strcasecmp(name,"Content-Type")) {
 		r->content_type = value;
 	} else {
 		apr_table_setn (r->headers_out, name, value);
@@ -264,12 +271,6 @@ static char *
 request_get_query_string (request_rec *r)
 {
 	return r->parsed_uri.query ? r->parsed_uri.query : "";
-}
-
-static int
-should_client_block (request_rec *r)
-{
-	return r->read_length || ap_should_client_block (r);
 }
 
 static int
@@ -347,7 +348,7 @@ do_command (int command, int fd, request_rec *r, int *result)
 	char *str2;
 	int i;
 
-	ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, NULL, "Command received: %s", cmdNames [command]);
+	ap_log_error (APLOG_MARK, APLOG_DEBUG, STATUS_AND_SERVER, "Command received: %s", cmdNames [command]);
 	*result = OK;
 	switch (command) {
 	case GET_PROTOCOL:
@@ -440,7 +441,7 @@ do_command (int command, int fd, request_rec *r, int *result)
 		return FALSE;
 		break;
 	case SHOULD_CLIENT_BLOCK:
-		size = should_client_block (r);
+		size = ap_should_client_block (r);
 		write_ok (fd);
 		write_data (fd, &size, sizeof (int));
 		break;
@@ -490,10 +491,8 @@ setup_socket (const char *filename)
 	if (fd == -1) {
 		ap_log_error (APLOG_MARK,
 			      APLOG_ERR,
-			      0,
-			      NULL,
+			      STATUS_AND_SERVER,
 			      "mod_mono_unix: error creating socket.");
-
 
 		return -1;
 	}
@@ -504,8 +503,7 @@ setup_socket (const char *filename)
 		char *s = strerror (errno);
 		ap_log_error (APLOG_MARK,
 			      APLOG_DEBUG,
-			      0,
-			      NULL,
+			      STATUS_AND_SERVER,
 			      "mod_mono_unix: connect error (%s). File: %s", s, filename);
 
 		close (fd);
@@ -574,7 +572,7 @@ modmono_init_handler (apr_pool_t *p,
 #ifdef APACHE13
 static const handler_rec modmono_handlers[] =
   {
-    {"modmono-handler", modmono_handler},
+    {"application/x-asp-net", modmono_handler},
     {NULL}
   };
 #else
