@@ -53,6 +53,16 @@ AC_MSG_RESULT(not specified))
 # if no apxs found yet, check /usr/local/apache/sbin
 # since it's the default Apache location
 if test -z "$APXS"; then
+  AC_MSG_CHECKING(for apxs2 in /usr/local/apache/sbin)
+  if test -x /usr/local/apache/sbin/apxs2; then
+    APXS=/usr/local/apache/sbin/apxs2
+    AC_MSG_RESULT([found, we'll use this. Use --with-apxs to specify another.])    
+  else
+    AC_MSG_RESULT(no)
+  fi
+fi
+
+if test -z "$APXS"; then
   AC_MSG_CHECKING(for apxs in /usr/local/apache/sbin)
   if test -x /usr/local/apache/sbin/apxs; then
     APXS=/usr/local/apache/sbin/apxs
@@ -71,6 +81,17 @@ if test -z "$APRCONFIG"; then
   if test -x /usr/local/apache/sbin/apr-config; then
     APRCONFIG=/usr/local/apache/sbin/apr-config
     AC_MSG_RESULT([found, we'll use this. Use --with-apr-config to specify another.])    
+  else
+    AC_MSG_RESULT(no)
+    APRCONFIG=""
+  fi
+fi
+
+if test -z "$APXS"; then
+  AC_MSG_CHECKING(for apxs2 in /usr/local/apache2/bin)
+  if test -x /usr/local/apache/bin/apxs2; then
+    APXS=/usr/local/apache/bin/apxs2
+    AC_MSG_RESULT([found, we'll use this. Use --with-apxs to specify another.])    
   else
     AC_MSG_RESULT(no)
   fi
@@ -93,6 +114,17 @@ if test -z "$APRCONFIG"; then
     AC_MSG_RESULT([found, we'll use this. Use --with-apr-config to specify another.])
   else
     AC_MSG_RESULT(no)
+    APRCONFIG=""
+  fi
+fi
+
+if test -z "$APXS"; then
+  AC_MSG_CHECKING(for apxs2 in /usr/sbin)
+  if test -x /usr/sbin/apxs2; then
+    APXS=/usr/sbin/apxs2
+    AC_MSG_RESULT([found, we'll use this. Use --with-apxs to specify another.])    
+  else
+    AC_MSG_RESULT(no)
   fi
 fi
 
@@ -113,16 +145,17 @@ if test -z "$APRCONFIG"; then
     AC_MSG_RESULT([found, we'll use this. Use --with-apr-config to specify another.])
   else
     AC_MSG_RESULT(no)
+    APRCONFIG=""
   fi
 fi
 
 # last resort
 if test -z "$APXS"; then
-  AC_MSG_CHECKING(for apxs in your PATH)
+  AC_PATH_PROG(APXS, apxs2)
+fi
+
+if test -z "$APXS"; then
   AC_PATH_PROG(APXS, apxs)
-  if test -n "$APXS"; then
-    AC_MSG_RESULT([found $APXS, we'll use this. Use --with-apxs to specify another.])
-  fi
 fi
 
 if test -z "$APXS"; then
@@ -130,11 +163,7 @@ if test -z "$APXS"; then
 fi
 
 if test -z "$APRCONFIG"; then
-  AC_MSG_CHECKING(for apr-config in your PATH)
   AC_PATH_PROG(APRCONFIG, apr-config)
-  if test -n "$APXS"; then
-    AC_MSG_RESULT([found $APRCONFIG, we'll use this. Use --with-apr-config to specify another.])
-  fi
 fi
 
 # determine LIBEXEC
@@ -150,7 +179,7 @@ AC_MSG_RESULT($AP_INCLUDES)
 CFLAGS="$CFLAGS $AP_INCLUDES"
 
 AC_MSG_CHECKING([Apache version])
-AC_TRY_COMPILE([#include <mpm.h> #include <apr.h>], [
+AC_TRY_COMPILE([#include <apr.h>], [
 	apr_byte_t b;
 ], [
 	APACHE_VER=2.0
@@ -161,7 +190,7 @@ AC_TRY_COMPILE([#include <mpm.h> #include <apr.h>], [
 # Try apr-config
 if test "$APACHE_VER" = "1.3" -a -x "$APRCONFIG"; then
 	CFLAGS="$CFLAGS `$APRCONFIG --includes`"
-	AC_TRY_COMPILE([#include <mpm.h> #include <apr.h>], [
+	AC_TRY_COMPILE([#include <apr.h> ], [
 		apr_byte_t b;
 	], [
 		APACHE_VER=2.0

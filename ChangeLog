@@ -1,3 +1,8 @@
+2004-02-12  Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* configure.in: fixed issues detecting the right version of apache in
+	debian.
+
 2003-12-10  Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: make query string work. mod_rewrite for apache 1.3
