@@ -1055,7 +1055,7 @@ terminate_xsp (void *data)
 	char *termstr = "";
 
 	mono_conf = ap_get_module_config (server->module_config, &mono_module);
-	if (!strcasecmp (mono_conf->run_xsp, "false"))
+	if (mono_conf->run_xsp && !strcasecmp (mono_conf->run_xsp, "false"))
 		return APR_SUCCESS;
 
 #ifdef APACHE13
