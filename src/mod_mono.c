@@ -53,8 +53,10 @@
  * ====================================================================
  *
  */
-
+#ifdef HAVE_CONFIG_H
 #include <mod_mono_config.h>
+#endif
+
 #include <httpd.h>
 #include <http_config.h>
 #include <errno.h>
@@ -100,13 +102,13 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #include <sys/un.h>
 #include <sys/select.h>
 
-#ifndef PREFIX
-#define PREFIX "/usr"
+#ifndef MONO_PREFIX
+#define MONO_PREFIX "/usr"
 #endif
 
-#define EXECUTABLE_PATH 	PREFIX "/bin/mono"
-#define MONO_PATH		PREFIX "/lib"
-#define MODMONO_SERVER_PATH 	PREFIX "/bin/mod-mono-server.exe"
+#define EXECUTABLE_PATH 	MONO_PREFIX "/bin/mono"
+#define MONO_PATH		MONO_PREFIX "/lib"
+#define MODMONO_SERVER_PATH 	MONO_PREFIX "/bin/mod-mono-server.exe"
 #define WAPIDIR				"/tmp"
 #define DOCUMENT_ROOT		NULL
 #define APPCONFIG_FILE		NULL

@@ -1,5 +1,14 @@
 2004-06-12 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
+	* INSTALL:
+	* configure.in:
+	* src/Makefile.am:
+	* src/mod_mono.c: added --with-mono-prefix configure option so that
+	if mod_mono is installed in a different prefix from mono, the default
+	paths for locating mono and mod-mono-server.exe are right.
+
+2004-06-12 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
 	* src/mod_mono.c: fixed a couple of big-endian issues.
 
 2004-06-11  Gonzalo Paniagua Javier <gonzalo@ximian.com>

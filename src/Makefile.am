@@ -23,7 +23,7 @@ libmod_mono_la_LDFLAGS = -module
 libmod_mono_old_la_LIBADD = $(MONO_LIBS)
 libmod_mono_old_la_LDFLAGS = -module
 
-INCLUDES = $(MONO_CFLAGS) -DPREFIX=\"$(prefix)\"
+INCLUDES = $(MONO_CFLAGS)
 
 
 install: $(lib_LTLIBRARIES)

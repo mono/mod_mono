@@ -170,8 +170,8 @@ fi
 
 # determine LIBEXEC
 AC_MSG_CHECKING(for Apache libexec directory)
-LIBEXECDIR=`${APXS} -q LIBEXECDIR`
-AC_MSG_RESULT($LIBEXECDIR)
+APXS_LIBEXECDIR=`${APXS} -q LIBEXECDIR`
+AC_MSG_RESULT($APXS_LIBEXECDIR)
 
 # determine INCLUDES
 
@@ -272,12 +272,36 @@ fi
 AC_C_BIGENDIAN
 AC_CHECK_FUNCS([setenv putenv ])
 
-AC_SUBST(LIBEXECDIR)
+MONO_PREFIX=`$PKG_CONFIG --silence-errors --variable=prefix mono`
+if test x$MONO_PREFIX = "x" ; then
+	MONO_PREFIX=$prefix
+fi
+AC_MSG_CHECKING([for mono installation prefix])
+AC_ARG_WITH(mono-prefix,
+[  --with-mono-prefix=PATH  The prefix where mono is installed. It's used
+                            to set the default paths for mod-mono-server.exe
+			    and mono when the modules is installed in a
+			    different prefix. Configuration directives can
+			    override this.
+],
+        if test ! x$with_mono_prefix = "x" ; then
+		if test ! -d "$with_mono_prefix" ; then
+			AC_MSG_ERROR([Directory '$with_mono_prefix' not found])
+		fi
+		MONO_PREFIX=$with_mono_prefix
+        fi
+)
+AC_MSG_RESULT($MONO_PREFIX)
+AC_DEFINE_UNQUOTED([MONO_PREFIX],"$MONO_PREFIX",[Mono installation prefix])
+
+
+AC_SUBST(APXS_LIBEXECDIR)
 AC_SUBST(APXS)
 AC_SUBST(AP_INCLUDES)
 AC_SUBST(CFLAGS)
 AC_SUBST(MONO_CFLAGS)
 AC_SUBST(MONO_LIBS)
+AC_SUBST(MONO_PREFIX)
 
 AC_OUTPUT(
 Makefile
@@ -291,11 +315,12 @@ echo "Configuration summary for mod_mono"
 echo ""
 echo "   * Installation prefix = $prefix"
 echo "   * Apache version = $APACHE_VER"
-echo "   * Apache modules directory = $LIBEXECDIR"
+echo "   * Apache modules directory = $APXS_LIBEXECDIR"
 test -x "$APXS" && \
 echo "   * apxs = $APXS"
 test "$APACHE_VER" = "2.0" -a -x "$APRCONFIG" && \
 echo "   * apr-config = $APRCONFIG"
+echo "   * mono prefix = $MONO_PREFIX"
 echo "   * Build old module: $enable_old_module"
 echo ""
 echo "---"

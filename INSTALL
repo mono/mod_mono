@@ -1,4 +1,4 @@
-Last updated: Jun 3, 2004
+Last updated: Jun 12, 2004
 
 Index
 -------
@@ -7,6 +7,7 @@ Index
     o Prerrequisites
     o Assumptions
     o Step by step (everything in /usr!)
+      -Tip: If mono was not installed in /usr
 
   * APPENDIX A: Typical configuration without virtual hosts
   * APPENDIX B: Configuration directives for mod_mono
@@ -109,6 +110,16 @@ Installing mod_mono
 
   Nice, huh?
 
+      -TIP: If mono was not installed in /usr
+
+      In this case, when running ./configure for mod_mono, you can do:
+
+          ./configure --prefix=/usr --with-mono-prefix=/usr/local
+
+      so that the default paths for locating mono and mod-mono-server
+      are set to /usr/local/bin/mono and so on.
+
+      
 
 APPENDIX A: Typical configuration without virtual hosts
 --------------------------------------------------------
