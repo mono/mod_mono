@@ -1,5 +1,12 @@
 2004-07-13 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
+	* src/mod_mono.c: ap_conn_flush does a *final* flush on the connection,
+	and that conflicts with mod_ssl handling of End-Of-Connection buckets,
+	so, connection_flush is a noop now.
+	See bug #60117 for details.
+
+2004-07-13 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
 	* src/mod_mono.c: added NOT_FOUND command and prevent invalid commands
 	from crashing mod_mono.
 

@@ -299,11 +299,15 @@ connection_get_remote_name (request_rec *r)
 static void
 connection_flush (request_rec *r)
 {
+/* Do nothing
+ * This does a kind of final flush which is not what we want.
+ * These caused bug 60117.
 #ifdef APACHE13
 	ap_rflush (r);
 #else
 	ap_flush_conn (r->connection);
 #endif
+*/
 }
 
 static void
@@ -538,7 +542,6 @@ apr_sockaddr_info_get (apr_sockaddr_t **sa, const char *hostname,
 
 	if (port < 0 || port > 65535)
 		return EINVAL;
-
 
 	memset (&hints, 0, sizeof (hints));
 	hints.ai_family = family;
