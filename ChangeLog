@@ -1,3 +1,7 @@
+2005-04-20 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: don't overwrite headers already set. Fixes bug #74507.
+
 2005-04-19 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: add CGI and other variables to the request.

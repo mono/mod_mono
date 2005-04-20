@@ -330,7 +330,7 @@ set_response_header (request_rec *r,
 	if (!strcasecmp (name,"Content-Type")) {
 		r->content_type = value;
 	} else {
-		apr_table_setn (r->headers_out, name, value);
+		apr_table_addn (r->headers_out, name, value);
 	}
 }
 
