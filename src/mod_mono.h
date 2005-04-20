@@ -68,6 +68,7 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #define apr_pcalloc ap_pcalloc
 
 #define apr_table_setn ap_table_setn
+#define apr_table_setn ap_table_addn
 #define apr_table_get ap_table_get
 #define apr_table_elts ap_table_elts
 #define apr_table_entry_t table_entry

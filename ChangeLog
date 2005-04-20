@@ -1,5 +1,10 @@
 2005-04-20 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
+	* src/mod_mono.h: forgot to add a define for apache 1.3 with the
+	equivalent apr_table_addn.
+
+2005-04-20 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
 	* src/mod_mono.c: don't overwrite headers already set. Fixes bug #74507.
 
 2005-04-19 Gonzalo Paniagua Javier <gonzalo@ximian.com>
