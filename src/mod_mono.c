@@ -1188,6 +1188,8 @@ mono_execute_request (request_rec *r)
 	if (rv != APR_SUCCESS)
 		return HTTP_SERVICE_UNAVAILABLE;
 
+	ap_add_cgi_vars (r);
+	ap_add_common_vars (r);
 	DEBUG_PRINT (2, "Sending init data");
 	if (send_initial_data (r, sock) != 0) {
 		int err = errno;

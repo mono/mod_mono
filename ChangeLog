@@ -1,3 +1,7 @@
+2005-04-19 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: add CGI and other variables to the request.
+
 2005-03-14 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* INSTALL:
