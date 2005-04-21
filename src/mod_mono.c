@@ -223,7 +223,7 @@ merge_config (apr_pool_t *p, void *base_conf, void *new_conf)
 	new_config = new_module->servers;
 	nservers = base_module->nservers + new_module->nservers;
 
-	//FIXME: error out on duplicate aliases.
+	/* FIXME: error out on duplicate aliases. */
 	base_module->servers = apr_pcalloc (p, sizeof (xsp_data) * nservers);
 	memcpy (base_module->servers, base_config, sizeof (xsp_data) * base_module->nservers);
 	memcpy (&base_module->servers [base_module->nservers], new_config, new_module->nservers * sizeof (xsp_data));
@@ -264,6 +264,12 @@ request_send_response_from_memory (request_rec *r, char *byteArray, int size)
 #endif
 
 	ap_rwrite (byteArray, size, r);
+}
+
+static void
+request_send_response_string (request_rec *r, char *byteArray)
+{
+	request_send_response_from_memory (r, byteArray, strlen (byteArray));
 }
 
 /* Not connection because actual port will vary depending on Apache configuration */
@@ -1225,10 +1231,63 @@ mono_handler (request_rec *r)
 	return mono_execute_request (r);
 }
 
+static void
+start_xsp (module_cfg *config, int is_restart)
+{
+	apr_socket_t *sock;
+	apr_status_t rv;
+	char *termstr = "";
+	xsp_data *xsp;
+	int i;
+
+	/*****
+	 * NOTE: we might be trying to start the same mod-mono-server in several
+	 * different apache child processes. xsp->status tries to help avoiding this
+	 * and mod-mono-server uses a lock that checks for same command line, same
+	 * user...
+	 *****/
+	for (i = 0; i < config->nservers; i++) {
+		xsp = &config->servers [i];
+		if (xsp->run_xsp && !strcasecmp (xsp->run_xsp, "false"))
+			continue;
+
+		if (xsp->status != FORK_NONE)
+			continue;
+
+#ifdef APACHE13
+		sock = apr_pcalloc (pconf, sizeof (apr_socket_t));
+#endif
+		rv = setup_socket (&sock, xsp, pconf, TRUE);
+
+		if (rv == APR_SUCCESS) {
+			/* connected */
+			DEBUG_PRINT (0, "connected %s", xsp->alias);
+			if (is_restart) {
+				write_data (sock, termstr, 1);
+				apr_socket_close (sock);
+				apr_sleep (apr_time_from_sec (2));
+				i--;
+				continue; /* Wait for the previous to die */
+			}
+
+			apr_socket_close (sock);
+			xsp->status = FORK_SUCCEEDED;
+		} else {
+			apr_socket_close (sock);
+			/* need fork */
+			xsp->status = FORK_INPROCESS;
+			DEBUG_PRINT (0, "forking %s", xsp->alias);
+			/* Give some time for clean up */
+			fork_mod_mono_server (pconf, xsp);
+			xsp->status = FORK_SUCCEEDED;
+		}
+	}
+}
+
 static apr_status_t
 terminate_xsp (void *data)
 {
-	server_rec *server = (server_rec *) data;
+	server_rec *server;
 	module_cfg *config;
 	apr_socket_t *sock;
 	apr_status_t rv;
@@ -1237,8 +1296,9 @@ terminate_xsp (void *data)
 	int i;
 
 	DEBUG_PRINT (0, "Terminate XSP");
-
+	server = (server_rec *) data;
 	config = ap_get_module_config (server->module_config, &mono_module);
+
 	for (i = 0; i < config->nservers; i++) {
 		xsp = &config->servers [i];
 		if (xsp->run_xsp && !strcasecmp (xsp->run_xsp, "false"))
@@ -1249,6 +1309,7 @@ terminate_xsp (void *data)
 		rv = setup_socket (&sock, xsp, pconf, TRUE);
 		if (rv == APR_SUCCESS) {
 			write_data (sock, termstr, 1);
+			apr_socket_close (sock);
 		}
 
 		if (xsp->listen_port == NULL) {
@@ -1259,12 +1320,56 @@ terminate_xsp (void *data)
 
 			remove (fn); /* Don't bother checking error */
 		}
+
+		xsp->status = FORK_NONE;
 	}
 
 	apr_sleep (apr_time_from_sec (1));
-	/* apr_socket_close (sock); don't bother closing */
-
 	return APR_SUCCESS;
+}
+
+static int
+mono_control_panel_handler (request_rec *r)
+{
+	module_cfg *config;
+	apr_uri_t *uri;
+
+	if (strcmp (r->handler, "mono-ctrl"))
+		return DECLINED;
+
+	DEBUG_PRINT (1, "control panel handler: %s", r->handler);
+
+	config = ap_get_module_config (r->server->module_config, &mono_module);
+	
+	set_response_header (r, "Content-Type", "text/html");
+
+	request_send_response_string (r, "<html><body>\n");
+	request_send_response_string (r, "<h1 style=\"text-align: center;\">mod_mono Control Panel</h1>\n");
+	
+	uri = &r->parsed_uri;
+	if (!uri->query || !strcmp (uri->query, "")) {
+		/* No query string -> Emit links for configuration commands. */
+		request_send_response_string (r, "<ul style=\"text-align: center;\">\n");
+		request_send_response_string (r, "<li><a href=\"?restart\">Restart mod-mono-server processes</a></li>\n");
+		request_send_response_string (r, "</ul>\n");
+	} else {
+		if (uri->query && !strcmp (uri->query, "restart")) {
+			/* Restart the mod-mono-server processes */
+			terminate_xsp (r->server);
+			start_xsp (config, 1);
+			request_send_response_string (r, "<div style=\"text-align: center;\">mod-mono-server processes restarted.</div><br>\n");
+		} else {
+			/* Invalid command. */
+			request_send_response_string (r, "<div style=\"text-align: center;\">Invalid query string command.</div>\n");
+		}
+	
+		request_send_response_string (r, "<div style=\"text-align: center;\"><a href=\"?\">Return to Control Panel</a></div>\n");
+	}
+	
+	request_send_response_string(r, "</body></html>\n");
+
+	DEBUG_PRINT (2, "Done.");
+	return OK;
 }
 
 #ifdef APACHE13
@@ -1320,48 +1425,18 @@ mono_child_init (
 #endif
 	)
 {
-	int i;
 	module_cfg *config;
-	xsp_data *xsp;
-	apr_socket_t *sock;
-	apr_status_t rv;
 
 	DEBUG_PRINT (0, "Mono Child Init");
 	config = ap_get_module_config (s->module_config, &mono_module);
 
-	/*****
-	 * NOTE: we might be trying to start the same mod-mono-server in several
-	 * different apache child processes. xsp->status tries to help avoiding this
-	 * and mod-mono-server uses a lock that checks for same command line, same
-	 * user...
-	 *****/
-	for (i = 0; i < config->nservers; i++) {
-		xsp = &config->servers [i];
-		if (xsp->status != FORK_NONE)
-			continue;
-
-#ifdef APACHE13
-		sock = apr_pcalloc (pconf, sizeof (apr_socket_t));
-#endif
-		rv = setup_socket (&sock, xsp, pconf, TRUE);
-
-		if (rv == APR_SUCCESS) {
-			/* connected */
-			DEBUG_PRINT (0, "connected %s", xsp->alias);
-			apr_socket_close (sock);
-		} else {
-			/* need fork */
-			xsp->status = FORK_INPROCESS;
-			DEBUG_PRINT (0, "forking %s", xsp->alias);
-			fork_mod_mono_server (pconf, xsp);
-			xsp->status = FORK_SUCCEEDED;
-		}
-	}
+	start_xsp (config, 0);
 }
 
 #ifdef APACHE13
 static const handler_rec mono_handlers [] = {
 	{ "mono", mono_handler },
+	{ "mono-ctrl", mono_control_panel_handler },
 	{ NULL, NULL }
 };
 #else
@@ -1369,6 +1444,7 @@ static void
 mono_register_hooks (apr_pool_t * p)
 {
 	ap_hook_handler (mono_handler, NULL, NULL, APR_HOOK_FIRST);
+	ap_hook_handler (mono_control_panel_handler, NULL, NULL, APR_HOOK_FIRST);
 	ap_hook_post_config (mono_init_handler, NULL, NULL, APR_HOOK_MIDDLE);
 	ap_hook_child_init (mono_child_init, NULL, NULL, APR_HOOK_MIDDLE);
 }

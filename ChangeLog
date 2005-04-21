@@ -1,3 +1,8 @@
+2005-04-21 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: added control panel from Joshua Tauberer.
+	* src/mod_mono.h: uri_component 1.3 -> apr_uri_t in 2.0
+
 2005-04-20 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.h: forgot to add a define for apache 1.3 with the
