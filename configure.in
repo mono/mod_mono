@@ -339,10 +339,12 @@ fi
 AC_MSG_RESULT($MONO_PREFIX)
 AC_DEFINE_UNQUOTED([MONO_PREFIX],"$MONO_PREFIX",[Mono installation prefix])
 
-dnl Prevent the 'not found by the preprocessor' message.
 CPPFLAGS="$CPPFLAGS $CFLAGS `$APXS -q EXTRA_CPPFLAGS`"
 CFLAGS="$CFLAGS `$APXS -q EXTRA_CFLAGS`"
-AC_CHECK_HEADERS([http_protocol.h])
+AC_CHECK_HEADER(http_protocol.h, \
+	AC_DEFINE([HAVE_HTTP_PROTOCOL_H],1,\
+	[Define to 1 if you have the <http_protocol.h> header file.]),,\
+	[#include <httpd.h>])
 
 
 AC_SUBST(APXS_LIBEXECDIR)

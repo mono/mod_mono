@@ -1,3 +1,8 @@
+2005-04-24 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* configure.in: when checking for http_protocol.h, include httpd.h too.
+	Patch from Bill Middleton.
+
 2005-04-21 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: added control panel from Joshua Tauberer.
