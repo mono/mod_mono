@@ -1,3 +1,8 @@
+2005-05-07 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.[ch]: support for IS_CONNECTED and increased version
+	number.
+
 2005-05-03  Ben Maurer  <bmaurer@ximian.com>
 
 	* configure.in: 1.0.9

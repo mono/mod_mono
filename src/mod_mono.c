@@ -519,6 +519,9 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 	case DECLINE_REQUEST:
 		*result = DECLINED;
 		return FALSE;
+	case IS_CONNECTED:
+		*result = (r->connection->aborted ? 0 : 1);
+		break;
 	case MYNOT_FOUND:
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
 				"No application found for %s", r->uri);
@@ -1119,7 +1122,7 @@ send_initial_data (request_rec *r, apr_socket_t *sock)
 	size += ((r->protocol != NULL) ? strlen (r->protocol) : 0) + sizeof (int);
 
 	ptr = str = apr_pcalloc (r->pool, size);
-	*ptr++ = 1; /* version */
+	*ptr++ = 2; /* version */
 	ptr += write_string_to_buffer (ptr, 0, r->method);
 	ptr += write_string_to_buffer (ptr, 0, r->uri);
 	ptr += write_string_to_buffer (ptr, 0, r->args);

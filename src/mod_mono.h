@@ -181,6 +181,7 @@ enum Cmd {
 	SET_STATUS,
 	DECLINE_REQUEST,
 	MYNOT_FOUND, /* apache 1.3 already defines NOT_FOUND */
+	IS_CONNECTED,
 	LAST_COMMAND
 };
 
@@ -196,6 +197,7 @@ static char *cmdNames [] = {
 	"GET_CLIENT_BLOCK",
 	"SET_STATUS",
 	"DECLINE_REQUEST",
+	"IS_CONNECTED",
 	"NOT_FOUND"
 };
 
