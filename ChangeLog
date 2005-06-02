@@ -1,3 +1,7 @@
+2005-06-02 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/Makefile.am: no need to set PREFIX for apxs.
+
 2005-05-07 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.[ch]: support for IS_CONNECTED and increased version
