@@ -1,3 +1,7 @@
+2005-07-18 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* mod_mono.conf.in: use <IfModule>
+
 2005-06-02 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/Makefile.am: no need to set PREFIX for apxs.
