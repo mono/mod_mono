@@ -118,9 +118,9 @@ This one using <Directory>:
 .nf
       LoadModule mono_module /usr/lib/apache/1.3/libmod_mono.so
       AddModule mod_mono.c
-      Alias /mono "/usr/share/doc/xsp/test"
-      AddMonoApplications default "/mono:/usr/share/doc/xsp/test"
-      <Directory /usr/share/doc/xsp/test>
+      Alias /mono "/usr/lib/xsp/test"
+      AddMonoApplications default "/mono:/usr/lib/xsp/test"
+      <Directory /usr/lib/xsp/test>
               SetHandler mono
               <IfModule mod_dir.c>
                     DirectoryIndex index.aspx
@@ -131,8 +131,8 @@ This one using <Directory>:
 This one using <Location>:
 .nf
       LoadModule mono_module modules/libmod_mono.so
-      Alias /demo "/usr/share/doc/xsp/test"
-      AddMonoApplications default "/demo:/usr/share/doc/xsp/test"
+      Alias /demo "/usr/lib/xsp/test"
+      AddMonoApplications default "/demo:/usr/lib/xsp/test"
       <Location /demo>
               SetHandler mono
       </Location>
