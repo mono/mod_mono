@@ -1,3 +1,8 @@
+2005-07-26 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.h: updated to new default path for mod-mono-server.exe.
+	WARNING: this might break if you don't install an up-to-date xsp!!!
+
 2005-07-25 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* INSTALL:
