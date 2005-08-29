@@ -417,6 +417,64 @@ read_data_string (apr_pool_t *pool, apr_socket_t *sock, char **ptr, apr_size_t *
 }
 
 static int
+send_entire_file (request_rec *r, const char *filename, int *result)
+{
+#ifdef APACHE2
+	apr_file_t *file;
+	apr_status_t st;
+	apr_finfo_t info;
+	apr_size_t nbytes;
+	const apr_int32_t flags = APR_READ | APR_SENDFILE_ENABLED | APR_LARGEFILE;
+
+	DEBUG_PRINT (1, "file_open");
+	st = apr_file_open (&file, filename, flags, APR_OS_DEFAULT, r->pool);
+	if (st != APR_SUCCESS) {
+		DEBUG_PRINT (1, "file_open FAILED");
+		*result = HTTP_FORBIDDEN; 
+		return -1;
+	}
+
+	DEBUG_PRINT (1, "info_get");
+	st = apr_file_info_get (&info, APR_FINFO_SIZE, file);
+	if (st != APR_SUCCESS) {
+		DEBUG_PRINT (1, "info_get FAILED");
+		*result = HTTP_FORBIDDEN; 
+		return -1;
+	}
+
+	DEBUG_PRINT (1, "SEND");
+	st = ap_send_fd (file, r, 0, info.size, &nbytes);
+	apr_file_close (file);
+	if (nbytes < 0) {
+		DEBUG_PRINT (1, "SEND FAILED");
+		*result = HTTP_INTERNAL_SERVER_ERROR;
+		return -1;
+	}
+
+	return 0;
+#else
+	FILE *fp;
+
+	DEBUG_PRINT (1, "file_open");
+	fp = fopen (filename, "rb");
+	if (fp == NULL) {
+		DEBUG_PRINT (1, "file_open FAILED");
+		*result = HTTP_FORBIDDEN; 
+		return -1;
+	}
+
+	if (ap_send_fd (fp, r) < 0) {
+		fclose (fp);
+		*result = HTTP_INTERNAL_SERVER_ERROR;
+		return -1;
+	}
+		
+	fclose (fp);
+	return 0;
+#endif
+}
+
+static int
 do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 {
 	apr_size_t size;
@@ -532,6 +590,15 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 
 		*result = HTTP_NOT_FOUND;
 		return FALSE;
+	case SEND_FILE:
+		if (read_data_string (r->pool, sock, &str, NULL) == NULL) {
+			status = -1;
+			break;
+		}
+		status = send_entire_file (r, str, result);
+		if (status == -1)
+			return FALSE;
+		break;
 	default:
 		*result = HTTP_INTERNAL_SERVER_ERROR;
 		return FALSE;
@@ -1122,7 +1189,7 @@ send_initial_data (request_rec *r, apr_socket_t *sock)
 	size += ((r->protocol != NULL) ? strlen (r->protocol) : 0) + sizeof (int);
 
 	ptr = str = apr_pcalloc (r->pool, size);
-	*ptr++ = 2; /* version */
+	*ptr++ = 3; /* version. Keep in sync with ModMonoRequest. */
 	ptr += write_string_to_buffer (ptr, 0, r->method);
 	ptr += write_string_to_buffer (ptr, 0, r->uri);
 	ptr += write_string_to_buffer (ptr, 0, r->args);

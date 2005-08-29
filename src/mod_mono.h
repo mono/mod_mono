@@ -125,6 +125,7 @@ extern time_t ap_restart_time;
 /* Apache 2 only */
 #define STATUS_AND_SERVER 0, NULL
 #include <http_protocol.h>
+#include <http_request.h>
 #include <util_script.h>
 #include <apr_strings.h>
 #include <apr_support.h>
@@ -182,6 +183,7 @@ enum Cmd {
 	DECLINE_REQUEST,
 	MYNOT_FOUND, /* apache 1.3 already defines NOT_FOUND */
 	IS_CONNECTED,
+	SEND_FILE,
 	LAST_COMMAND
 };
 
@@ -197,8 +199,9 @@ static char *cmdNames [] = {
 	"GET_CLIENT_BLOCK",
 	"SET_STATUS",
 	"DECLINE_REQUEST",
+	"NOT_FOUND",
 	"IS_CONNECTED",
-	"NOT_FOUND"
+	"SEND_FILE",
 };
 
 /* Module definition */

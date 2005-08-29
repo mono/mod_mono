@@ -1,3 +1,8 @@
+2005-08-28 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.[ch]: new SEND_FILE command that uses apache's ap_send_fd
+	when sending a file. No more sucking when mod_mono serves static files.
+
 2005-07-26 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.h: updated to new default path for mod-mono-server.exe.
