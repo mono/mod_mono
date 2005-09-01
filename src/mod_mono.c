@@ -475,11 +475,39 @@ send_entire_file (request_rec *r, const char *filename, int *result)
 }
 
 static int
+send_response_headers (request_rec *r, apr_socket_t *sock)
+{
+	char *str;
+	apr_size_t size;
+	int pos, len;
+	char *name;
+	char *value;
+
+	if (read_data_string (r->pool, sock, &str, &size) == NULL)
+		return -1;
+
+	DEBUG_PRINT (2, "Headers length: %d", size);
+	pos = 0;
+	while (size > 0) {
+		name = &str [pos];
+		len = strlen (name);
+		pos += len + 1;
+		size -= len + 1;
+		value = &str [pos];
+		len = strlen (value);
+		pos += len + 1;
+		size -= len + 1;
+		set_response_header (r, name, value);
+	}
+
+	return 0;
+}
+
+static int
 do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 {
 	apr_size_t size;
 	char *str;
-	char *str2;
 	int i;
 	int status = 0;
 
@@ -513,16 +541,8 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 
 		status = write_data_string (sock, str);
 		break;
-	case SET_RESPONSE_HEADER:
-		if (read_data_string (r->pool, sock, &str, NULL) == NULL) {
-			status = -1;
-			break;
-		}
-		if (read_data_string (r->pool, sock, &str2, NULL) == NULL) {
-			status = -1;
-			break;
-		}
-		set_response_header (r, str, str2);
+	case SET_RESPONSE_HEADERS:
+		status = send_response_headers (r, sock);
 		break;
 	case GET_LOCAL_PORT:
 		i = connection_get_local_port (r);
@@ -1189,7 +1209,7 @@ send_initial_data (request_rec *r, apr_socket_t *sock)
 	size += ((r->protocol != NULL) ? strlen (r->protocol) : 0) + sizeof (int);
 
 	ptr = str = apr_pcalloc (r->pool, size);
-	*ptr++ = 3; /* version. Keep in sync with ModMonoRequest. */
+	*ptr++ = 4; /* version. Keep in sync with ModMonoRequest. */
 	ptr += write_string_to_buffer (ptr, 0, r->method);
 	ptr += write_string_to_buffer (ptr, 0, r->uri);
 	ptr += write_string_to_buffer (ptr, 0, r->args);

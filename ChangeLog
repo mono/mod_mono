@@ -1,3 +1,8 @@
+2005-09-01 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.[ch]: one single read for all the headers.
+	Update xsp too.
+
 2005-08-28 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.[ch]: new SEND_FILE command that uses apache's ap_send_fd
