@@ -420,11 +420,16 @@ static int
 send_entire_file (request_rec *r, const char *filename, int *result)
 {
 #ifdef APACHE2
+#  ifdef APR_LARGEFILE 
+#      define MODMONO_LARGE APR_LARGEFILE
+#  else
+#      define MODMONO_LARGE 0
+#  endif
 	apr_file_t *file;
 	apr_status_t st;
 	apr_finfo_t info;
 	apr_size_t nbytes;
-	const apr_int32_t flags = APR_READ | APR_SENDFILE_ENABLED | APR_LARGEFILE;
+	const apr_int32_t flags = APR_READ | APR_SENDFILE_ENABLED | MODMONO_LARGE;
 
 	DEBUG_PRINT (1, "file_open");
 	st = apr_file_open (&file, filename, flags, APR_OS_DEFAULT, r->pool);
