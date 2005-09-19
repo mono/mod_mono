@@ -1,3 +1,8 @@
+2005-09-19 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: if we read 0 bytes, stop the loop in apr_socket_recv
+	used in apache 1.3. Patch by Mathias Herberts.
+
 2005-09-01 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.[ch]: one single read for all the headers.

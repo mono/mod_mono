@@ -715,7 +715,7 @@ apr_socket_recv (apr_socket_t *sock, char *buf, apr_size_t *len)
 		result = read (sock_fd, buf + total, (*len) - total);
 		if (result >= 0)
 			total += result;
-	} while ((result >= 0 && total < *len) || (result == -1 && errno == EINTR));
+	} while ((result > 0 && total < *len) || (result == -1 && errno == EINTR));
 
 	return (total == *len) ? 0 : -1;
 }
@@ -1264,7 +1264,7 @@ mono_execute_request (request_rec *r)
 	int command;
 	int result = FALSE;
 	apr_status_t input;
-	int status;
+	int status = 0;
 	module_cfg *config;
 	per_dir_config *dir_config = NULL;
 	int idx;
