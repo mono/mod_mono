@@ -50,6 +50,7 @@ enum {
 };
 
 typedef struct xsp_data {
+	char is_default;
 	char *alias;
 	char *filename;
 	char *run_xsp;
@@ -81,15 +82,16 @@ typedef struct {
 static int
 search_for_alias (const char *alias, module_cfg *config)
 {
+	// alias may be NULL to search for the default XSP	
 	int i;
 	xsp_data *xsp;
 
 	for (i = 0; i < config->nservers; i++) {
 		xsp = &config->servers [i];
-		if (alias == NULL && !strcmp (xsp->alias, "default"))
+		if (alias == NULL && xsp->is_default)
 			return i;
 
-		if (!strcmp (alias, xsp->alias))
+		if (alias != NULL && !strcmp (alias, xsp->alias))
 			return i;
 	}
 
@@ -113,20 +115,19 @@ set_alias (cmd_parms *cmd, void *mconfig, const char *alias)
 }
 
 static int
-add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_virtual)
+add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_default, int is_virtual)
 {
 	xsp_data *server;
 	xsp_data *servers;
 	int nservers;
 	int i;
-	char is_default;
 
 	i = search_for_alias (alias, config);
 	if (i >= 0)
 		return i;
 
-	is_default = (alias == NULL || !strcmp (alias, "default"));
 	server = apr_pcalloc (pool, sizeof (xsp_data));
+	server->is_default = is_default;
 	server->alias = apr_pstrdup (pool, alias);
 	server->filename = NULL;
 	server->run_xsp = "True";
@@ -172,6 +173,7 @@ store_config_xsp (cmd_parms *cmd, void *notused, const char *first, const char *
 	module_cfg *config;
 	char *ptr;
 	unsigned long offset;
+	int is_default;
 	
 	offset = (unsigned long) cmd->info;
 	DEBUG_PRINT (1, "store_config %lu '%s' '%s'", offset, first, second);
@@ -179,15 +181,18 @@ store_config_xsp (cmd_parms *cmd, void *notused, const char *first, const char *
 
 	if (second == NULL) {
 		alias = "default";
+		if (cmd->server->is_virtual) alias = cmd->server->server_hostname;
 		value = first;
+		is_default = 1;
 	} else {
 		alias = first;
-		value = second; 
+		value = second;
+		is_default = 0;
 	}
 
 	idx = search_for_alias (alias, config);
 	if (idx == -1)
-		idx = add_xsp_server (cmd->pool, alias, config, cmd->server->is_virtual);
+		idx = add_xsp_server (cmd->pool, alias, config, is_default, cmd->server->is_virtual);
 
 	ptr = (char *) &config->servers [idx];
 	ptr += offset;
@@ -737,9 +742,6 @@ apr_sleep (long t)
 static char *
 get_default_socket_name (apr_pool_t *pool, const char *alias, const char *base)
 {
-	if (alias == NULL || !strcmp (alias, "default"))
-		return (char *) base;
-
 	return apr_pstrcat (pool, base, "_", alias, NULL);
 }
 
@@ -1278,7 +1280,7 @@ mono_execute_request (request_rec *r)
 	if (dir_config != NULL && dir_config->alias != NULL)
 		idx = search_for_alias (dir_config->alias, config);
 	else
-		idx = search_for_alias ("default", config);
+		idx = search_for_alias (NULL, config);
 
 	DEBUG_PRINT (2, "idx = %d", idx);
 #ifdef APACHE13
@@ -1327,8 +1329,10 @@ mono_handler (request_rec *r)
 }
 
 static void
-start_xsp (module_cfg *config, int is_restart)
+start_xsp (module_cfg *config, int is_restart, char *alias)
 {
+	// alias may be NULL to start all XSPs
+	
 	apr_socket_t *sock;
 	apr_status_t rv;
 	char *termstr = "";
@@ -1347,6 +1351,10 @@ start_xsp (module_cfg *config, int is_restart)
 			continue;
 
 		if (xsp->status != FORK_NONE)
+			continue;
+		
+		// If alias isn't null, skip XSPs that don't have that alias.
+		if (alias != NULL && strcmp(xsp->alias, alias))
 			continue;
 
 #ifdef APACHE13
@@ -1380,8 +1388,10 @@ start_xsp (module_cfg *config, int is_restart)
 }
 
 static apr_status_t
-terminate_xsp (void *data)
+terminate_xsp2 (void *data, char *alias)
 {
+	// alias may be NULL to terminate all XSPs
+	
 	server_rec *server;
 	module_cfg *config;
 	apr_socket_t *sock;
@@ -1398,6 +1408,11 @@ terminate_xsp (void *data)
 		xsp = &config->servers [i];
 		if (xsp->run_xsp && !strcasecmp (xsp->run_xsp, "false"))
 			continue;
+
+		// If alias isn't null, skip XSPs that don't have that alias.
+		if (alias != NULL && strcmp(xsp->alias, alias))
+			continue;
+		
 #ifdef APACHE13
 		sock = apr_pcalloc (pconf, sizeof (apr_socket_t));
 #endif
@@ -1423,11 +1438,20 @@ terminate_xsp (void *data)
 	return APR_SUCCESS;
 }
 
+static apr_status_t
+terminate_xsp (void *data)
+{
+	return terminate_xsp2(data, NULL);
+}
+
 static int
 mono_control_panel_handler (request_rec *r)
 {
 	module_cfg *config;
 	apr_uri_t *uri;
+	xsp_data *xsp;
+	int i;
+	char buffer[512];
 
 	if (strcmp (r->handler, "mono-ctrl"))
 		return DECLINED;
@@ -1445,13 +1469,24 @@ mono_control_panel_handler (request_rec *r)
 	if (!uri->query || !strcmp (uri->query, "")) {
 		/* No query string -> Emit links for configuration commands. */
 		request_send_response_string (r, "<ul style=\"text-align: center;\">\n");
-		request_send_response_string (r, "<li><a href=\"?restart\">Restart mod-mono-server processes</a></li>\n");
+		request_send_response_string (r, "<li><a href=\"?restart=ALL\">Restart all mod-mono-server processes</a></li>\n");
+
+		for (i = 0; i < config->nservers; i++) {
+			xsp = &config->servers [i];
+			if (xsp->run_xsp && !strcasecmp (xsp->run_xsp, "false"))
+				continue;
+			sprintf(buffer, "<li>%s: <a href=\"?restart=%s\">Restart Server</a></li>\n", xsp->alias, xsp->alias);
+			request_send_response_string(r, buffer);
+		}
+		
 		request_send_response_string (r, "</ul>\n");
 	} else {
-		if (uri->query && !strcmp (uri->query, "restart")) {
+		if (uri->query && !strncmp (uri->query, "restart=", 8)) {
 			/* Restart the mod-mono-server processes */
-			terminate_xsp (r->server);
-			start_xsp (config, 1);
+			char *alias = uri->query + 8; // +8 == .Substring(8)
+			if (!strcmp(alias, "ALL")) alias = NULL;
+			terminate_xsp2 (r->server, alias); 
+			start_xsp (config, 1, alias);
 			request_send_response_string (r, "<div style=\"text-align: center;\">mod-mono-server processes restarted.</div><br>\n");
 		} else {
 			/* Invalid command. */
@@ -1525,7 +1560,7 @@ mono_child_init (
 	DEBUG_PRINT (0, "Mono Child Init");
 	config = ap_get_module_config (s->module_config, &mono_module);
 
-	start_xsp (config, 0);
+	start_xsp (config, 0, NULL);
 }
 
 #ifdef APACHE13

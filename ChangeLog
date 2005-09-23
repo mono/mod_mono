@@ -1,3 +1,19 @@
+2005-09-23 Joshua Tauberer <tauberer@for.net>
+
+	* src/mod_mono.c:
+	
+	  The default alias for xsp's within vhosts is the name of the
+	  vhost server, so that vhosts with default aliases don't all
+	  use the same Unix socket file name.  A new is_default field
+	  tracks whether an XSP is the server default, rather than using
+	  the "default" alias.
+	  
+	  Aliases are never NULL except when passed to search_for_alias,
+	  start_xsp, and terminate_xsp2.
+	  
+	  The control panel is amended so that individual XSPs
+	  can be restarted.
+
 2005-09-19 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: if we read 0 bytes, stop the loop in apr_socket_recv
