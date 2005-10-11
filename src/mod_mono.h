@@ -70,7 +70,9 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #define apr_pcalloc_t ap_pcalloc_t
 #define apr_pcalloc ap_pcalloc
 
+#define apr_table_t table
 #define apr_table_setn ap_table_setn
+#define apr_table_add ap_table_add
 #define apr_table_addn ap_table_addn
 #define apr_table_get ap_table_get
 #define apr_table_elts ap_table_elts
@@ -172,7 +174,7 @@ extern time_t ap_restart_time;
 enum Cmd {
 	FIRST_COMMAND,
 	SEND_FROM_MEMORY = 0,
-	GET_SERVER_VARIABLE,
+	GET_SERVER_VARIABLES,
 	SET_RESPONSE_HEADERS,
 	GET_LOCAL_PORT,
 	FLUSH,
@@ -190,7 +192,7 @@ enum Cmd {
 
 static char *cmdNames [] = {
 	"SEND_FROM_MEMORY",
-	"GET_SERVER_VARIABLE",
+	"GET_SERVER_VARIABLES",
 	"SET_RESPONSE_HEADERS",
 	"GET_LOCAL_PORT",
 	"FLUSH",

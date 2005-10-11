@@ -1,3 +1,10 @@
+2005-10-11 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: send all the server variables in one single write.
+	Before we did 2 writes per variable. Incremented version to 5. You'll
+	need to sync with xsp.
+	* src/mod_mono.h: add table defines for apache 1.3.
+
 2005-10-10 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.[ch]:

@@ -31,6 +31,8 @@
 
 #include "mod_mono.h"
 
+static int send_table (apr_pool_t *pool, apr_table_t *table, apr_socket_t *sock);
+
 DEFINE_MODULE (mono_module);
 
 /* Configuration pool. Cleared on restart. */
@@ -366,23 +368,6 @@ write_data (apr_socket_t *sock, const void *str, apr_size_t size)
 }
 
 static int
-write_data_string (apr_socket_t *sock, const char *str)
-{
-	int l;
-	int lel;
-
-	l = (str == NULL) ? 0 : strlen (str);
-	lel = LE_FROM_INT (l);
-	if (write_data (sock, &lel, sizeof (int)) != sizeof (int))
-		return -1;
-
-	if (l == 0)
-		return 0;
-
-	return write_data (sock, str, l);
-}
-
-static int
 read_data (apr_socket_t *sock, void *ptr, apr_size_t size)
 {
 	if (apr_socket_recv (sock, ptr, &size) != APR_SUCCESS)
@@ -520,6 +505,7 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 	char *str;
 	int i;
 	int status = 0;
+	int secure;
 
 	if (command < 0 || command >= LAST_COMMAND) {
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
@@ -538,18 +524,11 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 		}
 		request_send_response_from_memory (r, str, size);
 		break;
-	case GET_SERVER_VARIABLE:
-		if (read_data_string (r->pool, sock, &str, NULL) == NULL)
-			break;
-
-		if (!strcmp (str, "SERVER_PORT_SECURE")) {
-			/* This does not work well for apache 1.3 */
-			str = (strcmp (ap_http_method (r), "https") == 0) ? "True" : NULL;
-		} else {
-			str = (char *) apr_table_get (r->subprocess_env, str);
-		}
-
-		status = write_data_string (sock, str);
+	case GET_SERVER_VARIABLES:
+		secure = (strcmp (ap_http_method (r), "https") == 0);
+		if (secure)
+			apr_table_add (r->subprocess_env, "SERVER_PORT_SECURE", "True");
+		status = !send_table (r->pool, r->subprocess_env, sock);
 		break;
 	case SET_RESPONSE_HEADERS:
 		status = send_response_headers (r, sock);
@@ -1153,7 +1132,7 @@ write_string_to_buffer (char *buffer, int offset, const char *str)
 }
 
 static int
-send_headers (request_rec *r, apr_socket_t *sock)
+send_table (apr_pool_t *pool, apr_table_t *table, apr_socket_t *sock)
 {
 	const apr_array_header_t *elts;
 	const apr_table_entry_t *t_elt;
@@ -1163,7 +1142,7 @@ send_headers (request_rec *r, apr_socket_t *sock)
 	char *buffer;
 	char *ptr;
 
-	elts = apr_table_elts (r->headers_in);
+	elts = apr_table_elts (table);
 	DEBUG_PRINT (3, "Elements: %d", (int) elts->nelts);
 	if (elts->nelts == 0)
 		return (write_data (sock, &elts->nelts, sizeof (int)) == sizeof (int));
@@ -1181,7 +1160,7 @@ send_headers (request_rec *r, apr_socket_t *sock)
 		tmp++;
 	} while (t_elt < t_end);
 
-	buffer = apr_pcalloc (r->pool, size);
+	buffer = apr_pcalloc (pool, size);
 	ptr = buffer;
 
 	tmp = LE_FROM_INT (tmp);
@@ -1216,7 +1195,7 @@ send_initial_data (request_rec *r, apr_socket_t *sock)
 	size += ((r->protocol != NULL) ? strlen (r->protocol) : 0) + sizeof (int);
 
 	ptr = str = apr_pcalloc (r->pool, size);
-	*ptr++ = 4; /* version. Keep in sync with ModMonoRequest. */
+	*ptr++ = 5; /* version. Keep in sync with ModMonoRequest. */
 	ptr += write_string_to_buffer (ptr, 0, r->method);
 	ptr += write_string_to_buffer (ptr, 0, r->uri);
 	ptr += write_string_to_buffer (ptr, 0, r->args);
@@ -1225,7 +1204,7 @@ send_initial_data (request_rec *r, apr_socket_t *sock)
 		return -1;
 
 	DEBUG_PRINT (2, "Sending headers (init2)");
-	if (!send_headers (r, sock))
+	if (!send_table (r->pool, r->headers_in, sock))
 		return -1;
 
 	DEBUG_PRINT (2, "Done headers (init2)");
