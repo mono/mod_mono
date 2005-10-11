@@ -82,7 +82,7 @@ typedef struct {
 static int
 search_for_alias (const char *alias, module_cfg *config)
 {
-	// alias may be NULL to search for the default XSP	
+	/* 'alias' may be NULL to search for the default XSP */
 	int i;
 	xsp_data *xsp;
 
@@ -742,7 +742,7 @@ apr_sleep (long t)
 static char *
 get_default_socket_name (apr_pool_t *pool, const char *alias, const char *base)
 {
-	return apr_pstrcat (pool, base, "_", alias, NULL);
+	return apr_pstrcat (pool, base, "_", alias == NULL ? "default" : alias, NULL);
 }
 
 static apr_status_t 
@@ -1324,15 +1324,13 @@ mono_handler (request_rec *r)
 	if (strcmp (r->handler, "mono"))
 		return DECLINED;
 
-	DEBUG_PRINT (1, "handler: %s", r->handler);
 	return mono_execute_request (r);
 }
 
 static void
 start_xsp (module_cfg *config, int is_restart, char *alias)
 {
-	// alias may be NULL to start all XSPs
-	
+	/* 'alias' may be NULL to start all XSPs */
 	apr_socket_t *sock;
 	apr_status_t rv;
 	char *termstr = "";
@@ -1353,7 +1351,7 @@ start_xsp (module_cfg *config, int is_restart, char *alias)
 		if (xsp->status != FORK_NONE)
 			continue;
 		
-		// If alias isn't null, skip XSPs that don't have that alias.
+		/* If alias isn't null, skip XSPs that don't have that alias. */
 		if (alias != NULL && strcmp(xsp->alias, alias))
 			continue;
 
@@ -1390,8 +1388,7 @@ start_xsp (module_cfg *config, int is_restart, char *alias)
 static apr_status_t
 terminate_xsp2 (void *data, char *alias)
 {
-	// alias may be NULL to terminate all XSPs
-	
+	/* alias may be NULL to terminate all XSPs */
 	server_rec *server;
 	module_cfg *config;
 	apr_socket_t *sock;
@@ -1409,7 +1406,7 @@ terminate_xsp2 (void *data, char *alias)
 		if (xsp->run_xsp && !strcasecmp (xsp->run_xsp, "false"))
 			continue;
 
-		// If alias isn't null, skip XSPs that don't have that alias.
+		/* If alias isn't null, skip XSPs that don't have that alias. */
 		if (alias != NULL && strcmp(xsp->alias, alias))
 			continue;
 		
@@ -1451,7 +1448,7 @@ mono_control_panel_handler (request_rec *r)
 	apr_uri_t *uri;
 	xsp_data *xsp;
 	int i;
-	char buffer[512];
+	char *buffer;
 
 	if (strcmp (r->handler, "mono-ctrl"))
 		return DECLINED;
@@ -1475,7 +1472,9 @@ mono_control_panel_handler (request_rec *r)
 			xsp = &config->servers [i];
 			if (xsp->run_xsp && !strcasecmp (xsp->run_xsp, "false"))
 				continue;
-			sprintf(buffer, "<li>%s: <a href=\"?restart=%s\">Restart Server</a></li>\n", xsp->alias, xsp->alias);
+
+			buffer = apr_psprintf (r->pool, "<li>%s: <a href=\"?restart=%s\">"
+							"Restart Server</a></li>\n", xsp->alias, xsp->alias);
 			request_send_response_string(r, buffer);
 		}
 		
@@ -1483,8 +1482,9 @@ mono_control_panel_handler (request_rec *r)
 	} else {
 		if (uri->query && !strncmp (uri->query, "restart=", 8)) {
 			/* Restart the mod-mono-server processes */
-			char *alias = uri->query + 8; // +8 == .Substring(8)
-			if (!strcmp(alias, "ALL")) alias = NULL;
+			char *alias = uri->query + 8; /* +8 == .Substring(8) */
+			if (!strcmp (alias, "ALL"))
+				alias = NULL;
 			terminate_xsp2 (r->server, alias); 
 			start_xsp (config, 1, alias);
 			request_send_response_string (r, "<div style=\"text-align: center;\">mod-mono-server processes restarted.</div><br>\n");

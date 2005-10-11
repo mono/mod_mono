@@ -1,3 +1,10 @@
+2005-10-10 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.[ch]:
+	(get_default_socket_name): handle the NULL alias case setting it to
+	"default".
+	Style fixes and replaced sprintf with apr_psprintf.
+
 2005-09-23 Joshua Tauberer <tauberer@for.net>
 
 	* src/mod_mono.c:

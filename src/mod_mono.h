@@ -64,6 +64,7 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 
 #include "multithread.h"
 
+#define apr_psprintf ap_psprintf
 #define apr_uri_t uri_components
 #define apr_pool_t ap_pool
 #define apr_pcalloc_t ap_pcalloc_t
