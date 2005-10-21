@@ -44,6 +44,7 @@
 #include <sys/wait.h>
 #endif
 
+#include <stdint.h>
 #include "httpd.h"
 #include "http_core.h"
 #include "http_log.h"
@@ -159,11 +160,11 @@ extern time_t ap_restart_time;
 /* Converts every int sent into little endian */
 #ifdef MODMONO_BIGENDIAN
 #define INT_FROM_LE(val) LE_FROM_INT (val)
-#define LE_FROM_INT(val)	((unsigned int) ( \
-    (((unsigned int) (val) & (unsigned int) 0x000000ffU) << 24) | \
-    (((unsigned int) (val) & (unsigned int) 0x0000ff00U) <<  8) | \
-    (((unsigned int) (val) & (unsigned int) 0x00ff0000U) >>  8) | \
-    (((unsigned int) (val) & (unsigned int) 0xff000000U) >> 24)))
+#define LE_FROM_INT(val)	((uint32_t) ( \
+    (((uint32_t) (val) & (uint32_t) 0x000000ffU) << 24) | \
+    (((uint32_t) (val) & (uint32_t) 0x0000ff00U) <<  8) | \
+    (((uint32_t) (val) & (uint32_t) 0x00ff0000U) >>  8) | \
+    (((uint32_t) (val) & (uint32_t) 0xff000000U) >> 24)))
 
 #else
 #define LE_FROM_INT(val) val
@@ -177,7 +178,6 @@ enum Cmd {
 	GET_SERVER_VARIABLES,
 	SET_RESPONSE_HEADERS,
 	GET_LOCAL_PORT,
-	FLUSH,
 	CLOSE,
 	SHOULD_CLIENT_BLOCK,
 	SETUP_CLIENT_BLOCK,
@@ -195,7 +195,6 @@ static char *cmdNames [] = {
 	"GET_SERVER_VARIABLES",
 	"SET_RESPONSE_HEADERS",
 	"GET_LOCAL_PORT",
-	"FLUSH",
 	"CLOSE",
 	"SHOULD_CLIENT_BLOCK",
 	"SETUP_CLIENT_BLOCK",
@@ -204,7 +203,7 @@ static char *cmdNames [] = {
 	"DECLINE_REQUEST",
 	"NOT_FOUND",
 	"IS_CONNECTED",
-	"SEND_FILE",
+	"SEND_FILE"
 };
 
 /* Module definition */
@@ -219,6 +218,9 @@ static char *cmdNames [] = {
 #define MAKE_CMD_ACCESS(name, function_name, description) \
 	{ #name, function_name, NULL, ACCESS_CONF, TAKE1, description }
 
+#define MAKE_CMD1(name, function_name, description) \
+	{ #name, function_name, NULL, RSRC_CONF, TAKE1, description }
+
 #define MAKE_CMD12(name, field_name, description) \
 	{ #name, store_config_xsp, (void *) APR_OFFSETOF (xsp_data, field_name), \
 	RSRC_CONF, TAKE12, description }
@@ -231,6 +233,9 @@ static char *cmdNames [] = {
 
 #define MAKE_CMD_ACCESS(name, function_name, description) \
 	AP_INIT_TAKE1 (#name, function_name, NULL, ACCESS_CONF, description)
+
+#define MAKE_CMD1(name, function_name, description) \
+	AP_INIT_TAKE1 (#name, function_name, NULL, RSRC_CONF, description)
 
 #define MAKE_CMD12(name, field_name, description) \
 	AP_INIT_TAKE12 (#name, store_config_xsp, \

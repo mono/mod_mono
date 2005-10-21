@@ -90,7 +90,7 @@ search_for_alias (const char *alias, module_cfg *config)
 
 	for (i = 0; i < config->nservers; i++) {
 		xsp = &config->servers [i];
-		if (alias == NULL && xsp->is_default)
+		if ((alias == NULL || !strcmp (alias, "default")) && xsp->is_default)
 			return i;
 
 		if (alias != NULL && !strcmp (alias, xsp->alias))
@@ -180,7 +180,6 @@ store_config_xsp (cmd_parms *cmd, void *notused, const char *first, const char *
 	offset = (unsigned long) cmd->info;
 	DEBUG_PRINT (1, "store_config %lu '%s' '%s'", offset, first, second);
 	config = ap_get_module_config (cmd->server->module_config, &mono_module);
-
 	if (second == NULL) {
 		alias = "default";
 		if (cmd->server->is_virtual) alias = cmd->server->server_hostname;
@@ -189,7 +188,7 @@ store_config_xsp (cmd_parms *cmd, void *notused, const char *first, const char *
 	} else {
 		alias = first;
 		value = second;
-		is_default = 0;
+		is_default = (!strcmp (alias, "default"));
 	}
 
 	idx = search_for_alias (alias, config);
@@ -340,6 +339,7 @@ set_response_header (request_rec *r,
 		     const char *name,
 		     const char *value)
 {
+			DEBUG_PRINT (1, "7");
 	if (!strcasecmp (name,"Content-Type")) {
 		r->content_type = value;
 	} else {
@@ -377,13 +377,13 @@ read_data (apr_socket_t *sock, void *ptr, apr_size_t size)
 }
 
 static char *
-read_data_string (apr_pool_t *pool, apr_socket_t *sock, char **ptr, apr_size_t *size)
+read_data_string (apr_pool_t *pool, apr_socket_t *sock, char **ptr, int32_t *size)
 {
 	int l, count;
 	char *buf;
 	apr_status_t result;
 
-	if (read_data (sock, &l, sizeof (int)) == -1)
+	if (read_data (sock, &l, sizeof (int32_t)) == -1)
 		return NULL;
 
 	l = INT_FROM_LE (l);
@@ -473,7 +473,7 @@ static int
 send_response_headers (request_rec *r, apr_socket_t *sock)
 {
 	char *str;
-	apr_size_t size;
+	int32_t size;
 	int pos, len;
 	char *name;
 	char *value;
@@ -498,14 +498,36 @@ send_response_headers (request_rec *r, apr_socket_t *sock)
 	return 0;
 }
 
+static void
+remove_http_vars (apr_table_t *table)
+{
+	const apr_array_header_t *elts;
+	const apr_table_entry_t *t_elt;
+	const apr_table_entry_t *t_end;
+
+	elts = apr_table_elts (table);
+	if (elts->nelts == 0)
+		return;
+
+	t_elt = (const apr_table_entry_t *) (elts->elts);
+	t_end = t_elt + elts->nelts;
+
+	do {
+		if (!strncmp (t_elt->key, "HTTP_", 5)) {
+			apr_table_setn (table, t_elt->key, NULL);
+		}
+		t_elt++;
+	} while (t_elt < t_end);
+}
+
 static int
 do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 {
-	apr_size_t size;
+	int32_t size;
 	char *str;
-	int i;
+	const char *cstr;
+	int32_t i;
 	int status = 0;
-	int secure;
 
 	if (command < 0 || command >= LAST_COMMAND) {
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
@@ -525,8 +547,11 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 		request_send_response_from_memory (r, str, size);
 		break;
 	case GET_SERVER_VARIABLES:
-		secure = (strcmp (ap_http_method (r), "https") == 0);
-		if (secure)
+		ap_add_cgi_vars (r);
+		ap_add_common_vars (r);
+		remove_http_vars (r->subprocess_env);
+		cstr = apr_table_get (r->subprocess_env, "HTTPS");
+		if (cstr != NULL && !strcmp (cstr, "on"))
 			apr_table_add (r->subprocess_env, "SERVER_PORT_SECURE", "True");
 		status = !send_table (r->pool, r->subprocess_env, sock);
 		break;
@@ -536,9 +561,7 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 	case GET_LOCAL_PORT:
 		i = connection_get_local_port (r);
 		i = LE_FROM_INT (i);
-		status = write_data (sock, &i, sizeof (int));
-		break;
-	case FLUSH:
+		status = write_data (sock, &i, sizeof (int32_t));
 		break;
 	case CLOSE:
 		return FALSE;
@@ -546,20 +569,20 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 	case SHOULD_CLIENT_BLOCK:
 		size = ap_should_client_block (r);
 		size = LE_FROM_INT (size);
-		status = write_data (sock, &size, sizeof (int));
+		status = write_data (sock, &size, sizeof (int32_t));
 		break;
 	case SETUP_CLIENT_BLOCK:
 		if (setup_client_block (r) != APR_SUCCESS) {
 			size = LE_FROM_INT (-1);
-			status = write_data (sock, &size, sizeof (int));
+			status = write_data (sock, &size, sizeof (int32_t));
 			break;
 		}
 
 		size = LE_FROM_INT (0);
-		status = write_data (sock, &size, sizeof (int));
+		status = write_data (sock, &size, sizeof (int32_t));
 		break;
 	case GET_CLIENT_BLOCK:
-		status = read_data (sock, &i, sizeof (int));
+		status = read_data (sock, &i, sizeof (int32_t));
 		if (status == -1)
 			break;
 
@@ -567,12 +590,12 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 		str = apr_pcalloc (r->pool, i);
 		i = ap_get_client_block (r, str, i);
 		i = LE_FROM_INT (i);
-		status = write_data (sock, &i, sizeof (int));
+		status = write_data (sock, &i, sizeof (int32_t));
 		i = INT_FROM_LE (i);
 		status = write_data (sock, str, i);
 		break;
 	case SET_STATUS:
-		status = read_data (sock, &i, sizeof (int));
+		status = read_data (sock, &i, sizeof (int32_t));
 		if (status == -1)
 			break;
 
@@ -581,7 +604,7 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 			break;
 		}
 		r->status = INT_FROM_LE (i);
-		r->status_line = apr_pstrdup (r->pool, str);
+		r->status_line = str;
 		break;
 	case DECLINE_REQUEST:
 		*result = DECLINED;
@@ -812,7 +835,7 @@ get_directory (apr_pool_t *pool, const char *filepath)
 	char *sep;
 	char *result;
 
-	sep = strrchr (filepath, '/');
+	sep = strrchr ((char *) filepath, '/');
 	if (sep == NULL || sep == filepath)
 		return "/";
 	
@@ -1122,61 +1145,90 @@ write_string_to_buffer (char *buffer, int offset, const char *str)
 	buffer += offset;
 	tmp = (str != NULL) ? strlen (str) : 0;
 	le = LE_FROM_INT (tmp);
-	(*(int *) buffer) = le;
+	(*(int32_t *) buffer) = le;
 	if (tmp > 0) {
-		buffer += sizeof (int);
+		buffer += sizeof (int32_t);
 		memcpy (buffer, str, tmp);
 	}
 
-	return tmp + sizeof (int);
+	return tmp + sizeof (int32_t);
+}
+
+static int32_t
+get_table_send_size (apr_table_t *table)
+{
+	const apr_array_header_t *elts;
+	const apr_table_entry_t *t_elt;
+	const apr_table_entry_t *t_end;
+	int32_t size;
+
+	elts = apr_table_elts (table);
+	if (elts->nelts == 0)
+		return sizeof (int32_t);
+
+	size = sizeof (int32_t);
+	t_elt = (const apr_table_entry_t *) (elts->elts);
+	t_end = t_elt + elts->nelts;
+
+	do {
+		if (t_elt->val != NULL) {
+			size += sizeof (int32_t) * 2;
+			size += strlen (t_elt->key);
+			size += strlen (t_elt->val);
+		}
+		t_elt++;
+	} while (t_elt < t_end);
+
+	return size;
+}
+
+static int32_t
+write_table_to_buffer (char *buffer, apr_table_t *table)
+{
+	const apr_array_header_t *elts;
+	const apr_table_entry_t *t_elt;
+	const apr_table_entry_t *t_end;
+	char *ptr;
+	int32_t count = 0;
+
+	elts = apr_table_elts (table);
+	if (elts->nelts == 0) { /* size is sizeof (int32_t) */
+		int32_t *i32 = (int32_t *) buffer;
+		*i32 = 0;
+		return sizeof (int32_t);
+	}
+
+	ptr = buffer;
+	/* the count is set after the loop */
+	ptr += sizeof (int32_t);
+	t_elt = (const apr_table_entry_t *) (elts->elts);
+	t_end = t_elt + elts->nelts;
+
+	do {
+		if (t_elt->val != NULL) {
+			DEBUG_PRINT (3, "%s: %s", t_elt->key, t_elt->val);
+			ptr += write_string_to_buffer (ptr, 0, t_elt->key);
+			ptr += write_string_to_buffer (ptr, 0, t_elt->val);
+			count++;
+		}
+
+		t_elt++;
+	} while (t_elt < t_end);
+
+	count = LE_FROM_INT (count);
+	(*(int32_t *) buffer) = count;
+	return (ptr - buffer);
 }
 
 static int
 send_table (apr_pool_t *pool, apr_table_t *table, apr_socket_t *sock)
 {
-	const apr_array_header_t *elts;
-	const apr_table_entry_t *t_elt;
-	const apr_table_entry_t *t_end;
-	int tmp;
-	int size;
 	char *buffer;
-	char *ptr;
+	int32_t size;
 
-	elts = apr_table_elts (table);
-	DEBUG_PRINT (3, "Elements: %d", (int) elts->nelts);
-	if (elts->nelts == 0)
-		return (write_data (sock, &elts->nelts, sizeof (int)) == sizeof (int));
-
-	size = sizeof (int);
-	t_elt = (const apr_table_entry_t *) (elts->elts);
-	t_end = t_elt + elts->nelts;
-	tmp = 0;
-
-	do {
-		size += sizeof (int) * 2;
-		size += strlen (t_elt->key);
-		size += strlen (t_elt->val);
-		t_elt++;
-		tmp++;
-	} while (t_elt < t_end);
-
+	size = get_table_send_size (table);
 	buffer = apr_pcalloc (pool, size);
-	ptr = buffer;
-
-	tmp = LE_FROM_INT (tmp);
-	(*(int *) ptr) = tmp;
-	ptr += sizeof (int);
-	t_elt = (const apr_table_entry_t *) (elts->elts);
-	t_end = t_elt + elts->nelts;
-
-	do {
-		DEBUG_PRINT (3, "%s: %s", t_elt->key, t_elt->val);
-		ptr += write_string_to_buffer (ptr, 0, t_elt->key);
-		ptr += write_string_to_buffer (ptr, 0, t_elt->val);
-
-		t_elt++;
-	} while (t_elt < t_end);
-
+	write_table_to_buffer (buffer, table);
 	return (write_data (sock, buffer, size) == size);
 }
 
@@ -1189,50 +1241,38 @@ send_initial_data (request_rec *r, apr_socket_t *sock)
 
 	DEBUG_PRINT (2, "Send init1");
 	size = 1;
-	size += ((r->method != NULL) ? strlen (r->method) : 0) + sizeof (int);
-	size += ((r->uri != NULL) ? strlen (r->uri) : 0) + sizeof (int);
-	size += ((r->args != NULL) ? strlen (r->args) : 0) + sizeof (int);
-	size += ((r->protocol != NULL) ? strlen (r->protocol) : 0) + sizeof (int);
+	size += ((r->method != NULL) ? strlen (r->method) : 0) + sizeof (int32_t);
+	size += ((r->uri != NULL) ? strlen (r->uri) : 0) + sizeof (int32_t);
+	size += ((r->args != NULL) ? strlen (r->args) : 0) + sizeof (int32_t);
+	size += ((r->protocol != NULL) ? strlen (r->protocol) : 0) + sizeof (int32_t);
+	size += strlen (r->connection->local_ip) + sizeof (int32_t);
+	size += sizeof (int32_t);
+	size += strlen (r->connection->remote_ip) + sizeof (int32_t);
+	size += sizeof (int32_t);
+	size += strlen (connection_get_remote_name (r)) + sizeof (int32_t);
+	size += get_table_send_size (r->headers_in);
 
 	ptr = str = apr_pcalloc (r->pool, size);
-	*ptr++ = 5; /* version. Keep in sync with ModMonoRequest. */
+	*ptr++ = 6; /* version. Keep in sync with ModMonoRequest. */
 	ptr += write_string_to_buffer (ptr, 0, r->method);
 	ptr += write_string_to_buffer (ptr, 0, r->uri);
 	ptr += write_string_to_buffer (ptr, 0, r->args);
 	ptr += write_string_to_buffer (ptr, 0, r->protocol);
-	if (write_data (sock, str, size) != size)
-		return -1;
 
-	DEBUG_PRINT (2, "Sending headers (init2)");
-	if (!send_table (r->pool, r->headers_in, sock))
-		return -1;
-
-	DEBUG_PRINT (2, "Done headers (init2)");
-
-	size = strlen (r->connection->local_ip) + sizeof (int);
-	size += sizeof (int);
-	size += strlen (r->connection->remote_ip) + sizeof (int);
-	size += sizeof (int);
-	size += strlen (connection_get_remote_name (r)) + sizeof (int);
-
-	ptr = str = apr_pcalloc (r->pool, size);
 	ptr += write_string_to_buffer (ptr, 0, r->connection->local_ip);
 	i = request_get_server_port (r);
 	i = LE_FROM_INT (i);
-	(*(int *) ptr) = i;
-	ptr += sizeof (int);
+	(*(int32_t *) ptr) = i;
+	ptr += sizeof (int32_t);
 	ptr += write_string_to_buffer (ptr, 0, r->connection->remote_ip);
 	i = connection_get_remote_port (r->connection);
 	i = LE_FROM_INT (i);
-	(*(int *) ptr) = i;
-	ptr += sizeof (int);
+	(*(int32_t *) ptr) = i;
+	ptr += sizeof (int32_t);
 	ptr += write_string_to_buffer (ptr, 0, connection_get_remote_name (r));
-
-	DEBUG_PRINT (2, "Sending init3");
+	ptr += write_table_to_buffer (ptr, r->headers_in);
 	if (write_data (sock, str, size) != size)
 		return -1;
-
-	DEBUG_PRINT (2, "Done init3");
 
 	return 0;
 }
@@ -1262,6 +1302,11 @@ mono_execute_request (request_rec *r)
 		idx = search_for_alias (NULL, config);
 
 	DEBUG_PRINT (2, "idx = %d", idx);
+	if (idx < 0) {
+		DEBUG_PRINT (2, "Alias not found. Request finished.");
+		return HTTP_INTERNAL_SERVER_ERROR;
+	}
+
 #ifdef APACHE13
 	sock = apr_pcalloc (r->pool, sizeof (apr_socket_t));
 #endif
@@ -1270,8 +1315,6 @@ mono_execute_request (request_rec *r)
 	if (rv != APR_SUCCESS)
 		return HTTP_SERVICE_UNAVAILABLE;
 
-	ap_add_cgi_vars (r);
-	ap_add_common_vars (r);
 	DEBUG_PRINT (2, "Sending init data");
 	if (send_initial_data (r, sock) != 0) {
 		int err = errno;
@@ -1282,15 +1325,15 @@ mono_execute_request (request_rec *r)
 	
 	DEBUG_PRINT (2, "Loop");
 	do {
-		input = read_data (sock, (char *) &command, sizeof (int));
-		if (input == sizeof (int)) {
+		input = read_data (sock, (char *) &command, sizeof (int32_t));
+		if (input == sizeof (int32_t)) {
 			command = INT_FROM_LE (command);
 			result = do_command (command, sock, r, &status);
 		}
-	} while (input == sizeof (int) && result == TRUE);
+	} while (input == sizeof (int32_t) && result == TRUE);
 
 	apr_socket_close (sock);
-	if (input != sizeof (int))
+	if (input != sizeof (int32_t))
 		status = HTTP_INTERNAL_SERVER_ERROR;
 
 	DEBUG_PRINT (2, "Done. Status: %d", status);
@@ -1302,10 +1345,9 @@ mono_handler (request_rec *r)
 {
 	if (strcmp (r->handler, "mono"))
 		return DECLINED;
-
 	return mono_execute_request (r);
 }
-
+ 
 static void
 start_xsp (module_cfg *config, int is_restart, char *alias)
 {
@@ -1680,7 +1722,6 @@ MAKE_CMD_ITERATE2 (AddMonoApplications, applications,
 MAKE_CMD_ACCESS (MonoSetServerAlias, set_alias,
 	"Uses the server named by this alias inside this Directory/Location."
 	),
-
 	{ NULL }
 };
 

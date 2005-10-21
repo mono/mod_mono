@@ -1,3 +1,10 @@
+2005-10-21 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* configure.in: 1.1.9.99.
+	* src/mod_mono.[ch]: server variables are now written with the rest of
+	the initial data sent to mod-mono-server. Variables starting with HTTP_
+	are not sent, as those will be created by System.Web from the headers.
+
 2005-10-11 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: send all the server variables in one single write.
