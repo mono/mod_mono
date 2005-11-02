@@ -1,3 +1,10 @@
+2005-11-02 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* mod_mono.conf.in: added ASP.NET extensions to the configuration file.
+	* src/mod_mono.c: added MonoAutoApplication directive and support for
+	automatically registering new ASP.NET applications as they are
+	discovered.
+
 2005-10-21 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* configure.in: 1.1.9.99.

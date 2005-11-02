@@ -78,6 +78,8 @@ typedef struct xsp_data {
 typedef struct {
 	int nservers;
 	xsp_data *servers;
+	char auto_app;
+	char auto_app_set;
 } module_cfg;
 
 /* */
@@ -113,6 +115,30 @@ set_alias (cmd_parms *cmd, void *mconfig, const char *alias)
 		return err;
 	}
 
+	return NULL;
+}
+
+static const char *
+set_auto_application (cmd_parms *cmd, void *mconfig, const char *value)
+{
+	module_cfg *sconfig;
+
+	sconfig = ap_get_module_config (cmd->server->module_config, &mono_module);
+	if (!strcasecmp (value, "disabled")) {
+		if (sconfig->auto_app_set && sconfig->auto_app != FALSE)
+			return apr_pstrdup (cmd->pool, "Conflicting values for MonoAutoApplication.");
+
+		sconfig->auto_app = FALSE;
+	} else if (!strcasecmp (value, "enabled")) {
+		if (sconfig->auto_app_set && sconfig->auto_app != TRUE)
+			return apr_pstrdup (cmd->pool, "Conflicting values for MonoAutoApplication.");
+
+		sconfig->auto_app = TRUE;
+	} else {
+		return apr_pstrdup (cmd->pool, "Invalid value. Must be 'enabled' or 'disabled'");
+	}
+
+	sconfig->auto_app_set = TRUE;
 	return NULL;
 }
 
@@ -180,6 +206,9 @@ store_config_xsp (cmd_parms *cmd, void *notused, const char *first, const char *
 	offset = (unsigned long) cmd->info;
 	DEBUG_PRINT (1, "store_config %lu '%s' '%s'", offset, first, second);
 	config = ap_get_module_config (cmd->server->module_config, &mono_module);
+	if (!config->auto_app_set)
+		config->auto_app = FALSE; /* disable autoapp if there's any other application */
+
 	if (second == NULL) {
 		alias = "default";
 		if (cmd->server->is_virtual) alias = cmd->server->server_hostname;
@@ -252,12 +281,21 @@ create_dir_config (apr_pool_t *p, char *dirspec)
 	return cfg;
 }
 
+static char *
+get_default_global_socket_name (apr_pool_t *pool, const char *base)
+{
+	return apr_pstrcat (pool, base, "_", "global", NULL);
+}
+
 static void *
 create_mono_server_config (apr_pool_t *p, server_rec *s)
 {
 	module_cfg *server;
 
 	server = apr_pcalloc (p, sizeof (module_cfg));
+	server->auto_app = TRUE;
+	add_xsp_server (p, "XXGLOBAL", server, TRUE, FALSE);
+	server->servers [0].filename = get_default_global_socket_name (p, SOCKET_FILE);
 	return server;
 }
 
@@ -933,6 +971,7 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	int max_memory = 0;
 	int max_cpu_time = 0;
 	int status;
+	char is_master;
 
 	/* Running mod-mono-server not requested */
 	if (!strcasecmp (config->run_xsp, "false")) {
@@ -942,12 +981,16 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 		return;
 	}
 
-	/* At least one of MonoApplications, MonoApplicationsConfigFile or
-	* MonoApplicationsConfigDir must be specified */
+	is_master = (0 == strcmp ("XXGLOBAL", config->alias));
+	/*
+	 * At least one of MonoApplications, MonoApplicationsConfigFile or
+	 * MonoApplicationsConfigDir must be specified, except for the 'global'
+	 * instance that will be used to create applications on demand.
+	 */
 	DEBUG_PRINT (1, "Applications: %s", config->applications);
 	DEBUG_PRINT (1, "Config file: %s", config->appconfig_file);
 	DEBUG_PRINT (1, "Config dir.: %s", config->appconfig_dir);
-	if (config->applications == NULL && config->appconfig_file == NULL &&
+	if (!is_master && config->applications == NULL && config->appconfig_file == NULL &&
 		config->appconfig_dir == NULL) {
 		ap_log_error (APLOG_MARK, APLOG_ERR,
 				STATUS_AND_SERVER,
@@ -1085,6 +1128,8 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 		argv [argi++] = config->appconfig_dir;
 	}
 
+	if (is_master)
+		argv [argi++] = "--master";
 	/*
 	* The last element in the argv array must always be NULL
 	* to terminate the array for execv().
@@ -1111,7 +1156,7 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 }
 
 static apr_status_t
-setup_socket (apr_socket_t **sock, xsp_data *conf, apr_pool_t *pool, int dontfork)
+setup_socket (apr_socket_t **sock, xsp_data *conf, apr_pool_t *pool)
 {
 	apr_status_t rv;
 	int family;
@@ -1233,7 +1278,7 @@ send_table (apr_pool_t *pool, apr_table_t *table, apr_socket_t *sock)
 }
 
 static int
-send_initial_data (request_rec *r, apr_socket_t *sock)
+send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 {
 	int i;
 	char *str, *ptr;
@@ -1251,6 +1296,14 @@ send_initial_data (request_rec *r, apr_socket_t *sock)
 	size += sizeof (int32_t);
 	size += strlen (connection_get_remote_name (r)) + sizeof (int32_t);
 	size += get_table_send_size (r->headers_in);
+	size++; /* byte. TRUE->auto_app, FALSE: configured application */
+	if (auto_app != FALSE) {
+		if (r->canonical_filename != NULL) {
+			size += strlen (r->canonical_filename) + sizeof (int32_t);
+		} else {
+			auto_app = FALSE;
+		}
+	}
 
 	ptr = str = apr_pcalloc (r->pool, size);
 	*ptr++ = 6; /* version. Keep in sync with ModMonoRequest. */
@@ -1271,6 +1324,10 @@ send_initial_data (request_rec *r, apr_socket_t *sock)
 	ptr += sizeof (int32_t);
 	ptr += write_string_to_buffer (ptr, 0, connection_get_remote_name (r));
 	ptr += write_table_to_buffer (ptr, r->headers_in);
+	*ptr++ = auto_app;
+	if (auto_app != FALSE)
+		ptr += write_string_to_buffer (ptr, 0, r->canonical_filename);
+
 	if (write_data (sock, str, size) != size)
 		return -1;
 
@@ -1278,7 +1335,7 @@ send_initial_data (request_rec *r, apr_socket_t *sock)
 }
 
 static int
-mono_execute_request (request_rec *r)
+mono_execute_request (request_rec *r, char auto_app)
 {
 	apr_socket_t *sock;
 	apr_status_t rv;
@@ -1303,20 +1360,26 @@ mono_execute_request (request_rec *r)
 
 	DEBUG_PRINT (2, "idx = %d", idx);
 	if (idx < 0) {
-		DEBUG_PRINT (2, "Alias not found. Request finished.");
-		return HTTP_INTERNAL_SERVER_ERROR;
+		DEBUG_PRINT (2, "Alias not found. Checking for auto-applications.");
+		if (config->auto_app)
+			idx = search_for_alias ("XXGLOBAL", config);
+
+		if (idx == -1) {
+			DEBUG_PRINT (2, "Global config not found. Finishing request.");
+			return HTTP_INTERNAL_SERVER_ERROR;
+		}
 	}
 
 #ifdef APACHE13
 	sock = apr_pcalloc (r->pool, sizeof (apr_socket_t));
 #endif
-	rv = setup_socket (&sock, &config->servers [idx], r->pool, FALSE);
+	rv = setup_socket (&sock, &config->servers [idx], r->pool);
 	DEBUG_PRINT (2, "After setup_socket");
 	if (rv != APR_SUCCESS)
 		return HTTP_SERVICE_UNAVAILABLE;
 
 	DEBUG_PRINT (2, "Sending init data");
-	if (send_initial_data (r, sock) != 0) {
+	if (send_initial_data (r, sock, auto_app) != 0) {
 		int err = errno;
 		DEBUG_PRINT (1, "%d: %s", err, strerror (err));
 		apr_socket_close (sock);
@@ -1340,12 +1403,82 @@ mono_execute_request (request_rec *r)
 	return status;
 }
 
+/*
+static const char *known_extensions4 [] = { "aspx", "asmx", "ashx", "asax", "ascx", "soap", NULL };
+*/
+/*
+ * TRUE -> we know about this file
+ * FALSE -> decline processing
+ */
+/*
+static int
+check_file_extension (char *filename)
+{
+	int len;
+	char *ext;
+	const char **extensions;
+
+	if (filename == NULL)
+		return FALSE;
+
+	len = strlen (filename);
+	if (len <= 4)
+		return FALSE;
+
+	ext = strrchr (filename, '.');
+	if (ext == NULL)
+		return FALSE;
+
+	switch (filename - ext + len - 1) {
+	case 3:
+		* Check for xxx/Trace.axd *
+		if (len >=10 && !strcmp ("axd", ext + 1))
+			return !strncmp ("/Trace", ext - 6, 6);
+		return !strcmp ("rem", ext + 1);
+	case 4:
+		extensions = (const char **) known_extensions4;
+		while (*extensions != NULL) {
+			if (!strcmp (*extensions, ext + 1))
+				return TRUE;
+			extensions++;
+		}
+		break;
+	case 5:
+		return !strcmp ("config", ext + 1);
+	}
+
+	return FALSE;
+}
+*/
+
+/* 
+ * Compute real path directory and all the directories above that up to the first filesystem
+ * change */
+
 static int
 mono_handler (request_rec *r)
 {
-	if (strcmp (r->handler, "mono"))
+	module_cfg *config;
+
+	if (!strcmp (r->handler, "mono")) {
+		DEBUG_PRINT (1, "handler: %s", r->handler);
+		return mono_execute_request (r, FALSE);
+	}
+
+	if (!r->content_type || strcmp (r->content_type, "application/x-asp-net"))
 		return DECLINED;
-	return mono_execute_request (r);
+
+	config = ap_get_module_config (r->server->module_config, &mono_module);
+	if (!config->auto_app)
+		return DECLINED;
+
+	/*
+	if (FALSE == check_file_extension (r->filename))
+		return DECLINED;
+	*/
+
+	/* Handle on-demand created applications */
+	return mono_execute_request (r, TRUE);
 }
  
 static void
@@ -1373,13 +1506,16 @@ start_xsp (module_cfg *config, int is_restart, char *alias)
 			continue;
 		
 		/* If alias isn't null, skip XSPs that don't have that alias. */
-		if (alias != NULL && strcmp(xsp->alias, alias))
+		if (alias != NULL && strcmp (xsp->alias, alias))
+			continue;
+
+		if (!strcmp ("XXGLOBAL", xsp->alias) && config->auto_app == FALSE)
 			continue;
 
 #ifdef APACHE13
 		sock = apr_pcalloc (pconf, sizeof (apr_socket_t));
 #endif
-		rv = setup_socket (&sock, xsp, pconf, TRUE);
+		rv = setup_socket (&sock, xsp, pconf);
 
 		if (rv == APR_SUCCESS) {
 			/* connected */
@@ -1434,7 +1570,7 @@ terminate_xsp2 (void *data, char *alias)
 #ifdef APACHE13
 		sock = apr_pcalloc (pconf, sizeof (apr_socket_t));
 #endif
-		rv = setup_socket (&sock, xsp, pconf, TRUE);
+		rv = setup_socket (&sock, xsp, pconf);
 		if (rv == APR_SUCCESS) {
 			write_data (sock, termstr, 1);
 			apr_socket_close (sock);
@@ -1722,6 +1858,13 @@ MAKE_CMD_ITERATE2 (AddMonoApplications, applications,
 MAKE_CMD_ACCESS (MonoSetServerAlias, set_alias,
 	"Uses the server named by this alias inside this Directory/Location."
 	),
+MAKE_CMD1 (MonoAutoApplication, set_auto_application,
+	"Disables automatic creation of applications. "
+	"Default value: 'Disabled' if there's any other application for the server. "
+	"'Enabled' otherwise."
+	),
+#define MAKE_CMD_ACCESS(name, function_name, description) \
+	AP_INIT_TAKE1 (#name, function_name, NULL, ACCESS_CONF, description)
 	{ NULL }
 };
 

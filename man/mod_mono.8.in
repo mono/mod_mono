@@ -101,6 +101,11 @@ Default value: config/mod-mono-applications
 Note that you must specify at least one of MonoApplications,
 MonoApplicationsConfigFile and MonoApplicationsConfigDir.
 .TP
+.I MonoAutoApplication
+Enables or disables automatic ASP.NET applications discovery. By default
+it is enabled if you have no application configured. Otherwise, it's
+disabled. The possible values are 'enabled' or 'disabled'.
+.TP
 .I MonoDebug
 Runs mono in debug mode, which produces stack traces with line numbers.
 Default value: false.
