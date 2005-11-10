@@ -1298,8 +1298,8 @@ send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 	size += get_table_send_size (r->headers_in);
 	size++; /* byte. TRUE->auto_app, FALSE: configured application */
 	if (auto_app != FALSE) {
-		if (r->canonical_filename != NULL) {
-			size += strlen (r->canonical_filename) + sizeof (int32_t);
+		if (r->filename != NULL) {
+			size += strlen (r->filename) + sizeof (int32_t);
 		} else {
 			auto_app = FALSE;
 		}
@@ -1326,7 +1326,7 @@ send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 	ptr += write_table_to_buffer (ptr, r->headers_in);
 	*ptr++ = auto_app;
 	if (auto_app != FALSE)
-		ptr += write_string_to_buffer (ptr, 0, r->canonical_filename);
+		ptr += write_string_to_buffer (ptr, 0, r->filename);
 
 	if (write_data (sock, str, size) != size)
 		return -1;

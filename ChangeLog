@@ -1,3 +1,7 @@
+2005-11-09  Robert Jordan  <robertj@gmx.net>
+
+	* src/mod_mono.*: fixed compatibility issue with Apache 1.3.
+
 2005-11-02 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* mod_mono.conf.in: added ASP.NET extensions to the configuration file.
