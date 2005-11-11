@@ -1,3 +1,8 @@
+2005-11-11 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: fix problems in 1.1.10 regarding user-configured applications.
+	We were finding the global server instead of the default one.
+
 2005-11-09  Robert Jordan  <robertj@gmx.net>
 
 	* src/mod_mono.*: fixed compatibility issue with Apache 1.3.

@@ -294,7 +294,8 @@ create_mono_server_config (apr_pool_t *p, server_rec *s)
 
 	server = apr_pcalloc (p, sizeof (module_cfg));
 	server->auto_app = TRUE;
-	add_xsp_server (p, "XXGLOBAL", server, TRUE, FALSE);
+	server->auto_app_set = FALSE;
+	add_xsp_server (p, "XXGLOBAL", server, FALSE, FALSE);
 	server->servers [0].filename = get_default_global_socket_name (p, SOCKET_FILE);
 	return server;
 }
@@ -1863,8 +1864,6 @@ MAKE_CMD1 (MonoAutoApplication, set_auto_application,
 	"Default value: 'Disabled' if there's any other application for the server. "
 	"'Enabled' otherwise."
 	),
-#define MAKE_CMD_ACCESS(name, function_name, description) \
-	AP_INIT_TAKE1 (#name, function_name, NULL, ACCESS_CONF, description)
 	{ NULL }
 };
 
