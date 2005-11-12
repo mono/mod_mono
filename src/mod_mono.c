@@ -1461,7 +1461,7 @@ mono_handler (request_rec *r)
 {
 	module_cfg *config;
 
-	if (!strcmp (r->handler, "mono")) {
+	if (r->handler != NULL && !strcmp (r->handler, "mono")) {
 		DEBUG_PRINT (1, "handler: %s", r->handler);
 		return mono_execute_request (r, FALSE);
 	}
@@ -1724,6 +1724,7 @@ mono_child_init (
 #ifdef APACHE13
 static const handler_rec mono_handlers [] = {
 	{ "mono", mono_handler },
+	{ "application/x-asp-net", mono_handler },
 	{ "mono-ctrl", mono_control_panel_handler },
 	{ NULL, NULL }
 };
