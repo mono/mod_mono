@@ -119,7 +119,32 @@ Installing mod_mono
       so that the default paths for locating mono and mod-mono-server
       are set to /usr/local/bin/mono and so on.
 
-      
+The mod_mono Control Panel
+--------------------------
+
+  mod_mono provides a simple web-based control panel for restarting the 
+  mod-mono-server, which is useful when assemblies need to be reloaded 
+  from disk after they have been changed.  To activate the control panel,
+  place the following in your httpd.conf:
+
+            <Location /mono>
+              SetHandler mono-ctrl
+              Order deny,allow
+              Deny from all
+              Allow from 127.0.0.1
+            </Location>
+
+  The control panel is then accessible at http://yourdomain.com/mono. 
+  Clicking the link to restart mod-mono-server will immediately restart 
+  it.
+
+  The Order/Deny/Allow access controls above restrict access to the 
+  control panel to the computer with IP address 127.0.0.1. Replace this 
+  (or add more Allow lines) with the IP address of your own computer so 
+  that you can access the control panel.  You can also use Apache's 
+  htaccess features to password protect it, too.
+ 
+
 
 APPENDIX A: Typical configuration without virtual hosts
 --------------------------------------------------------
