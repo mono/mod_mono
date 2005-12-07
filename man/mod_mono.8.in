@@ -164,6 +164,31 @@ and all the .webapp files found in the directory /var/www/webapp will be
 loaded.
 .PP
 Refer to monodoc documentation on configuring mod_mono for more examples.
+.SH THE MOD_MONO CONTROL PANEL
+.PP
+mod_mono provides a simple web-based control panel for restarting the 
+mod-mono-server, which is useful when assemblies need to be reloaded 
+from disk after they have been changed.  To activate the control panel,
+place the following in your httpd.conf:
+
+.nf
+            <Location /mono>
+              SetHandler mono-ctrl
+              Order deny,allow
+              Deny from all
+              Allow from 127.0.0.1
+            </Location>
+.fi
+
+The control panel is then accessible at http://yourdomain.com/mono. 
+Clicking the link to restart mod-mono-server will immediately restart 
+it.
+
+The Order/Deny/Allow access controls above restrict access to the 
+control panel to the computer with IP address 127.0.0.1. Replace this 
+(or add more Allow lines) with the IP address of your own computer so 
+that you can access the control panel.  You can also use Apache's 
+htaccess features to password protect it, too.
 .SH ENVIRONMENT VARIABLES
 .PP
 It may modify MONO_PATH, PATH and MONO_SHARED_DIR when starting
