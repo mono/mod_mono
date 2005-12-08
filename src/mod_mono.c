@@ -392,7 +392,7 @@ setup_client_block (request_rec *r)
 	if (r->read_length)
 		return APR_SUCCESS;
 
-	return ap_setup_client_block (r, REQUEST_CHUNKED_ERROR);
+	return ap_setup_client_block (r, REQUEST_CHUNKED_DECHUNK);
 }
 
 static int

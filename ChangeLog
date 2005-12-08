@@ -1,3 +1,8 @@
+2005-12-08 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: patch by Dean Brettle that fixes chunked encoding
+	support.
+
 2005-11-29 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* man/mod_mono.8.in:
