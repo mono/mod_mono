@@ -247,6 +247,10 @@ static char *cmdNames [] = {
 	(void *) APR_OFFSETOF (xsp_data, field_name), RSRC_CONF, description)
 #endif
 
+#ifndef AF_UNSPEC
+#define AF_UNSPEC 0
+#endif
+
 /* Debugging */
 #ifdef DEBUG
 #define DEBUG_PRINT(a,...) \
