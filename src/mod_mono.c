@@ -329,8 +329,6 @@ connection_get_remote_port (conn_rec *c)
 { 
 #ifdef APACHE13
 	return  ntohs (c->remote_addr.sin_port);
-#elif defined(APACHE22)
-	return c->remote_addr->port;
 #else
 	apr_port_t port;
 	apr_sockaddr_port_get (&port, c->remote_addr);
@@ -344,8 +342,6 @@ connection_get_local_port (request_rec *r)
 {
 #ifdef APACHE13  
 	return ap_get_server_port (r);
-#elif defined(APACHE22)
-	return r->connection->local_addr->port;
 #else
 	apr_port_t port;
 	apr_sockaddr_port_get (&port, r->connection->local_addr);
@@ -1164,26 +1160,20 @@ static apr_status_t
 setup_socket (apr_socket_t **sock, xsp_data *conf, apr_pool_t *pool)
 {
 	apr_status_t rv;
-	int family, proto;
+	int family;
 
-	family = (conf->listen_port != NULL) ? AF_UNSPEC : PF_UNIX;
-	/* APR_PROTO_TCP = 6 */
-	proto = (family == AF_UNSPEC) ? 6 : 0;
+	family = (conf->listen_port != NULL) ? PF_INET : PF_UNIX;
 #ifdef APACHE2
-#ifdef APACHE22
-	rv = apr_socket_create (sock, family, SOCK_STREAM, proto, pool);
-#else
 	rv = apr_socket_create (sock, family, SOCK_STREAM, pool);
-#endif
 #else
 	(*sock)->fd = ap_psocket (pool, family, SOCK_STREAM, 0);
 	(*sock)->pool = pool;
 	rv = ((*sock)->fd != -1) ? APR_SUCCESS : -1;
 #endif
 	if (rv != APR_SUCCESS) {
-		int err= errno;
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-			      "mod_mono: error creating socket: %d %s", err, strerror (err));
+			      "mod_mono: error creating socket.");
+
 		return rv;
 	}
 

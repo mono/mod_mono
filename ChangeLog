@@ -1,7 +1,6 @@
-2005-12-08 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+2006-01-06 Wade Berrier <wberrier@novell.com>
 
-	* configure.in:
-	* src/mod_mono.[ch]: now apache 2.2 is supported.
+	* Remove apache 2.2 support on branch for now
 
 2005-12-08 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
