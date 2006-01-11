@@ -1,3 +1,8 @@
+2006-01-11 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: actually write the result of IS_CONNECTED. Patch by
+	Cyrille Colin.
+
 2005-12-08 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* configure.in:

@@ -654,6 +654,7 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 		return FALSE;
 	case IS_CONNECTED:
 		*result = (r->connection->aborted ? 0 : 1);
+		status = write_data (sock, result, sizeof (int32_t));
 		break;
 	case MYNOT_FOUND:
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
