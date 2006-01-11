@@ -1,3 +1,8 @@
+2006-01-11 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: actually write the result of IS_CONNECTED. Patch by
+	Cyrille Colin.
+
 2006-01-06 Wade Berrier <wberrier@novell.com>
 
 	* Remove apache 2.2 support on branch for now
