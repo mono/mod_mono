@@ -17,6 +17,7 @@
     AddType application/x-asp-net .axd
     AddType application/x-asp-net .cs
     AddType application/x-asp-net .config
+    AddType application/x-asp-net .Config
     AddType application/x-asp-net .dll
     DirectoryIndex index.aspx
     DirectoryIndex Default.aspx
