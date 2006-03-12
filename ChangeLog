@@ -1,3 +1,11 @@
+2006-03-11 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* configure.in: add apxs -q CFLAGS. Fixes bug #77764.
+
+2006-02-20 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* configure.in: append --includes from apr-config to CFLAGS.
+
 2006-01-30 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* mod_mono.conf.in: add .Config to the list of extensions handled by

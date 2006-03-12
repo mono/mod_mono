@@ -244,7 +244,7 @@ fi
 
 # Try apr-config
 if test "$APACHE_VER" = "retry" -a -x "$APRCONFIG"; then
-	CFLAGS="$CFLAGS `$APRCONFIG --includes`"
+	CFLAGS="$CFLAGS `$APRCONFIG --includes --cflags`"
 	AC_TRY_COMPILE([
 		#include <apr.h>
 	], [
@@ -340,6 +340,8 @@ AC_MSG_RESULT($MONO_PREFIX)
 AC_DEFINE_UNQUOTED([MONO_PREFIX],"$MONO_PREFIX",[Mono installation prefix])
 
 CPPFLAGS="$CPPFLAGS $CFLAGS `$APXS -q EXTRA_CPPFLAGS`"
+CPPFLAGS="$CPPFLAGS $CFLAGS `$APXS -q CPPFLAGS`"
+CFLAGS="$CFLAGS `$APXS -q CFLAGS`"
 CFLAGS="$CFLAGS `$APXS -q EXTRA_CFLAGS`"
 AC_CHECK_HEADER(http_protocol.h, \
 	AC_DEFINE([HAVE_HTTP_PROTOCOL_H],1,\
