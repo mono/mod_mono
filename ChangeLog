@@ -1,3 +1,8 @@
+2006-03-27 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.h: fix compilation for systems that do not have stdint.h.
+	Patch by "CK Ng".
+
 2006-03-11 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* configure.in: add apxs -q CFLAGS. Fixes bug #77764.

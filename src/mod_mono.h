@@ -44,7 +44,9 @@
 #include <sys/wait.h>
 #endif
 
+#ifdef HAVE_STDINT_H
 #include <stdint.h>
+#endif
 #include "httpd.h"
 #include "http_core.h"
 #include "http_log.h"
