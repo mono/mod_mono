@@ -1165,7 +1165,7 @@ setup_socket (apr_socket_t **sock, xsp_data *conf, apr_pool_t *pool)
 
 	family = (conf->listen_port != NULL) ? PF_INET : PF_UNIX;
 #ifdef APACHE2
-	rv = apr_socket_create (sock, family, SOCK_STREAM, pool);
+	rv = APR_SOCKET_CREATE (sock, family, SOCK_STREAM, 0, pool);
 #else
 	(*sock)->fd = ap_psocket (pool, family, SOCK_STREAM, 0);
 	(*sock)->pool = pool;

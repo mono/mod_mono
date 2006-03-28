@@ -1,5 +1,10 @@
 2006-03-27 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
+	* src/mod_mono.[ch]: the number of arguments for apr_socket_create
+	depends on the apr version used when compiling. Fixes bug #77933.
+
+2006-03-27 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
 	* src/mod_mono.h: fix compilation for systems that do not have stdint.h.
 	Patch by "CK Ng".
 
