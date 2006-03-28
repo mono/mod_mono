@@ -134,8 +134,16 @@ extern time_t ap_restart_time;
 #include <http_protocol.h>
 #include <http_request.h>
 #include <util_script.h>
+#include <apr_version.h>
 #include <apr_strings.h>
 #include <apr_support.h>
+
+#if APR_MAJOR_VERSION <= 0
+#define APR_SOCKET_CREATE(sock, family, type, protocol, pool) apr_socket_create (sock, family, type, pool)
+#else
+#define APR_SOCKET_CREATE(sock, family, type, protocol, pool) apr_socket_create (sock, family, type, protocol, pool)
+#endif
+
 /* End Apache 2 only */
 #endif
 

@@ -1171,11 +1171,7 @@ setup_socket (apr_socket_t **sock, xsp_data *conf, apr_pool_t *pool)
 	/* APR_PROTO_TCP = 6 */
 	proto = (family == AF_UNSPEC) ? 6 : 0;
 #ifdef APACHE2
-#ifdef APACHE22
-	rv = apr_socket_create (sock, family, SOCK_STREAM, proto, pool);
-#else
-	rv = apr_socket_create (sock, family, SOCK_STREAM, pool);
-#endif
+	rv = APR_SOCKET_CREATE (sock, family, SOCK_STREAM, proto, pool);
 #else
 	(*sock)->fd = ap_psocket (pool, family, SOCK_STREAM, 0);
 	(*sock)->pool = pool;
