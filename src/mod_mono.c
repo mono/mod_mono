@@ -82,6 +82,11 @@ typedef struct {
 	char auto_app_set;
 } module_cfg;
 
+typedef struct {
+	uint32_t client_block_buffer_size;
+	char *client_block_buffer;
+} request_data;
+
 /* */
 static int
 search_for_alias (const char *alias, module_cfg *config)
@@ -563,6 +568,28 @@ remove_http_vars (apr_table_t *table)
 	} while (t_elt < t_end);
 }
 
+static char *
+get_client_block_buffer (request_rec *r, uint32_t requested_size, uint32_t *actual_size)
+{
+	request_data *rd = ap_get_module_config (r->request_config, &mono_module);
+
+	if (rd == NULL)	{
+		rd = apr_pcalloc (r->pool, sizeof (request_data));
+		ap_set_module_config (r->request_config, &mono_module, rd);
+	}
+
+	if (requested_size > 1024 * 1024)
+		requested_size = 1024 * 1024;
+
+	if (requested_size > rd->client_block_buffer_size) {
+		rd->client_block_buffer = apr_pcalloc (r->pool, requested_size);
+		rd->client_block_buffer_size = requested_size;
+	}
+
+	*actual_size = requested_size;
+	return rd->client_block_buffer;
+}
+
 static int
 do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 {
@@ -570,6 +597,7 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 	char *str;
 	const char *cstr;
 	int32_t i;
+	uint32_t actual_size;
 	int status = 0;
 
 	if (command < 0 || command >= LAST_COMMAND) {
@@ -630,8 +658,8 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 			break;
 
 		i = INT_FROM_LE (i);
-		str = apr_pcalloc (r->pool, i);
-		i = ap_get_client_block (r, str, i);
+		str = get_client_block_buffer (r, (uint32_t) i, &actual_size);
+		i = ap_get_client_block (r, str, actual_size);
 		i = LE_FROM_INT (i);
 		status = write_data (sock, &i, sizeof (int32_t));
 		i = INT_FROM_LE (i);
