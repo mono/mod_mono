@@ -82,6 +82,11 @@ typedef struct {
 	char auto_app_set;
 } module_cfg;
 
+typedef struct {
+	uint32_t client_block_buffer_size;
+	char *client_block_buffer;
+} request_data;
+
 /* */
 static int
 search_for_alias (const char *alias, module_cfg *config)
@@ -329,6 +334,8 @@ connection_get_remote_port (conn_rec *c)
 { 
 #ifdef APACHE13
 	return  ntohs (c->remote_addr.sin_port);
+#elif defined(APACHE22)
+	return c->remote_addr->port;
 #else
 	apr_port_t port;
 	apr_sockaddr_port_get (&port, c->remote_addr);
@@ -342,6 +349,8 @@ connection_get_local_port (request_rec *r)
 {
 #ifdef APACHE13  
 	return ap_get_server_port (r);
+#elif defined(APACHE22)
+	return r->connection->local_addr->port;
 #else
 	apr_port_t port;
 	apr_sockaddr_port_get (&port, r->connection->local_addr);
@@ -559,6 +568,28 @@ remove_http_vars (apr_table_t *table)
 	} while (t_elt < t_end);
 }
 
+static char *
+get_client_block_buffer (request_rec *r, uint32_t requested_size, uint32_t *actual_size)
+{
+	request_data *rd = ap_get_module_config (r->request_config, &mono_module);
+
+	if (rd == NULL)	{
+		rd = apr_pcalloc (r->pool, sizeof (request_data));
+		ap_set_module_config (r->request_config, &mono_module, rd);
+	}
+
+	if (requested_size > 1024 * 1024)
+		requested_size = 1024 * 1024;
+
+	if (requested_size > rd->client_block_buffer_size) {
+		rd->client_block_buffer = apr_pcalloc (r->pool, requested_size);
+		rd->client_block_buffer_size = requested_size;
+	}
+
+	*actual_size = requested_size;
+	return rd->client_block_buffer;
+}
+
 static int
 do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 {
@@ -566,6 +597,7 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 	char *str;
 	const char *cstr;
 	int32_t i;
+	uint32_t actual_size;
 	int status = 0;
 
 	if (command < 0 || command >= LAST_COMMAND) {
@@ -626,8 +658,8 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 			break;
 
 		i = INT_FROM_LE (i);
-		str = apr_pcalloc (r->pool, i);
-		i = ap_get_client_block (r, str, i);
+		str = get_client_block_buffer (r, (uint32_t) i, &actual_size);
+		i = ap_get_client_block (r, str, actual_size);
 		i = LE_FROM_INT (i);
 		status = write_data (sock, &i, sizeof (int32_t));
 		i = INT_FROM_LE (i);
@@ -1161,20 +1193,22 @@ static apr_status_t
 setup_socket (apr_socket_t **sock, xsp_data *conf, apr_pool_t *pool)
 {
 	apr_status_t rv;
-	int family;
+	int family, proto;
 
-	family = (conf->listen_port != NULL) ? PF_INET : PF_UNIX;
+	family = (conf->listen_port != NULL) ? AF_UNSPEC : PF_UNIX;
+	/* APR_PROTO_TCP = 6 */
+	proto = (family == AF_UNSPEC) ? 6 : 0;
 #ifdef APACHE2
-	rv = APR_SOCKET_CREATE (sock, family, SOCK_STREAM, 0, pool);
+	rv = APR_SOCKET_CREATE (sock, family, SOCK_STREAM, proto, pool);
 #else
 	(*sock)->fd = ap_psocket (pool, family, SOCK_STREAM, 0);
 	(*sock)->pool = pool;
 	rv = ((*sock)->fd != -1) ? APR_SUCCESS : -1;
 #endif
 	if (rv != APR_SUCCESS) {
+		int err= errno;
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-			      "mod_mono: error creating socket.");
-
+			      "mod_mono: error creating socket: %d %s", err, strerror (err));
 		return rv;
 	}
 

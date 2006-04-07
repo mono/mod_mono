@@ -1,3 +1,8 @@
+2006-04-07 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: reuse the memory allocated when mod-mono-server reads
+	the request body. Patch by Dean Brettle.
+
 2006-03-27 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.[ch]: the number of arguments for apr_socket_create
@@ -8,6 +13,11 @@
 	* src/mod_mono.h: fix compilation for systems that do not have stdint.h.
 	Patch by "CK Ng".
 
+2006-03-27 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* configure.in: more hackery for 1.3 and apr-config. Fixes bug #77928.
+	Patch by jedynamic@bellsouth.net.
+
 2006-03-11 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* configure.in: add apxs -q CFLAGS. Fixes bug #77764.
@@ -16,19 +26,15 @@
 
 	* configure.in: append --includes from apr-config to CFLAGS.
 
-2006-01-30 Gonzalo Paniagua Javier <gonzalo@ximian.com>
-
-	* mod_mono.conf.in: add .Config to the list of extensions handled by
-	mod_mono.
-
 2006-01-11 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: actually write the result of IS_CONNECTED. Patch by
 	Cyrille Colin.
 
-2006-01-06 Wade Berrier <wberrier@novell.com>
+2005-12-08 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
-	* Remove apache 2.2 support on branch for now
+	* configure.in:
+	* src/mod_mono.[ch]: now apache 2.2 is supported.
 
 2005-12-08 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
