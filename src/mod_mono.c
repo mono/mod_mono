@@ -80,6 +80,7 @@ typedef struct {
 	xsp_data *servers;
 	char auto_app;
 	char auto_app_set;
+	char *debug;
 } module_cfg;
 
 typedef struct {
@@ -178,7 +179,7 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->listen_address = NULL;
 	server->max_cpu_time = NULL;
 	server->max_memory = NULL;
-	server->debug = "False";
+	server->debug = ((config->debug == NULL) ? "False" : config->debug);
 	server->env_vars = NULL;
 	server->status = FORK_NONE;
 	server->is_virtual = is_virtual;
@@ -211,10 +212,24 @@ store_config_xsp (cmd_parms *cmd, void *notused, const char *first, const char *
 	offset = (unsigned long) cmd->info;
 	DEBUG_PRINT (1, "store_config %lu '%s' '%s'", offset, first, second);
 	config = ap_get_module_config (cmd->server->module_config, &mono_module);
-	if (!config->auto_app_set)
-		config->auto_app = FALSE; /* disable autoapp if there's any other application */
-
 	if (second == NULL) {
+		/* Special case for MonoDebug */
+		if (offset == APR_OFFSETOF (xsp_data, debug)) {
+			if (strcasecmp (first, "true")) {
+				DEBUG_PRINT (1, "Argument '%s' for MonoDebug has no effect.", first);
+				return NULL;
+			}
+				
+			config->debug = "true";
+			DEBUG_PRINT (1, "Debug set to 'true' for all applications");
+			for (idx = 0; idx < config->nservers; idx++) {
+				xsp_data *xd;
+
+				xd = &config->servers [idx];
+				xd->debug = "true";
+			}
+			return NULL;
+		}
 		alias = "default";
 		if (cmd->server->is_virtual) alias = cmd->server->server_hostname;
 		value = first;
@@ -224,6 +239,10 @@ store_config_xsp (cmd_parms *cmd, void *notused, const char *first, const char *
 		value = second;
 		is_default = (!strcmp (alias, "default"));
 	}
+
+	/* Disable autoapp if there's any other application. MonoDebug is excluded. */
+	if (!config->auto_app_set)
+		config->auto_app = FALSE;
 
 	idx = search_for_alias (alias, config);
 	if (idx == -1)

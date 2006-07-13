@@ -1,3 +1,9 @@
+2006-07-13 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: allow setting MonoDebug when using automatic
+	applications. Before this fix, no mod-mono-server would be started.
+	Fixes bug #78672.
+
 2006-04-07 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: reuse the memory allocated when mod-mono-server reads
