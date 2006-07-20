@@ -6,7 +6,7 @@
  * 	Gonzalo Paniagua Javier
  *
  * Copyright (c) 2002 Daniel Lopez Ridruejo
- *           (c) 2002-2005 Novell, Inc.
+ *           (c) 2002-2006 Novell, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -80,7 +80,6 @@ typedef struct {
 	xsp_data *servers;
 	char auto_app;
 	char auto_app_set;
-	char *debug;
 } module_cfg;
 
 typedef struct {
@@ -135,6 +134,7 @@ set_auto_application (cmd_parms *cmd, void *mconfig, const char *value)
 			return apr_pstrdup (cmd->pool, "Conflicting values for MonoAutoApplication.");
 
 		sconfig->auto_app = FALSE;
+		/* TODO: Copiar de 'XXGLOBAL' a 'default' */
 	} else if (!strcasecmp (value, "enabled")) {
 		if (sconfig->auto_app_set && sconfig->auto_app != TRUE)
 			return apr_pstrdup (cmd->pool, "Conflicting values for MonoAutoApplication.");
@@ -179,7 +179,7 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->listen_address = NULL;
 	server->max_cpu_time = NULL;
 	server->max_memory = NULL;
-	server->debug = ((config->debug == NULL) ? "False" : config->debug);
+	server->debug = NULL;
 	server->env_vars = NULL;
 	server->status = FORK_NONE;
 	server->is_virtual = is_virtual;
@@ -213,28 +213,33 @@ store_config_xsp (cmd_parms *cmd, void *notused, const char *first, const char *
 	DEBUG_PRINT (1, "store_config %lu '%s' '%s'", offset, first, second);
 	config = ap_get_module_config (cmd->server->module_config, &mono_module);
 	if (second == NULL) {
-		/* Special case for MonoDebug */
-		if (offset == APR_OFFSETOF (xsp_data, debug)) {
-			if (strcasecmp (first, "true")) {
-				DEBUG_PRINT (1, "Argument '%s' for MonoDebug has no effect.", first);
-				return NULL;
-			}
-				
-			config->debug = "true";
-			DEBUG_PRINT (1, "Debug set to 'true' for all applications");
-			for (idx = 0; idx < config->nservers; idx++) {
-				xsp_data *xd;
+		if (config->auto_app) {
+			idx = search_for_alias ("XXGLOBAL", config);
+			ptr = (char *) &config->servers [idx];
+			ptr += offset;
+			value = first;
 
-				xd = &config->servers [idx];
-				xd->debug = "true";
+			/* MonoApplications/AddMonoApplications are accumulative */
+			if (offset == APR_OFFSETOF (xsp_data, applications))
+				prev_value = *((char **) ptr);
+
+			if (prev_value != NULL) {
+				new_value = apr_pstrcat (cmd->pool, prev_value, ",", value, NULL);
+			} else {
+				new_value = apr_pstrdup (cmd->pool, value);
 			}
+
+			*((char **) ptr) = new_value;
 			return NULL;
 		}
 		alias = "default";
-		if (cmd->server->is_virtual) alias = cmd->server->server_hostname;
+		if (cmd->server->is_virtual)
+			alias = cmd->server->server_hostname;
 		value = first;
 		is_default = 1;
 	} else {
+		if (!strcmp (first, "XXGLOBAL"))
+			return apr_pstrdup (cmd->pool, "XXGLOBAL is a reserved application identifier.");
 		alias = first;
 		value = second;
 		is_default = (!strcmp (alias, "default"));
@@ -1136,7 +1141,7 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	memset (argv, 0, sizeof (char *) * MAXARGS);
 	argi = 0;
 	argv [argi++] = config->executable_path;
-	if (!strcasecmp (config->debug, "True"))
+	if (config->debug && !strcasecmp (config->debug, "True"))
 		argv [argi++] = "--debug";
 
 	argv [argi++] = config->server_path;
@@ -1414,6 +1419,7 @@ mono_execute_request (request_rec *r, char auto_app)
 		idx = search_for_alias (NULL, config);
 
 	DEBUG_PRINT (2, "idx = %d", idx);
+
 	if (idx < 0) {
 		DEBUG_PRINT (2, "Alias not found. Checking for auto-applications.");
 		if (config->auto_app)

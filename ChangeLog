@@ -1,3 +1,10 @@
+2006-07-20 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: when using autoapplications, pass all the options that
+	don't have an explicit alias to XXGLOBAL, which is the internal name
+	used for the mod-mono-server instance that will create new applications
+	on demand. Using XXGLOBAL as an identifier is forbidden now.
+
 2006-07-13 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: allow setting MonoDebug when using automatic
