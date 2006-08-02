@@ -1,3 +1,8 @@
+2006-08-02 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* configure.in: make it work with the latest and greates apache 2.2.3
+	and simplified.
+
 2006-07-20 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: when using autoapplications, pass all the options that
