@@ -1,3 +1,7 @@
+2006-08-02 Wade Berrier <wberrier@novell.com>
+
+	* configure.in: Make sure CPPFLAGS get propogated
+
 2006-08-02 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* configure.in: make it work with the latest and greates apache 2.2.3

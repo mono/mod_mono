@@ -181,7 +181,7 @@ CPPFLAGS="$CPPFLAGS $CFLAGS `$APXS -q EXTRA_CPPFLAGS`"
 CPPFLAGS="$CPPFLAGS $CFLAGS `$APXS -q CPPFLAGS`"
 if test -x "$APRCONFIG" ; then
 	CFLAGS="$CFLAGS `$APRCONFIG --includes --cflags`"
-	CPPFLAGS="$CFLAGS `$APRCONFIG --includes --cflags --cppflags`"
+	CPPFLAGS="$CFLAGS $CPPFLAGS `$APRCONFIG --includes --cflags --cppflags`"
 fi
 AC_MSG_CHECKING([Apache version])
 AC_TRY_COMPILE([
