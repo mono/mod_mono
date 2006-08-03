@@ -193,6 +193,13 @@ htaccess features to password protect it, too.
 .PP
 It may modify MONO_PATH, PATH and MONO_SHARED_DIR when starting
 mod-mono-server.
+.PP
+The MOD_MONO_CCV variable may be used to select which component will
+do client certificate validity (CCV) checks. By default both Apache and
+Mono will verify the client certificates. This can be changed to either
+"apache" or "mono" to limit the validity check to either environment.
+This variable can be set using MonoSetEnv to allow different vhost to 
+use separate validation techniques.
 .SH FILES
 .PP
 httpd.conf

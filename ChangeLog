@@ -1,3 +1,8 @@
+2006-08-03  Sebastien Pouliot  <sebastien@ximian.com>
+
+	* man/mod_mono.8.in: Add documentation about MOD_MONO_CCV variable 
+	used to control the validation of X.509 client certificates.
+
 2006-08-02 Wade Berrier <wberrier@novell.com>
 
 	* configure.in: Make sure CPPFLAGS get propogated
