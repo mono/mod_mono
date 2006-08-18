@@ -10,9 +10,8 @@ Index
       -Tip: If mono was not installed in /usr
 
   * APPENDIX A: Typical configuration without virtual hosts
-  * APPENDIX B: Configuration directives for mod_mono
-  * APPENDIX C: Webapp file format
-  * APPENDIX D: More information
+  * APPENDIX B: Webapp file format
+  * APPENDIX C: More information
   * CREDITS
   
 
@@ -198,120 +197,7 @@ APPENDIX A: Typical configuration without virtual hosts
   but this will make PathInfo unusable.
 
 
-APPENDIX B: Configuration directives for mod_mono
----------------------------------------------------
-
-  For the default values that have a path beginning with /usr, replace
-  that /usr with your installation prefix if you installed elsewhere.
-  
-  These are the directives supported under both apache 1.3 and 2.0. All
-  of them but MonoSetServerAlias accept an optional first argument that
-  is the mod-mono-server instance alias for which the directive applies.
-  If only one argument is provided for them, it will apply to the
-  'default' mod-mono-server instance. Refer to the monodoc documentation
-  on configuring mod_mono for more examples.
-
-
-  MonoUnixSocket
-
-    It accepts a file name as argument. That file will be a named pipe
-    used to send/receive data from/to mod_mono to/from mod-mono-server.
-    Default value: "/tmp/mod_mono_server".
-
-  MonoRunXSP
-
-    If the value is True, it tells mod_mono to spawn mod-mono-server.exe
-    if it's not already running.  If set to 'false', the rest of
-    directives are useless.
-    Default value: True
-
-  MonoExecutablePath
-
-    The full path to mono executable.
-    Default value: "/usr/bin/mono"
-
-  MonoPath
-
-    This value will be used to set the MONO_PATH environment variable.
-    Default value: ""
-
-  MonoServerPath
-
-    The full path to mod-mono-server.exe.
-    Default value: "/usr/bin/mod-mono-server.exe"
-
-  MonoWapiDir
-
-    The directory where mono runtime will create the ".wapi" directory
-    used to emulate windows I/O. It's used to set MONO_SHARED_DIR.
-    Default value: "/tmp"
-
-  MonoDocumentRootDir
-
-    Value passed in --root argument when running mod-mono-server. This
-    tells mod-mono-server to change the directory to the value specified
-    before doing anything else.
-
-  MonoMaxCPUTime
-
-    If MonoRunXSP is True, CPU time limit in seconds allowed for the
-    spawned mono process. Beyond that, it will be restarted. If this
-    capability is not available on your system, the directive will be
-    ignored.
-    Default value: system default
-
-  MonoMaxMemory
-
-    If MonoRunXSP is True, the maximum size of the process's data
-    segment (data size) in bytes allowed for the spawned mono process.
-    It will be restarted when the limit is reached. If this capability
-    is not available on your system, the directive will be ignored.
-    Default value: system default
-
-  MonoApplications
-  
-    This value will be passed to mod-mono-server.exe in the
-    --applications option. See xsp(1) manual page for details.
-
-  AddMonoApplications
-  
-    Same as MonoApplications, but the alias argument is mandatory.
-
-  MonoApplicationsConfigFile
-
-    Adds application definitions from the  XML configuration file.
-    See Appendix C for details on the file format.
-    Default value: ""
-
-  MonoApplicationsConfigDir
-
-    Adds application definitions from all XML files found in the
-    specified directory DIR. Files must have '.webapp' extension.
-    Default value: config/mod-mono-applications
-
-  Note that you must specify at least one of MonoApplications,
-  MonoApplicationsConfigFile and MonoApplicationsConfigDir.
-
-  MonoDebug
-  
-    Runs mono in debug mode, which produces stack traces with line
-    numbers.
-    Default value: false
-
-  MonoSetServerAlias
-
-    Takes a server alias name. This is to be used inside <Directory> or
-    <Location>.
-    Default value: 'default' if the directive is not used.
-
-  MonoSetEnv
-
-    Takes a string of 'name=value' pairs separated by semicolons. For
-    each pair, it calls setenv (name, value) before running
-    mod-mono-server.
-
-
-APPENDIX C: Webapp file format
+APPENDIX B: Webapp file format
 ---------------------------------
 
   The format of the .webapp files is:

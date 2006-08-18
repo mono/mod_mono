@@ -158,9 +158,7 @@ extern time_t ap_restart_time;
 #define DIRECTORY_SEPARATOR	":"
 #endif
 
-#define EXECUTABLE_PATH 	MONO_PREFIX "/bin/mono"
-#define MONO_PATH		MONO_PREFIX "/lib"
-#define MODMONO_SERVER_PATH 	MONO_PREFIX "/lib/xsp/1.0/mod-mono-server.exe"
+#define MODMONO_SERVER_PATH 	MONO_PREFIX "/bin/mod-mono-server"
 #define WAPIDIR				"/tmp"
 #define DOCUMENT_ROOT		NULL
 #define APPCONFIG_FILE		NULL

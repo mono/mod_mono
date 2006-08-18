@@ -165,8 +165,8 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->alias = apr_pstrdup (pool, alias);
 	server->filename = NULL;
 	server->run_xsp = "True";
-	server->executable_path = EXECUTABLE_PATH;
-	server->path = MONO_PATH;
+	/* (Obsolete) server->executable_path = EXECUTABLE_PATH; */
+	server->path = NULL;
 	server->server_path = MODMONO_SERVER_PATH;
 	server->applications = NULL;
 	server->wapidir = WAPIDIR;
@@ -1023,7 +1023,6 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	int argi;
 	char *path;
 	char *tmp;
-	char *monodir;
 	char *serverdir;
 	char *wapidir;
 	int max_memory = 0;
@@ -1111,22 +1110,15 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	if (tmp == NULL)
 		tmp = "";
 
-	monodir = get_directory (pool, config->executable_path);
-	DEBUG_PRINT (1, "monodir: %s", monodir);
 	serverdir = get_directory (pool, config->server_path);
 	DEBUG_PRINT (1, "serverdir: %s", serverdir);
-	if (strcmp (monodir, serverdir)) {
-		path = apr_pcalloc (pool, strlen (tmp) + strlen (monodir) +
-					strlen (serverdir) + 3);
-		sprintf (path, "%s:%s:%s", monodir, serverdir, tmp);
-	} else {
-		path = apr_pcalloc (pool, strlen (tmp) + strlen (monodir) + 2);
-		sprintf (path, "%s:%s", monodir, tmp);
-	}
+	path = apr_pcalloc (pool, strlen (tmp) + strlen (serverdir) + 2);
+	sprintf (path, "%s:%s", serverdir, tmp);
 
 	DEBUG_PRINT (1, "PATH after: %s", path);
 	SETENV (pool, "PATH", path);
-	SETENV (pool, "MONO_PATH", config->path);
+	if (config->path != NULL)
+		SETENV (pool, "MONO_PATH", config->path);
 	wapidir = apr_pcalloc (pool, strlen (config->wapidir) + 5 + 2);
 	sprintf (wapidir, "%s/%s", config->wapidir, ".wapi");
 	mkdir (wapidir, 0700);
@@ -1137,13 +1129,11 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	}
 
 	SETENV (pool, "MONO_SHARED_DIR", config->wapidir);
+	if (config->debug && !strcasecmp (config->debug, "True"))
+		SETENV (pool, "MONO_OPTIONS", "--debug");
 
 	memset (argv, 0, sizeof (char *) * MAXARGS);
 	argi = 0;
-	argv [argi++] = config->executable_path;
-	if (config->debug && !strcasecmp (config->debug, "True"))
-		argv [argi++] = "--debug";
-
 	argv [argi++] = config->server_path;
 	if (config->listen_port != NULL) {
 		char *la;
@@ -1825,7 +1815,7 @@ MAKE_CMD12 (MonoRunXSP, run_xsp,
 	),
 
 MAKE_CMD12 (MonoExecutablePath, executable_path,
-	"If MonoRunXSP is True, this is the full path where mono is located. "
+	"(Obsolete) If MonoRunXSP is True, this is the full path where mono is located. "
 	"Default: /usr/bin/mono"
 	),
 
@@ -1835,7 +1825,7 @@ MAKE_CMD12 (MonoPath, path,
 	),
 
 MAKE_CMD12 (MonoServerPath, server_path,
-	"If MonoRunXSP is True, this is the full path to mod-mono-server.exe. "
+	"If MonoRunXSP is True, this is the full path to the mod-mono-server script. "
 	"Default: " MODMONO_SERVER_PATH
 	),
 

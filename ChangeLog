@@ -1,3 +1,11 @@
+2006-08-18 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* man/mod_mono.8.in:
+	* src/mod_mono.[ch]: From now on, we run the mod-mono-server or
+	mod-mono-server2 script instead of running mono directly. This is
+	needed after the latest changes in the runtime that will make
+	ShadowCopyFiles possible.
+
 2006-08-03  Sebastien Pouliot  <sebastien@ximian.com>
 
 	* man/mod_mono.8.in: Add documentation about MOD_MONO_CCV variable 

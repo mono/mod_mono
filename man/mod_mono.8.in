@@ -50,8 +50,8 @@ if it's not already running. If set to False, most of these directives are
 useless.
 Default value: True
 .TP
-.I MonoExecutablePath
-The full path to mono executable.
+.I MonoExecutablePath (Obsoleted, ignored)
+Don't use this. It is ignored and has been left here for compatibility purposes.
 Default value: "/usr/bin/mono"
 .TP
 .I MonoPath
@@ -59,8 +59,8 @@ This value will be used to set the MONO_PATH environment variable.
 Default value: ""
 .TP
 .I MonoServerPath
-The full path to mod-mono-server.exe.
-Default value: "/usr/bin/mod-mono-server.exe"
+The full path to the mod-mono-server script.
+Default value: "/usr/bin/mod-mono-server"
 .TP
 .I "MonoWapiDir"
 The directory where mono runtime will create the ".wapi" directory
