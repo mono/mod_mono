@@ -1240,7 +1240,7 @@ write_string_to_buffer (char *buffer, int offset, const char *str)
 	buffer += offset;
 	tmp = (str != NULL) ? strlen (str) : 0;
 	le = LE_FROM_INT (tmp);
-	(*(int32_t *) buffer) = le;
+	memcpy (buffer, &le, sizeof (int32_t));
 	if (tmp > 0) {
 		buffer += sizeof (int32_t);
 		memcpy (buffer, str, tmp);
@@ -1311,7 +1311,7 @@ write_table_to_buffer (char *buffer, apr_table_t *table)
 	} while (t_elt < t_end);
 
 	count = LE_FROM_INT (count);
-	(*(int32_t *) buffer) = count;
+	memcpy (buffer, &count, sizeof (int32_t));
 	return (ptr - buffer);
 }
 
@@ -1365,12 +1365,12 @@ send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 	ptr += write_string_to_buffer (ptr, 0, r->connection->local_ip);
 	i = request_get_server_port (r);
 	i = LE_FROM_INT (i);
-	(*(int32_t *) ptr) = i;
+	memcpy (ptr, &i, sizeof (int32_t));
 	ptr += sizeof (int32_t);
 	ptr += write_string_to_buffer (ptr, 0, r->connection->remote_ip);
 	i = connection_get_remote_port (r->connection);
 	i = LE_FROM_INT (i);
-	(*(int32_t *) ptr) = i;
+	memcpy (ptr, &i, sizeof (int32_t));
 	ptr += sizeof (int32_t);
 	ptr += write_string_to_buffer (ptr, 0, connection_get_remote_name (r));
 	ptr += write_table_to_buffer (ptr, r->headers_in);
