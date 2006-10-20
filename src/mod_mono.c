@@ -637,6 +637,7 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 	int32_t i;
 	uint32_t actual_size;
 	int status = 0;
+	apr_pool_t *temp_pool;
 
 	if (command < 0 || command >= LAST_COMMAND) {
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
@@ -649,11 +650,14 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 	*result = OK;
 	switch (command) {
 	case SEND_FROM_MEMORY:
-		if (read_data_string (r->pool, sock, &str, &size) == NULL) {
+		apr_pool_create (&temp_pool, r->pool);
+		if (read_data_string (temp_pool, sock, &str, &size) == NULL) {
 			status = -1;
+			apr_pool_destroy (temp_pool);
 			break;
 		}
 		request_send_response_from_memory (r, str, size);
+		apr_pool_destroy (temp_pool);
 		break;
 	case GET_SERVER_VARIABLES:
 		ap_add_cgi_vars (r);
