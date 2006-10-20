@@ -1,6 +1,12 @@
+2006-10-20 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c: handle directives for the default
+	mod_mono_server set out of virtual hosts.
+
 2006-10-19 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
-	* src/mod_mono.c: Modified file.
+	* src/mod_mono.c: avoid using too much memory for long
+	responses.
 	* src/mod_mono.h: defines for 1.3 to work with apr_pool. Fixes bug
 	#79701. Thanks to Cyrille Colin.
 

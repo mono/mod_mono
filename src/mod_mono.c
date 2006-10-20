@@ -109,15 +109,17 @@ search_for_alias (const char *alias, module_cfg *config, server_rec *server)
 			xsp->alias == NULL ? "<default alias>" : xsp->alias,
 			xsp->vhost == NULL ? "<main server>" : xsp->vhost);
 
-		if (!server->is_virtual || server->server_hostname == NULL) {
-			if (xsp->vhost != NULL) continue;
-		} else {
-			if (xsp->vhost == NULL) continue;
-			if (strcmp(server->server_hostname, xsp->vhost)) continue;
+		if ((alias == NULL || !strcmp (alias, "default")) && xsp->is_default) {
+			if (xsp->vhost == NULL || !strcmp (server->server_hostname, xsp->vhost)) {
+				return i;
+			}
 		}
 
-		if ((alias == NULL || !strcmp (alias, "default")) && xsp->is_default)
-			return i;
+		if ((!server->is_virtual || server->server_hostname == NULL) && xsp->vhost != NULL) {
+			continue;
+		} else if (xsp->vhost == NULL || strcmp (server->server_hostname, xsp->vhost)) {
+			continue;
+		}
 
 		if (alias != NULL && !strcmp (alias, xsp->alias))
 			return i;
