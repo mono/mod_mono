@@ -56,6 +56,7 @@ typedef struct xsp_data {
 	char *vhost;
 	char *alias;
 	char *filename;
+	char *umask_value;
 	char *run_xsp;
 	char *executable_path;
 	char *path;
@@ -189,6 +190,7 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 		server->vhost = apr_pstrdup(pool, servercfg->server_hostname);
 	server->alias = apr_pstrdup (pool, alias);
 	server->filename = NULL;
+	server->umask_value = NULL;
 	server->run_xsp = "True";
 	/* (Obsolete) server->executable_path = EXECUTABLE_PATH; */
 	server->path = NULL;
@@ -1119,7 +1121,18 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 
 	setsid ();
 	chdir ("/");
-	umask (0077);
+	if (config->umask_value == NULL)
+		umask (0077);
+	else {
+		unsigned int uval;
+		DEBUG_PRINT (1, "unparsed umask value: %s", config->umask_value);
+		if (sscanf(config->umask_value, "%o", &uval) != 1) {
+			DEBUG_PRINT (1, "umask conversion to octal failed");
+			uval = 0077;
+		}
+		DEBUG_PRINT (1, "setting umask to %o", uval);
+		umask (uval);
+	}
 	DEBUG_PRINT (1, "child started");
 
 #ifdef DEBUG
@@ -1818,6 +1831,10 @@ mono_register_hooks (apr_pool_t * p)
 #endif
 
 static const command_rec mono_cmds [] = {
+MAKE_CMD12 (MonoUnixUmask, umask_value,
+  "Value of the file mode creation mask (see umask(2))"
+  "Default: 0077"
+  ),
 MAKE_CMD12 (MonoUnixSocket, filename,
 	"Named pipe file name. Mutually exclusive with MonoListenPort. "
 	"Default: /tmp/mod_mono_server"

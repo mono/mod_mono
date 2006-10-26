@@ -27,6 +27,12 @@ mod-mono-server instance. Refer to the monodoc documentation on configuring
 mod_mono for more examples.
 
 .TP
+.I "MonoUnixUmask"
+It accepts an octal number as a parameter. The number must be a valid unix
+file creation mask value (see umask(2)). The mask will be applied whenever
+a directory or file is created from within an ASP.NET application.
+Default value: "0077".
+.TP
 .I "MonoUnixSocket"
 It accepts a file name as argument. That file will be a named pipe
 used to send/receive data from/to mod_mono to/from mod-mono-server.

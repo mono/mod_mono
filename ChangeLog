@@ -1,3 +1,9 @@
+2006-10-26  Marek Habersack  <grendello@gmail.com>
+
+	* man/mod_mono.8.in: describe the new MonoUnixUmask directive.
+	* src/mod_mono.c: add code to handle the new configurable umask
+	directive.
+
 2006-10-20 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c: handle directives for the default
