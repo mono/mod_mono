@@ -1,3 +1,10 @@
+2006-11-21 Gonzalo Paniagua Javier <gonzalo@ximian.com>
+
+	* src/mod_mono.c:
+	* ChangeLog: revert r66281 and r66836. It should make mod_mono work
+	again for most of the people, while it will break for certain virtual
+	host configurations.
+
 2006-11-02  Wade Berrier  <wberrier@novell.com>
 
 	* configure.in: bump version -> 1.2
@@ -8,22 +15,11 @@
 	* src/mod_mono.c: add code to handle the new configurable umask
 	directive.
 
-2006-10-20 Gonzalo Paniagua Javier <gonzalo@ximian.com>
-
-	* src/mod_mono.c: handle directives for the default
-	mod_mono_server set out of virtual hosts.
-
 2006-10-19 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
-	* src/mod_mono.c: avoid using too much memory for long
-	responses.
+	* src/mod_mono.c: avoid using too much memory for long responses.
 	* src/mod_mono.h: defines for 1.3 to work with apr_pool. Fixes bug
 	#79701. Thanks to Cyrille Colin.
-
-2006-10-05 Joshua Tauberer <jit@occams.info>
-
-	* src/mod_mono.c: Prefix every alias with the name of the vhost.
-	XXGLOBALs between vhosts were getting mixed up.
 
 2006-08-31 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 

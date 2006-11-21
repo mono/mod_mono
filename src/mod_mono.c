@@ -53,7 +53,6 @@ enum {
 
 typedef struct xsp_data {
 	char is_default;
-	char *vhost;
 	char *alias;
 	char *filename;
 	char *umask_value;
@@ -74,6 +73,7 @@ typedef struct xsp_data {
 	char *env_vars;
 	char status; /* One of the FORK_* in the enum above.
 		      * Don't care if run_xsp is "false" */
+	char is_virtual; /* is the server virtual? */
 } xsp_data;
 
 typedef struct {
@@ -88,39 +88,18 @@ typedef struct {
 	char *client_block_buffer;
 } request_data;
 
-static char * get_default_socket_name (apr_pool_t *pool, xsp_data *xsp, const char *base);
-
-
 /* */
 static int
-search_for_alias (const char *alias, module_cfg *config, server_rec *server)
+search_for_alias (const char *alias, module_cfg *config)
 {
 	/* 'alias' may be NULL to search for the default XSP */
 	int i;
 	xsp_data *xsp;
 
-	DEBUG_PRINT (2, "searching for alias '%s' in server '%s'",
-		alias == NULL ? "<default alias>" : alias,
-		!server->is_virtual || server->server_hostname == NULL ? "<main server>" : server->server_hostname);
-
 	for (i = 0; i < config->nservers; i++) {
 		xsp = &config->servers [i];
-
-		DEBUG_PRINT (2, "   found alias '%s' in server '%s'",
-			xsp->alias == NULL ? "<default alias>" : xsp->alias,
-			xsp->vhost == NULL ? "<main server>" : xsp->vhost);
-
-		if ((alias == NULL || !strcmp (alias, "default")) && xsp->is_default) {
-			if (xsp->vhost == NULL || !strcmp (server->server_hostname, xsp->vhost)) {
-				return i;
-			}
-		}
-
-		if ((!server->is_virtual || server->server_hostname == NULL) && xsp->vhost != NULL) {
-			continue;
-		} else if (xsp->vhost == NULL || strcmp (server->server_hostname, xsp->vhost)) {
-			continue;
-		}
+		if ((alias == NULL || !strcmp (alias, "default")) && xsp->is_default)
+			return i;
 
 		if (alias != NULL && !strcmp (alias, xsp->alias))
 			return i;
@@ -137,7 +116,7 @@ set_alias (cmd_parms *cmd, void *mconfig, const char *alias)
 
 	sconfig = ap_get_module_config (cmd->server->module_config, &mono_module);
 	config->alias = (char *) alias;
-	if (search_for_alias (alias, sconfig, cmd->server) == -1) {
+	if (search_for_alias (alias, sconfig) == -1) {
 		char *err = apr_pstrcat (cmd->pool, "Server alias '", alias, ", not found.", NULL);
 		return err;
 	}
@@ -171,23 +150,19 @@ set_auto_application (cmd_parms *cmd, void *mconfig, const char *value)
 }
 
 static int
-add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_default, server_rec *servercfg)
+add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_default, int is_virtual)
 {
 	xsp_data *server;
 	xsp_data *servers;
 	int nservers;
 	int i;
 
-	i = search_for_alias (alias, config, servercfg);
+	i = search_for_alias (alias, config);
 	if (i >= 0)
 		return i;
 
 	server = apr_pcalloc (pool, sizeof (xsp_data));
 	server->is_default = is_default;
-	if (!servercfg->is_virtual || servercfg->server_hostname == NULL)
-		server->vhost = NULL;
-	else
-		server->vhost = apr_pstrdup(pool, servercfg->server_hostname);
 	server->alias = apr_pstrdup (pool, alias);
 	server->filename = NULL;
 	server->umask_value = NULL;
@@ -209,6 +184,7 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->debug = NULL;
 	server->env_vars = NULL;
 	server->status = FORK_NONE;
+	server->is_virtual = is_virtual;
 
 	nservers = config->nservers + 1;
 	servers = config->servers;
@@ -240,7 +216,7 @@ store_config_xsp (cmd_parms *cmd, void *notused, const char *first, const char *
 	config = ap_get_module_config (cmd->server->module_config, &mono_module);
 	if (second == NULL) {
 		if (config->auto_app) {
-			idx = search_for_alias ("XXGLOBAL", config, cmd->server);
+			idx = search_for_alias ("XXGLOBAL", config);
 			ptr = (char *) &config->servers [idx];
 			ptr += offset;
 			value = first;
@@ -259,6 +235,8 @@ store_config_xsp (cmd_parms *cmd, void *notused, const char *first, const char *
 			return NULL;
 		}
 		alias = "default";
+		if (cmd->server->is_virtual)
+			alias = cmd->server->server_hostname;
 		value = first;
 		is_default = 1;
 	} else {
@@ -273,9 +251,9 @@ store_config_xsp (cmd_parms *cmd, void *notused, const char *first, const char *
 	if (!config->auto_app_set)
 		config->auto_app = FALSE;
 
-	idx = search_for_alias (alias, config, cmd->server);
+	idx = search_for_alias (alias, config);
 	if (idx == -1)
-		idx = add_xsp_server (cmd->pool, alias, config, is_default, cmd->server);
+		idx = add_xsp_server (cmd->pool, alias, config, is_default, cmd->server->is_virtual);
 
 	ptr = (char *) &config->servers [idx];
 	ptr += offset;
@@ -334,6 +312,12 @@ create_dir_config (apr_pool_t *p, char *dirspec)
 	return cfg;
 }
 
+static char *
+get_default_global_socket_name (apr_pool_t *pool, const char *base)
+{
+	return apr_pstrcat (pool, base, "_", "global", NULL);
+}
+
 static void *
 create_mono_server_config (apr_pool_t *p, server_rec *s)
 {
@@ -342,8 +326,8 @@ create_mono_server_config (apr_pool_t *p, server_rec *s)
 	server = apr_pcalloc (p, sizeof (module_cfg));
 	server->auto_app = TRUE;
 	server->auto_app_set = FALSE;
-	add_xsp_server (p, "XXGLOBAL", server, FALSE, s);
-	server->servers [0].filename = get_default_socket_name (p, &server->servers[0], SOCKET_FILE);
+	add_xsp_server (p, "XXGLOBAL", server, FALSE, FALSE);
+	server->servers [0].filename = get_default_global_socket_name (p, SOCKET_FILE);
 	return server;
 }
 
@@ -860,13 +844,9 @@ apr_sleep (long t)
 #endif
 
 static char *
-get_default_socket_name (apr_pool_t *pool, xsp_data *xsp, const char *base)
+get_default_socket_name (apr_pool_t *pool, const char *alias, const char *base)
 {
-	return apr_pstrcat (pool, base, "_", 
-		xsp->vhost == NULL ? "" : xsp->vhost,
-		"_",
-		xsp->alias == NULL ? "default" : xsp->alias,
-		NULL);
+	return apr_pstrcat (pool, base, "_", alias == NULL ? "default" : alias, NULL);
 }
 
 static apr_status_t 
@@ -887,7 +867,7 @@ try_connect (xsp_data *conf, apr_socket_t **sock, apr_pool_t *pool)
 		if (conf->filename != NULL)
 			fn = conf->filename;
 		else
-			fn = get_default_socket_name (pool, conf, SOCKET_FILE);
+			fn = get_default_socket_name (pool, conf->alias, SOCKET_FILE);
 
 		DEBUG_PRINT (1, "Socket file name %s", fn);
 		memcpy (unix_address.sun_path, fn, strlen (fn) + 1);
@@ -1186,7 +1166,7 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 
 		fn = config->filename;
 		if (fn == NULL)
-			fn = get_default_socket_name (pool, config, SOCKET_FILE);
+			fn = get_default_socket_name (pool, config->alias, SOCKET_FILE);
 
 		argv [argi++] = "--filename";
 		argv [argi++] = fn;
@@ -1433,7 +1413,6 @@ mono_execute_request (request_rec *r, char auto_app)
 	module_cfg *config;
 	per_dir_config *dir_config = NULL;
 	int idx;
-	char *alias;
 
 	config = ap_get_module_config (r->server->module_config, &mono_module);
 	DEBUG_PRINT (2, "config = %d", (int) config);
@@ -1442,19 +1421,16 @@ mono_execute_request (request_rec *r, char auto_app)
 
 	DEBUG_PRINT (2, "dir_config = %d", (int) dir_config);
 	if (dir_config != NULL && dir_config->alias != NULL)
-		alias = dir_config->alias;
+		idx = search_for_alias (dir_config->alias, config);
 	else
-		alias = NULL;
+		idx = search_for_alias (NULL, config);
 
-	idx = search_for_alias (alias, config, r->server);
+	DEBUG_PRINT (2, "idx = %d", idx);
 
-	if (idx >= 0) {
-		DEBUG_PRINT (2, "idx = %d", idx);
-	} else {
-		DEBUG_PRINT (2, "Alias \"%s\" not found. Checking for auto-applications.",
-			alias == NULL ? "<default server>" : alias);
+	if (idx < 0) {
+		DEBUG_PRINT (2, "Alias not found. Checking for auto-applications.");
 		if (config->auto_app)
-			idx = search_for_alias ("XXGLOBAL", config, r->server);
+			idx = search_for_alias ("XXGLOBAL", config);
 
 		if (idx == -1) {
 			DEBUG_PRINT (2, "Global config not found. Finishing request.");
@@ -1672,7 +1648,7 @@ terminate_xsp2 (void *data, char *alias)
 			char *fn = xsp->filename;
 
 			if (fn == NULL)
-				fn = get_default_socket_name (pconf, xsp, SOCKET_FILE);
+				fn = get_default_socket_name (pconf, xsp->alias, SOCKET_FILE);
 
 			remove (fn); /* Don't bother checking error */
 		}
