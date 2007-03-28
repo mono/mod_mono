@@ -1,3 +1,10 @@
+2007-03-28  Marek Habersack  <grendello@gmail.com>
+
+	* src/mod_mono.c (do_command): abort when either xsp sends us size
+	of -1 in the GET_CLIENT_BLOCK command or when ap_get_client_block
+	returns -1 as the result of client breaking the connection. This
+	action prevents an exception later on in xsp.
+
 2006-11-21 Gonzalo Paniagua Javier <gonzalo@ximian.com>
 
 	* src/mod_mono.c:
