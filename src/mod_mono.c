@@ -694,13 +694,11 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 		}
 		str = get_client_block_buffer (r, (uint32_t) i, &actual_size);
 		i = ap_get_client_block (r, str, actual_size);
-		if (i < 0) {
-			DEBUG_PRINT (2, "our block has size %d: not sending to xsp", i);
-			abort();
-		}
 		i = LE_FROM_INT (i);
 		status = write_data (sock, &i, sizeof (int32_t));
 		i = INT_FROM_LE (i);
+		if (i == -1)
+			break;
 		status = write_data (sock, str, i);
 		break;
 	case SET_STATUS:
