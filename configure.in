@@ -169,6 +169,49 @@ if test -z "$APRCONFIG"; then
   AC_PATH_PROG(APRCONFIG, apr-config)
 fi
 
+# apu-config - libapr-util can have different prefixes than libapr, check from apu-1-config to make sure
+#  (suse 10.1 is an example of this)
+
+for mydir in `dirname ${APXS}` \
+		/usr/local/apache2/sbin	\
+  		/usr/local/apache2/bin	\
+  		/usr/local/apache/sbin	\
+		/usr/local/apache/bin	\
+		/usr/sbin		\
+		/usr/bin
+do
+	AC_MSG_CHECKING(for apu-1-config in $mydir)
+  	A1="$mydir/apu-1-config"
+  	if test -x "$A1" ; then
+		APUCONFIG="$A1"
+		AC_MSG_RESULT(found.)
+		break
+	else
+		AC_MSG_RESULT(no)
+	fi
+
+	AC_MSG_CHECKING(for apr-config in $mydir)
+	A2="$mydir/apr-config"
+  	if test -x "$A2" ; then
+		APRCONFIG="$A2"
+		AC_MSG_RESULT(found.)
+		break
+	else
+		AC_MSG_RESULT(no)
+	fi
+done
+
+# last resort 1
+if test -z "$APUCONFIG"; then
+  AC_PATH_PROG(APUCONFIG, apu-1-config)
+fi
+
+# last resort 2
+if test -z "$APUCONFIG"; then
+  AC_PATH_PROG(APUCONFIG, apu-config)
+fi
+
+
 APXS_LIBEXECDIR=`${APXS} -q LIBEXECDIR`
 APXS_SYSCONFDIR=`${APXS} -q SYSCONFDIR`
 AP_INCLUDES="-I`${APXS} -q INCLUDEDIR`"
@@ -182,6 +225,10 @@ CPPFLAGS="$CPPFLAGS $CFLAGS `$APXS -q CPPFLAGS`"
 if test -x "$APRCONFIG" ; then
 	CFLAGS="$CFLAGS `$APRCONFIG --includes --cflags`"
 	CPPFLAGS="$CFLAGS $CPPFLAGS `$APRCONFIG --includes --cflags --cppflags`"
+fi
+if test -x "$APUCONFIG" ; then
+	CFLAGS="$CFLAGS `$APUCONFIG --includes`"
+	CPPFLAGS="$CFLAGS $CPPFLAGS `$APUCONFIG --includes`"
 fi
 AC_MSG_CHECKING([Apache version])
 AC_TRY_COMPILE([
@@ -354,6 +401,8 @@ test -x "$APXS" && \
 echo "   * apxs = $APXS"
 test ! "$APACHE_VER" = "1.3" -a -x "$APRCONFIG" && \
 echo "   * apr-config = $APRCONFIG"
+test "$APUCONFIG" && \
+echo "   * apu-config = $APUCONFIG"
 echo "   * Verbose logging (debug) = $enable_debug"
 echo "   * mono prefix = $MONO_PREFIX"
 echo "   * Default MonoApplicationsConfigDir = $DFLT_MONO_CONFIG_DIR"
