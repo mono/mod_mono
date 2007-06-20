@@ -1356,10 +1356,15 @@ send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 	int i;
 	char *str, *ptr;
 	int size;
+	server_rec *s = r->server;
 
 	DEBUG_PRINT (2, "Send init1");
 	size = 1;
 	size += ((r->method != NULL) ? strlen (r->method) : 0) + sizeof (int32_t);
+  if (s != NULL)
+    size += ((s->is_virtual && s->server_hostname != NULL) ? strlen (s->server_hostname) : 0) + sizeof (int32_t);
+  else
+    size += sizeof (int32_t);
 	size += ((r->uri != NULL) ? strlen (r->uri) : 0) + sizeof (int32_t);
 	size += ((r->args != NULL) ? strlen (r->args) : 0) + sizeof (int32_t);
 	size += ((r->protocol != NULL) ? strlen (r->protocol) : 0) + sizeof (int32_t);
@@ -1379,8 +1384,12 @@ send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 	}
 
 	ptr = str = apr_pcalloc (r->pool, size);
-	*ptr++ = 6; /* version. Keep in sync with ModMonoRequest. */
+	*ptr++ = 7; /* version. Keep in sync with ModMonoRequest. */
 	ptr += write_string_to_buffer (ptr, 0, r->method);
+  if (s != NULL)
+    ptr += write_string_to_buffer (ptr, 0, (s->is_virtual ? s->server_hostname : NULL));
+  else
+    ptr += write_string_to_buffer (ptr, 0, NULL);
 	ptr += write_string_to_buffer (ptr, 0, r->uri);
 	ptr += write_string_to_buffer (ptr, 0, r->args);
 	ptr += write_string_to_buffer (ptr, 0, r->protocol);
