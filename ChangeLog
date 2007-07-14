@@ -1,3 +1,13 @@
+2007-07-14  Marek Habersack  <grendello@gmail.com>
+
+	* src/mod_mono.c (do_command): added error logging
+	(write_data): as above
+	(read_data): as above
+
+	* src/mod_mono.h (STATCODE_AND_SERVER): new macro to add support
+	for non-zero status codes (the status code is ignored for Apache <
+	2.0).
+
 2007-06-20  Marek Habersack  <grendello@gmail.com>
 
 	* src/mod_mono.c (send_initial_data): added support for

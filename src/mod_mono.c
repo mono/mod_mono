@@ -434,19 +434,26 @@ static int
 write_data (apr_socket_t *sock, const void *str, apr_size_t size)
 {
 	apr_size_t prevsize = size;
-
-	if (apr_socket_send (sock, str, &size) != APR_SUCCESS)
+  apr_status_t statcode;
+  
+	if ((statcode = apr_socket_send (sock, str, &size)) != APR_SUCCESS) {
+    ap_log_error (APLOG_MARK, APLOG_ERR, STATCODE_AND_SERVER (statcode), "write_data failed");
 		return -1;
-
+  }
+  
 	return (prevsize == size) ? size : -1;
 }
 
 static int
 read_data (apr_socket_t *sock, void *ptr, apr_size_t size)
 {
-	if (apr_socket_recv (sock, ptr, &size) != APR_SUCCESS)
+  apr_status_t statcode;
+  
+	if ((statcode = apr_socket_recv (sock, ptr, &size)) != APR_SUCCESS) {
+    ap_log_error (APLOG_MARK, APLOG_ERR, STATCODE_AND_SERVER (statcode), "read_data failed");
 		return -1;
-
+  }
+  
 	return size;
 }
 
@@ -552,9 +559,11 @@ send_response_headers (request_rec *r, apr_socket_t *sock)
 	char *name;
 	char *value;
 
-	if (read_data_string (r->pool, sock, &str, &size) == NULL)
+	if (read_data_string (r->pool, sock, &str, &size) == NULL) {
+    ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER, "failed to read data string");
 		return -1;
-
+  }
+  
 	DEBUG_PRINT (2, "Headers length: %d", size);
 	pos = 0;
 	while (size > 0) {
@@ -626,6 +635,7 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 	uint32_t actual_size;
 	int status = 0;
 	apr_pool_t *temp_pool;
+  char *error_message = NULL;
 
 	if (command < 0 || command >= LAST_COMMAND) {
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
@@ -640,6 +650,7 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 	case SEND_FROM_MEMORY:
 		apr_pool_create (&temp_pool, r->pool);
 		if (read_data_string (temp_pool, sock, &str, &size) == NULL) {
+      error_message = "failed to read data for SEND_FROM_MEMORY command";
 			status = -1;
 			apr_pool_destroy (temp_pool);
 			break;
@@ -654,15 +665,23 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 		cstr = apr_table_get (r->subprocess_env, "HTTPS");
 		if (cstr != NULL && !strcmp (cstr, "on"))
 			apr_table_add (r->subprocess_env, "SERVER_PORT_SECURE", "True");
-		status = !send_table (r->pool, r->subprocess_env, sock);
+		if (!send_table (r->pool, r->subprocess_env, sock)) {
+      error_message = "failed to send server variables";
+      status = -1;
+    } else
+      status = 0;
 		break;
 	case SET_RESPONSE_HEADERS:
 		status = send_response_headers (r, sock);
+    if (status < 0)
+      error_message = "failed to send response headers";
 		break;
 	case GET_LOCAL_PORT:
 		i = connection_get_local_port (r);
 		i = LE_FROM_INT (i);
 		status = write_data (sock, &i, sizeof (int32_t));
+    if (status < 0)
+      error_message = "failed to get local port";
 		break;
 	case CLOSE:
 		return FALSE;
@@ -671,16 +690,22 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 		size = ap_should_client_block (r);
 		size = LE_FROM_INT (size);
 		status = write_data (sock, &size, sizeof (int32_t));
+    if (status < 0)
+      error_message = "failed to send the 'should block' flag";
 		break;
 	case SETUP_CLIENT_BLOCK:
 		if (setup_client_block (r) != APR_SUCCESS) {
 			size = LE_FROM_INT (-1);
 			status = write_data (sock, &size, sizeof (int32_t));
+      if (status < 0)
+        error_message = "failed to setup client block (data size)";
 			break;
 		}
 
 		size = LE_FROM_INT (0);
 		status = write_data (sock, &size, sizeof (int32_t));
+    if (status < 0)
+      error_message = "failed to setup client block (data)";
 		break;
 	case GET_CLIENT_BLOCK:
 		status = read_data (sock, &i, sizeof (int32_t));
@@ -696,17 +721,24 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 		i = ap_get_client_block (r, str, actual_size);
 		i = LE_FROM_INT (i);
 		status = write_data (sock, &i, sizeof (int32_t));
+    if (status < 0)
+      error_message = "failed to get client block (data size)";
 		i = INT_FROM_LE (i);
 		if (i == -1)
 			break;
 		status = write_data (sock, str, i);
+    if (status < 0)
+      error_message = "failed to get client block (data)";
 		break;
 	case SET_STATUS:
 		status = read_data (sock, &i, sizeof (int32_t));
-		if (status == -1)
+		if (status == -1) {
+      error_message = "failed to set status (data size)";
 			break;
-
+    }
+    
 		if (read_data_string (r->pool, sock, &str, NULL) == NULL) {
+      error_message = "failed to set status (data)";
 			status = -1;
 			break;
 		}
@@ -719,6 +751,8 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 	case IS_CONNECTED:
 		*result = (r->connection->aborted ? 0 : 1);
 		status = write_data (sock, result, sizeof (int32_t));
+    if (status < 0)
+      error_message = "failed to check if the backend is connected";
 		break;
 	case MYNOT_FOUND:
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
@@ -732,19 +766,24 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 		return FALSE;
 	case SEND_FILE:
 		if (read_data_string (r->pool, sock, &str, NULL) == NULL) {
+      error_message = "failed to send file (file name)";
 			status = -1;
 			break;
 		}
 		status = send_entire_file (r, str, result);
 		if (status == -1)
-			return FALSE;
+      error_message = "failed to send file (file data)";
 		break;
 	default:
-		*result = HTTP_INTERNAL_SERVER_ERROR;
-		return FALSE;
+    error_message = "unknown command";
+    status = -1;
+    break;
 	}
 
 	if (status == -1) {
+    ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+                  "command failed: %s",
+                  error_message ? error_message : "unknown error");
 		*result = HTTP_INTERNAL_SERVER_ERROR;
 		return FALSE;
 	}

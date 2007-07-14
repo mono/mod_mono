@@ -59,7 +59,7 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #ifdef HAVE_HTTP_PROTOCOL_H
 #include "http_protocol.h"
 #endif
-#define STATUS_AND_SERVER NULL
+#define STATCODE_AND_SERVER (code) NULL
 #ifndef TRUE
 #define TRUE 1
 #define FALSE 0
@@ -132,7 +132,7 @@ extern time_t ap_restart_time;
 /* End Apache 1.3 only */
 #else
 /* Apache 2 only */
-#define STATUS_AND_SERVER 0, NULL
+#define STATCODE_AND_SERVER(__code__) __code__, NULL
 #include <http_protocol.h>
 #include <http_request.h>
 #include <util_script.h>
@@ -148,6 +148,8 @@ extern time_t ap_restart_time;
 
 /* End Apache 2 only */
 #endif
+
+#define STATUS_AND_SERVER STATCODE_AND_SERVER (0)
 
 /* Some defaults */
 #ifndef MONO_PREFIX
