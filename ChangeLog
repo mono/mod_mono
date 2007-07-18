@@ -1,3 +1,10 @@
+2007-07-18  Marek Habersack  <grendello@gmail.com>
+
+	* src/mod_mono.c (mono_child_init): if APR has uid/gid support and
+	we're not compiling for WIN32, start the backends from the module
+	post config handler, it avoids launching of many backends on
+	startup.
+
 2007-07-14  Marek Habersack  <grendello@gmail.com>
 
 	* src/mod_mono.c (do_command): added error logging

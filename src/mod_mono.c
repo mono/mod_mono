@@ -30,6 +30,7 @@
 #define DEBUG_LEVEL 0
 
 #include "mod_mono.h"
+#include "unixd.h"
 
 static int send_table (apr_pool_t *pool, apr_table_t *table, apr_socket_t *sock);
 
@@ -1080,7 +1081,9 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	int max_cpu_time = 0;
 	int status;
 	char is_master;
-
+  apr_uid_t cur_uid;
+  apr_gid_t cur_gid;
+  
 	/* Running mod-mono-server not requested */
 	if (!strcasecmp (config->run_xsp, "false")) {
 		DEBUG_PRINT (1, "Not running mod-mono-server: %s", config->run_xsp);
@@ -1146,6 +1149,27 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 
 	setsid ();
 	chdir ("/");
+
+#ifdef APR_HAS_USER
+  /*
+   * Make sure the backend runs with proper uid/gid if we're forking
+   * from the module postconfig handler.
+   */
+  if (apr_uid_current (&cur_uid, &cur_gid, pool) == APR_SUCCESS && cur_uid == 0) {
+    DEBUG_PRINT (0, "switching forked process group to %u", (unsigned)unixd_config.group_id);
+    if (setgid (unixd_config.group_id) == -1)
+      ap_log_error (APLOG_MARK, APLOG_ALERT, errno, STATUS_AND_SERVER,
+                    "setgid: unable to set group id to %u",
+                    (unsigned)unixd_config.group_id);
+
+    DEBUG_PRINT (0, "switching forked process user to %s", unixd_config.user_name);
+    if (setuid (unixd_config.user_id) == -1)
+      ap_log_error (APLOG_MARK, APLOG_ALERT, errno, STATUS_AND_SERVER,
+                    "setuid: unable to set user id to %u",
+                    (unsigned)unixd_config.user_id);
+  }
+#endif
+  
 	if (config->umask_value == NULL)
 		umask (0077);
 	else {
@@ -1802,7 +1826,8 @@ mono_init_handler (apr_pool_t *p,
 {
 	void *data;
 	const char *userdata_key = "mono_module_init";
-
+  module_cfg *config;
+  
 	/*
 	 * mono_init_handler() will be called twice, and if it's a DSO then all
 	 * static data from the first call will be lost. Only set up our static
@@ -1821,6 +1846,11 @@ mono_init_handler (apr_pool_t *p,
 	pconf = s->process->pconf;
 	apr_pool_cleanup_register (pconf, s, terminate_xsp, apr_pool_cleanup_null);
 
+#if defined (APR_HAS_USER) && !defined (WIN32)
+  config = ap_get_module_config (s->module_config, &mono_module);
+	start_xsp (config, 0, NULL);
+#endif
+  
 	return OK;
 }
 #endif
@@ -1834,12 +1864,13 @@ mono_child_init (
 #endif
 	)
 {
-	module_cfg *config;
-
+#if defined (APR_HAS_USER) || defined (WIN32)
+  module_cfg *config;
 	DEBUG_PRINT (0, "Mono Child Init");
-	config = ap_get_module_config (s->module_config, &mono_module);
 
+  config = ap_get_module_config (s->module_config, &mono_module);
 	start_xsp (config, 0, NULL);
+#endif
 }
 
 #ifdef APACHE13
