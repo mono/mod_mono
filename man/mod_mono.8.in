@@ -55,16 +55,27 @@ If the value is True, it tells mod_mono to spawn mod-mono-server.exe
 if it's not already running. If set to False, most of these directives are
 useless.
 Default value: True
+.TP 
+.I "MonoXSPStartAttempts"
+Number of times mod_mono will attempt to start a backend which
+died. Value cannot be lower than 0.
+Default value: 3
 .TP
-.I MonoExecutablePath (Obsoleted, ignored)
+.I "MonoXSPStartWaitTime"
+Number of seconds to wait after starting the backend. This is to let
+the backend initialize properly before attempting to connect to
+it. Value cannot be lower than 2.
+Default value: 2
+.TP
+.I "MonoExecutablePath (Obsoleted, ignored)"
 Don't use this. It is ignored and has been left here for compatibility purposes.
 Default value: "/usr/bin/mono"
 .TP
-.I MonoPath
+.I "MonoPath"
 This value will be used to set the MONO_PATH environment variable.
 Default value: ""
 .TP
-.I MonoServerPath
+.I "MonoServerPath"
 The full path to the mod-mono-server script.
 Default value: "/usr/bin/mod-mono-server"
 .TP
@@ -73,7 +84,7 @@ The directory where mono runtime will create the ".wapi" directory
 used to emulate windows I/O. It's used to set MONO_SHARED_DIR.
 Default value: "/tmp"
 .TP
-.I MonoDocumentRootDir
+.I "MonoDocumentRootDir"
 The directory passed in --root argument when launching mod-mono-server.
 .TP
 .I "MonoMaxCPUTime"
@@ -90,38 +101,38 @@ It will be restarted when the limit is reached. If this capability
 is not available on your system, the directive will be ignored.
 Default value: system default
 .TP
-.I MonoApplications
+.I "MonoApplications"
 .TP
-.I AddMonoApplications
+.I "AddMonoApplications"
 This value will be passed to mod-mono-server.exe in the
 --applications option. See xsp(1) manual page for details.
 .TP
-.I MonoApplicationsConfigFile
+.I "MonoApplicationsConfigFile"
 The argument passed in --appconfigfile argument to mod-mono-server.
 Default value: NULL.
 .TP
-.I MonoApplicationsConfigDir
+.I "MonoApplicationsConfigDir"
 The argument passed in --appconfigdir argument to mod-mono-server.
 Default value: config/mod-mono-applications
 .PP
 Note that you must specify at least one of MonoApplications,
 MonoApplicationsConfigFile and MonoApplicationsConfigDir.
 .TP
-.I MonoAutoApplication
+.I "MonoAutoApplication"
 Enables or disables automatic ASP.NET applications discovery. By default
 it is enabled if you have no application configured. Otherwise, it's
 disabled. The possible values are 'enabled' or 'disabled'.
 .TP
-.I MonoDebug
+.I "MonoDebug"
 Runs mono in debug mode, which produces stack traces with line numbers.
 Default value: false.
 .TP
-.I MonoSetServerAlias
+.I "MonoSetServerAlias"
 Takes a server alias name. This is to be used inside <Directory> or
 <Location>.
 Default value: 'default' if the directive is not used.
 .TP
-.I MonoSetEnv
+.I "MonoSetEnv"
 Takes a string of 'name=value' pairs separated by semicolons. For each
 pair, it calls setenv (name, value) before running mod-mono-server.
 .SH SAMPLE CONFIGURATION

@@ -32,8 +32,6 @@
 #include "mod_mono.h"
 #include "unixd.h"
 
-static int send_table (apr_pool_t *pool, apr_table_t *table, apr_socket_t *sock);
-
 DEFINE_MODULE (mono_module);
 
 /* Configuration pool. Cleared on restart. */
@@ -75,6 +73,8 @@ typedef struct xsp_data {
 	char status; /* One of the FORK_* in the enum above.
 		      * Don't care if run_xsp is "false" */
 	char is_virtual; /* is the server virtual? */
+  char *start_attempts;
+  char *start_wait_time;
 } xsp_data;
 
 typedef struct {
@@ -88,6 +88,9 @@ typedef struct {
 	uint32_t client_block_buffer_size;
 	char *client_block_buffer;
 } request_data;
+
+static int send_table (apr_pool_t *pool, apr_table_t *table, apr_socket_t *sock);
+static void start_xsp (module_cfg *config, int is_restart, char *alias);
 
 /* */
 static int
@@ -186,7 +189,9 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->env_vars = NULL;
 	server->status = FORK_NONE;
 	server->is_virtual = is_virtual;
-
+  server->start_attempts = "3";
+  server->start_wait_time = "2";
+  
 	nservers = config->nservers + 1;
 	servers = config->servers;
 	config->servers = apr_pcalloc (pool, sizeof (xsp_data) * nservers);
@@ -1158,15 +1163,15 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
   if (apr_uid_current (&cur_uid, &cur_gid, pool) == APR_SUCCESS && cur_uid == 0) {
     DEBUG_PRINT (0, "switching forked process group to %u", (unsigned)unixd_config.group_id);
     if (setgid (unixd_config.group_id) == -1)
-      ap_log_error (APLOG_MARK, APLOG_ALERT, errno, STATUS_AND_SERVER,
-                    "setgid: unable to set group id to %u",
-                    (unsigned)unixd_config.group_id);
+      ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
+                    "setgid: unable to set group id to %u. %s",
+                    (unsigned)unixd_config.group_id, strerror (errno));
 
     DEBUG_PRINT (0, "switching forked process user to %s", unixd_config.user_name);
     if (setuid (unixd_config.user_id) == -1)
-      ap_log_error (APLOG_MARK, APLOG_ALERT, errno, STATUS_AND_SERVER,
-                    "setuid: unable to set user id to %u",
-                    (unsigned)unixd_config.user_id);
+      ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
+                    "setuid: unable to set user id to %u. %s",
+                    (unsigned)unixd_config.user_id, strerror (errno));
   }
 #endif
   
@@ -1491,7 +1496,11 @@ mono_execute_request (request_rec *r, char auto_app)
 	module_cfg *config;
 	per_dir_config *dir_config = NULL;
 	int idx;
-
+  xsp_data *conf;
+  int connect_attempts;
+  int start_wait_time;
+  char *socket_name = NULL;
+  
 	config = ap_get_module_config (r->server->module_config, &mono_module);
 	DEBUG_PRINT (2, "config = %d", (int) config);
 	if (r->per_dir_config != NULL)
@@ -1519,11 +1528,37 @@ mono_execute_request (request_rec *r, char auto_app)
 #ifdef APACHE13
 	sock = apr_pcalloc (r->pool, sizeof (apr_socket_t));
 #endif
-	rv = setup_socket (&sock, &config->servers [idx], r->pool);
-	DEBUG_PRINT (2, "After setup_socket");
-	if (rv != APR_SUCCESS)
-		return HTTP_SERVICE_UNAVAILABLE;
-
+  conf = &config->servers [idx];
+  if (conf->filename != NULL)
+    socket_name = conf->filename;
+  else
+    socket_name = get_default_socket_name (r->pool, conf->alias, SOCKET_FILE);
+  connect_attempts = atoi (conf->start_attempts);
+  start_wait_time = atoi (conf->start_wait_time);
+  if (connect_attempts < 0)
+    connect_attempts = 3;
+  if (start_wait_time < 2)
+    start_wait_time = 2;
+  
+  while (connect_attempts--) {
+    rv = setup_socket (&sock, conf, r->pool);
+    DEBUG_PRINT (2, "After setup_socket");
+    if (rv != APR_SUCCESS) {
+      if (rv != -1)
+        return HTTP_SERVICE_UNAVAILABLE;
+      DEBUG_PRINT (2, "No backend found, starting a new copy");
+      if (socket_name != NULL && unlink (socket_name) < 0 && errno != ENOENT)
+        ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
+                      "Could not remove stale socket %s. %s. Further requests will probably fail.",
+                      socket_name, strerror (errno));
+      start_xsp (config, 0, config->servers [idx].alias);
+      /* give some time for warm-up */
+      DEBUG_PRINT (2, "Started new backend, sleeping %us to let it configure", (unsigned)start_wait_time);
+      apr_sleep (apr_time_from_sec (start_wait_time));
+    } else
+      break; /* connected */
+  }
+  
 	DEBUG_PRINT (2, "Sending init data");
 	if (send_initial_data (r, sock, auto_app) != 0) {
 		int err = errno;
@@ -1919,6 +1954,14 @@ MAKE_CMD12 (MonoRunXSP, run_xsp,
 	"It can be False or True. If it is True, asks the module to "
 	"start mod-mono-server.exe if it's not already there. Default: True"
 	),
+
+MAKE_CMD12 (MonoXSPStartAttempts, start_attempts,
+            "Number of attempts to make when a backend is found to be dead. "
+            "Cannot be less than 0. Default: 3"),
+
+MAKE_CMD12 (MonoXSPStartWaitTime, start_wait_time,
+            "Number of seconds to wait for the backend to come up. Cannot be less "
+            "than 2. Default: 2"),
 
 MAKE_CMD12 (MonoExecutablePath, executable_path,
 	"(Obsolete) If MonoRunXSP is True, this is the full path where mono is located. "

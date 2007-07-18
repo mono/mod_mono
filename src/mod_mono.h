@@ -52,7 +52,6 @@
 #include "http_log.h"
 #include "http_config.h"
 
-
 #ifdef APACHE13
 /* Functions needed for making Apache 1.3 module as similar
 as possible to Apache 2 module, reducing ifdefs in the code itself*/

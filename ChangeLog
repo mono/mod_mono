@@ -1,11 +1,22 @@
-2007-07-18  Marek Habersack  <grendello@gmail.com>
+2007-07-19  Marek Habersack  <mhabersack@novell.com>
 
-	* src/mod_mono.c (mono_child_init): if APR has uid/gid support and
+	* src/mod_mono.c (mono_execute_request): added support for
+	restarting backends which disappeared.
+	(mono_cmds): defined two new configuration directives:
+	MonoXSPStartAttempts and MonoXSPStartWaitTime, used by code
+	introduced above.
+	
+	* man/mod_mono.8.in: added documentation for the two new
+	directives.
+
+2007-07-18  Marek Habersack  <mhabersack@novell.com>
+
+	* src/mod_mono.c: if APR has uid/gid support and
 	we're not compiling for WIN32, start the backends from the module
 	post config handler, it avoids launching of many backends on
 	startup.
 
-2007-07-14  Marek Habersack  <grendello@gmail.com>
+2007-07-14  Marek Habersack  <mhabersack@novell.com>
 
 	* src/mod_mono.c (do_command): added error logging
 	(write_data): as above
@@ -15,7 +26,7 @@
 	for non-zero status codes (the status code is ignored for Apache <
 	2.0).
 
-2007-06-20  Marek Habersack  <grendello@gmail.com>
+2007-06-20  Marek Habersack  <mhabersack@novell.com>
 
 	* src/mod_mono.c (send_initial_data): added support for
 	ServerAlias directive. Patch from Juraj Skripsky
