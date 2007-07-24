@@ -1,3 +1,7 @@
+2007-07-24  Wade Berrier  <wberrier@novell.com>
+
+	* configure.in: Version bump -> 1.2.5
+
 2007-07-14  Marek Habersack  <grendello@gmail.com>
 
 	* src/mod_mono.c (do_command): added error logging
