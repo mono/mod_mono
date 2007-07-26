@@ -1,3 +1,15 @@
+2007-07-26  Marek Habersack  <mhabersack@novell.com>
+
+	* man/mod_mono.8.in: added documentation for the new directives
+
+	* src/mod_mono.c: implemented backend auto-restart feature, along
+	with corresponding configuration directives, cross-process (or
+	cross-thread) locking. The housekeeping data is kept in a
+	per-backend shared memory segment (a dashboard) and is protected
+	with a mutex. The backends can be auto-restarted based on the
+	number of requests served, or their uptime.
+	Removed some debug statements.
+
 2007-07-19  Marek Habersack  <mhabersack@novell.com>
 
 	* src/mod_mono.c (mono_execute_request): added support for

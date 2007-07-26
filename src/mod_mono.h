@@ -168,6 +168,15 @@ extern time_t ap_restart_time;
 #define APPCONFIG_DIR		NULL
 #define SOCKET_FILE		"/tmp/mod_mono_server"
 #define LISTEN_ADDRESS		"127.0.0.1"
+#define DASHBOARD_FILE "/tmp/mod_mono_dashboard"
+
+#ifndef DEFAULT_RESTART_REQUESTS
+#define DEFAULT_RESTART_REQUESTS 10000
+#endif
+
+#ifndef DEFAULT_RESTART_TIME
+#define DEFAULT_RESTART_TIME 43200
+#endif
 
 /* Converts every int sent into little endian */
 #ifdef MODMONO_BIGENDIAN

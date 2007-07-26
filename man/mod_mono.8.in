@@ -1,15 +1,16 @@
 .\" 
 .\" mod_mono manual page.
-.\" (C) 2004,2005 Novell, Inc. 
+.\" (C) 2004,2007 Novell, Inc. 
 .\" Author:
 .\"   Gonzalo Paniagua Javier (gonzalo@ximian.com)
+.\"   Marek Habersack (mhabersack@novell.com)
 .\"
 .de Sp \" Vertical space (when we can't use .PP)
 .if t .sp .5v
 .if n .sp
 ..
 
-.TH mod_mono "8" "9 Feb 2005" "mod_mono @VERSION@" "ASP.NET Support for Apache"
+.TH mod_mono "8" "26 Jul 2007" "mod_mono @VERSION@" "ASP.NET Support for Apache"
 .SH NAME
 mod_mono \- apache module that enables ASP.NET pages. Works together with mod-mono-server.exe
 .SH DESCRIPTION
@@ -66,6 +67,25 @@ Number of seconds to wait after starting the backend. This is to let
 the backend initialize properly before attempting to connect to
 it. Value cannot be lower than 2.
 Default value: 2
+.TP
+.I "MonoAutoRestartMode"
+Set the auto-restart mode for the backend(s). Three modes are available:
+None - do not auto-restart, Requests - restart after a configured number of 
+requests served, Time - restart after the backend has been up for the specified
+period of time. 
+Note that if you enable auto-restart you should consider using
+off-process state server, since on every restart your application
+state will be lost.
+Default value: None
+.TP
+.I "MonoAutoRestartRequests"
+Number of requests for a backend to serve before auto-restarting. The value here 
+is taken into account only when MonoAutoRestartMode is set to Requests.
+Default value: 10000
+.TP
+.I "MonoAutoRestartTime"
+Time after which the backend should be auto-restarted. The time format is:
+DD[:HH[:MM[:SS]]]. Default value: 00:12:00:00
 .TP
 .I "MonoExecutablePath (Obsoleted, ignored)"
 Don't use this. It is ignored and has been left here for compatibility purposes.
@@ -221,12 +241,12 @@ use separate validation techniques.
 .PP
 httpd.conf
 .SH AUTHORS
-mod_mono was started by Daniel Ridruejo (daniel rawbyte com). Currently, Gonzalo
-Paniagua Javier (gonzalo ximian.com) is the maintainer.
+mod_mono was started by Daniel Ridruejo (daniel rawbyte
+com). Currently, Marek Habersack (mhabersack@novell.com) is the maintainer.
 .SH MAILING LISTS
 See http://mail.ximian.com/mailman/mono-list for details.
 .SH WEB SITE
-Visit http://www.go-mono.com for details.
+Visit http://www.mono-project.com/ for details.
 .SH SEE ALSO
 .BR xsp (1), mod-mono-server (1), mono (1), mcs (1)
 
