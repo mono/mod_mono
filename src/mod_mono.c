@@ -91,8 +91,8 @@ typedef struct xsp_data {
 	char status; /* One of the FORK_* in the enum above.
 		      * Don't care if run_xsp is "false" */
 	char is_virtual; /* is the server virtual? */
-  char *start_attempts;
-  char *start_wait_time;
+	char *start_attempts;
+	char *start_wait_time;
 
 	/* auto-restart stuff */
 	auto_restart_mode restart_mode;
@@ -397,8 +397,8 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->env_vars = NULL;
 	server->status = FORK_NONE;
 	server->is_virtual = is_virtual;
-  server->start_attempts = "3";
-  server->start_wait_time = "2";
+	server->start_attempts = "3";
+	server->start_wait_time = "2";
 
 	apr_snprintf (num, sizeof (num), "%u", (unsigned)config->nservers + 1);
 	server->dashboard_file = apr_pstrcat (pool,
@@ -670,9 +670,9 @@ connection_get_remote_name (request_rec *r)
  connection_flush (request_rec *r)
  {
  #ifdef APACHE13
-	ap_rflush (r);
+ ap_rflush (r);
  #else
-	ap_flush_conn (r->connection);
+ ap_flush_conn (r->connection);
  #endif
  }
 */
@@ -702,12 +702,12 @@ static int
 write_data (apr_socket_t *sock, const void *str, apr_size_t size)
 {
 	apr_size_t prevsize = size;
-  apr_status_t statcode;
+	apr_status_t statcode;
   
 	if ((statcode = apr_socket_send (sock, str, &size)) != APR_SUCCESS) {
-    ap_log_error (APLOG_MARK, APLOG_ERR, STATCODE_AND_SERVER (statcode), "write_data failed");
+		ap_log_error (APLOG_MARK, APLOG_ERR, STATCODE_AND_SERVER (statcode), "write_data failed");
 		return -1;
-  }
+	}
   
 	return (prevsize == size) ? size : -1;
 }
@@ -715,12 +715,12 @@ write_data (apr_socket_t *sock, const void *str, apr_size_t size)
 static int
 read_data (apr_socket_t *sock, void *ptr, apr_size_t size)
 {
-  apr_status_t statcode;
+	apr_status_t statcode;
   
 	if ((statcode = apr_socket_recv (sock, ptr, &size)) != APR_SUCCESS) {
-    ap_log_error (APLOG_MARK, APLOG_ERR, STATCODE_AND_SERVER (statcode), "read_data failed");
+		ap_log_error (APLOG_MARK, APLOG_ERR, STATCODE_AND_SERVER (statcode), "read_data failed");
 		return -1;
-  }
+	}
   
 	return size;
 }
@@ -824,9 +824,9 @@ send_response_headers (request_rec *r, apr_socket_t *sock)
 	char *value;
 
 	if (read_data_string (r->pool, sock, &str, &size) == NULL) {
-    ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER, "failed to read data string");
+		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER, "failed to read data string");
 		return -1;
-  }
+	}
   
 	DEBUG_PRINT (2, "Headers length: %d", size);
 	pos = 0;
@@ -899,11 +899,11 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 	uint32_t actual_size;
 	int status = 0;
 	apr_pool_t *temp_pool;
-  char *error_message = NULL;
+	char *error_message = NULL;
 
 	if (command < 0 || command >= LAST_COMMAND) {
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-				"Unknown command: %d", command);
+			      "Unknown command: %d", command);
 		*result = HTTP_INTERNAL_SERVER_ERROR;
 		return FALSE;
 	}
@@ -911,143 +911,143 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 	DEBUG_PRINT (2, "Command received: %s", cmdNames [command]);
 	*result = OK;
 	switch (command) {
-	case SEND_FROM_MEMORY:
-		apr_pool_create (&temp_pool, r->pool);
-		if (read_data_string (temp_pool, sock, &str, &size) == NULL) {
-      error_message = "failed to read data for SEND_FROM_MEMORY command";
-			status = -1;
+		case SEND_FROM_MEMORY:
+			apr_pool_create (&temp_pool, r->pool);
+			if (read_data_string (temp_pool, sock, &str, &size) == NULL) {
+				error_message = "failed to read data for SEND_FROM_MEMORY command";
+				status = -1;
+				apr_pool_destroy (temp_pool);
+				break;
+			}
+			request_send_response_from_memory (r, str, size);
 			apr_pool_destroy (temp_pool);
 			break;
-		}
-		request_send_response_from_memory (r, str, size);
-		apr_pool_destroy (temp_pool);
-		break;
-	case GET_SERVER_VARIABLES:
-		ap_add_cgi_vars (r);
-		ap_add_common_vars (r);
-		remove_http_vars (r->subprocess_env);
-		cstr = apr_table_get (r->subprocess_env, "HTTPS");
-		if (cstr != NULL && !strcmp (cstr, "on"))
-			apr_table_add (r->subprocess_env, "SERVER_PORT_SECURE", "True");
-		if (!send_table (r->pool, r->subprocess_env, sock)) {
-      error_message = "failed to send server variables";
-      status = -1;
-    } else
-      status = 0;
-		break;
-	case SET_RESPONSE_HEADERS:
-		status = send_response_headers (r, sock);
-    if (status < 0)
-      error_message = "failed to send response headers";
-		break;
-	case GET_LOCAL_PORT:
-		i = connection_get_local_port (r);
-		i = LE_FROM_INT (i);
-		status = write_data (sock, &i, sizeof (int32_t));
-    if (status < 0)
-      error_message = "failed to get local port";
-		break;
-	case CLOSE:
-		return FALSE;
-		break;
-	case SHOULD_CLIENT_BLOCK:
-		size = ap_should_client_block (r);
-		size = LE_FROM_INT (size);
-		status = write_data (sock, &size, sizeof (int32_t));
-    if (status < 0)
-      error_message = "failed to send the 'should block' flag";
-		break;
-	case SETUP_CLIENT_BLOCK:
-		if (setup_client_block (r) != APR_SUCCESS) {
-			size = LE_FROM_INT (-1);
+		case GET_SERVER_VARIABLES:
+			ap_add_cgi_vars (r);
+			ap_add_common_vars (r);
+			remove_http_vars (r->subprocess_env);
+			cstr = apr_table_get (r->subprocess_env, "HTTPS");
+			if (cstr != NULL && !strcmp (cstr, "on"))
+				apr_table_add (r->subprocess_env, "SERVER_PORT_SECURE", "True");
+			if (!send_table (r->pool, r->subprocess_env, sock)) {
+				error_message = "failed to send server variables";
+				status = -1;
+			} else
+				status = 0;
+			break;
+		case SET_RESPONSE_HEADERS:
+			status = send_response_headers (r, sock);
+			if (status < 0)
+				error_message = "failed to send response headers";
+			break;
+		case GET_LOCAL_PORT:
+			i = connection_get_local_port (r);
+			i = LE_FROM_INT (i);
+			status = write_data (sock, &i, sizeof (int32_t));
+			if (status < 0)
+				error_message = "failed to get local port";
+			break;
+		case CLOSE:
+			return FALSE;
+			break;
+		case SHOULD_CLIENT_BLOCK:
+			size = ap_should_client_block (r);
+			size = LE_FROM_INT (size);
 			status = write_data (sock, &size, sizeof (int32_t));
-      if (status < 0)
-        error_message = "failed to setup client block (data size)";
+			if (status < 0)
+				error_message = "failed to send the 'should block' flag";
 			break;
-		}
+		case SETUP_CLIENT_BLOCK:
+			if (setup_client_block (r) != APR_SUCCESS) {
+				size = LE_FROM_INT (-1);
+				status = write_data (sock, &size, sizeof (int32_t));
+				if (status < 0)
+					error_message = "failed to setup client block (data size)";
+				break;
+			}
 
-		size = LE_FROM_INT (0);
-		status = write_data (sock, &size, sizeof (int32_t));
-    if (status < 0)
-      error_message = "failed to setup client block (data)";
-		break;
-	case GET_CLIENT_BLOCK:
-		status = read_data (sock, &i, sizeof (int32_t));
-		if (status == -1)
+			size = LE_FROM_INT (0);
+			status = write_data (sock, &size, sizeof (int32_t));
+			if (status < 0)
+				error_message = "failed to setup client block (data)";
 			break;
+		case GET_CLIENT_BLOCK:
+			status = read_data (sock, &i, sizeof (int32_t));
+			if (status == -1)
+				break;
 
-		i = INT_FROM_LE (i);
-		if (i < 0) {
-			DEBUG_PRINT (2, "xsp sent us size == %d: not processing", i);
-			abort();
-		}
-		str = get_client_block_buffer (r, (uint32_t) i, &actual_size);
-		i = ap_get_client_block (r, str, actual_size);
-		i = LE_FROM_INT (i);
-		status = write_data (sock, &i, sizeof (int32_t));
-    if (status < 0)
-      error_message = "failed to get client block (data size)";
-		i = INT_FROM_LE (i);
-		if (i == -1)
+			i = INT_FROM_LE (i);
+			if (i < 0) {
+				DEBUG_PRINT (2, "xsp sent us size == %d: not processing", i);
+				abort();
+			}
+			str = get_client_block_buffer (r, (uint32_t) i, &actual_size);
+			i = ap_get_client_block (r, str, actual_size);
+			i = LE_FROM_INT (i);
+			status = write_data (sock, &i, sizeof (int32_t));
+			if (status < 0)
+				error_message = "failed to get client block (data size)";
+			i = INT_FROM_LE (i);
+			if (i == -1)
+				break;
+			status = write_data (sock, str, i);
+			if (status < 0)
+				error_message = "failed to get client block (data)";
 			break;
-		status = write_data (sock, str, i);
-    if (status < 0)
-      error_message = "failed to get client block (data)";
-		break;
-	case SET_STATUS:
-		status = read_data (sock, &i, sizeof (int32_t));
-		if (status == -1) {
-      error_message = "failed to set status (data size)";
-			break;
-    }
+		case SET_STATUS:
+			status = read_data (sock, &i, sizeof (int32_t));
+			if (status == -1) {
+				error_message = "failed to set status (data size)";
+				break;
+			}
     
-		if (read_data_string (r->pool, sock, &str, NULL) == NULL) {
-      error_message = "failed to set status (data)";
+			if (read_data_string (r->pool, sock, &str, NULL) == NULL) {
+				error_message = "failed to set status (data)";
+				status = -1;
+				break;
+			}
+			r->status = INT_FROM_LE (i);
+			r->status_line = str;
+			break;
+		case DECLINE_REQUEST:
+			*result = DECLINED;
+			return FALSE;
+		case IS_CONNECTED:
+			*result = (r->connection->aborted ? 0 : 1);
+			status = write_data (sock, result, sizeof (int32_t));
+			if (status < 0)
+				error_message = "failed to check if the backend is connected";
+			break;
+		case MYNOT_FOUND:
+			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+				      "No application found for %s", r->uri);
+
+			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+				      "Host header was %s",
+				      apr_table_get (r->headers_in, "host"));
+
+			*result = HTTP_NOT_FOUND;
+			return FALSE;
+		case SEND_FILE:
+			if (read_data_string (r->pool, sock, &str, NULL) == NULL) {
+				error_message = "failed to send file (file name)";
+				status = -1;
+				break;
+			}
+			status = send_entire_file (r, str, result);
+			if (status == -1)
+				error_message = "failed to send file (file data)";
+			break;
+		default:
+			error_message = "unknown command";
 			status = -1;
 			break;
-		}
-		r->status = INT_FROM_LE (i);
-		r->status_line = str;
-		break;
-	case DECLINE_REQUEST:
-		*result = DECLINED;
-		return FALSE;
-	case IS_CONNECTED:
-		*result = (r->connection->aborted ? 0 : 1);
-		status = write_data (sock, result, sizeof (int32_t));
-    if (status < 0)
-      error_message = "failed to check if the backend is connected";
-		break;
-	case MYNOT_FOUND:
-		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-				"No application found for %s", r->uri);
-
-		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-				"Host header was %s",
-				apr_table_get (r->headers_in, "host"));
-
-		*result = HTTP_NOT_FOUND;
-		return FALSE;
-	case SEND_FILE:
-		if (read_data_string (r->pool, sock, &str, NULL) == NULL) {
-      error_message = "failed to send file (file name)";
-			status = -1;
-			break;
-		}
-		status = send_entire_file (r, str, result);
-		if (status == -1)
-      error_message = "failed to send file (file data)";
-		break;
-	default:
-    error_message = "unknown command";
-    status = -1;
-    break;
 	}
 
 	if (status == -1) {
-    ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-                  "command failed: %s",
-                  error_message ? error_message : "unknown error");
+		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+			      "command failed: %s",
+			      error_message ? error_message : "unknown error");
 		*result = HTTP_INTERNAL_SERVER_ERROR;
 		return FALSE;
 	}
@@ -1058,7 +1058,7 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result)
 #ifndef APACHE2
 static apr_status_t
 apr_sockaddr_info_get (apr_sockaddr_t **sa, const char *hostname,
-			int family, int port, int flags, apr_pool_t *p)
+		       int family, int port, int flags, apr_pool_t *p)
 {
 	struct addrinfo hints, *list;
 	int error;
@@ -1073,8 +1073,8 @@ apr_sockaddr_info_get (apr_sockaddr_t **sa, const char *hostname,
 	error = getaddrinfo (hostname, NULL, &hints, &list);
 	if (error != 0) {
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-			"mod_mono: getaddrinfo failed (%s) hostname: '%s' port: '%d'.",
-			strerror (error), hostname, port);
+			      "mod_mono: getaddrinfo failed (%s) hostname: '%s' port: '%d'.",
+			      strerror (error), hostname, port);
 
 		return error;
 	}
@@ -1189,7 +1189,7 @@ try_connect (xsp_data *conf, apr_socket_t **sock, apr_pool_t *pool)
 
 		la = conf->listen_address ? conf->listen_address : LISTEN_ADDRESS;
 		rv = apr_sockaddr_info_get (&sa, la, APR_INET,
-					atoi (conf->listen_port), 0, pool);
+					    atoi (conf->listen_port), 0, pool);
 
 		if (rv != APR_SUCCESS) {
 			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
@@ -1206,36 +1206,36 @@ try_connect (xsp_data *conf, apr_socket_t **sock, apr_pool_t *pool)
 
 	err = errno;
 	switch (err) {
-	case ENOENT:
-	case ECONNREFUSED:
-		return -1; /* Can try to launch mod-mono-server */
-	case EPERM:
-		error = strerror (err);
-		if (conf->listen_port == NULL)
-			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-				      "mod_mono: file %s exists, but wrong permissions.", fn);
-		else
-			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-				      "mod_mono: no permission to listen on %s.",
-				      conf->listen_port);
+		case ENOENT:
+		case ECONNREFUSED:
+			return -1; /* Can try to launch mod-mono-server */
+		case EPERM:
+			error = strerror (err);
+			if (conf->listen_port == NULL)
+				ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+					      "mod_mono: file %s exists, but wrong permissions.", fn);
+			else
+				ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+					      "mod_mono: no permission to listen on %s.",
+					      conf->listen_port);
 
 
-		apr_socket_close (*sock);
-		return -2; /* Unrecoverable */
-	default:
-		error = strerror (err);
-		if (conf->listen_port == NULL)
-			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-				      "mod_mono: connect error (%s). File: %s",
-				      error, fn);
-		else
-			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-				      "mod_mono: connect error (%s). Address: %s Port: %s",
-				      error, la, conf->listen_port);
+			apr_socket_close (*sock);
+			return -2; /* Unrecoverable */
+		default:
+			error = strerror (err);
+			if (conf->listen_port == NULL)
+				ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+					      "mod_mono: connect error (%s). File: %s",
+					      error, fn);
+			else
+				ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+					      "mod_mono: connect error (%s). Address: %s Port: %s",
+					      error, la, conf->listen_port);
 
 
-		apr_socket_close (*sock);
-		return -2; /* Unrecoverable */
+			apr_socket_close (*sock);
+			return -2; /* Unrecoverable */
 	}
 }
 
@@ -1344,15 +1344,15 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	int status;
 	char is_master;
 #ifdef APR_HAS_USER
-  apr_uid_t cur_uid;
-  apr_gid_t cur_gid;
+	apr_uid_t cur_uid;
+	apr_gid_t cur_gid;
 #endif
   
 	/* Running mod-mono-server not requested */
 	if (!strcasecmp (config->run_xsp, "false")) {
 		DEBUG_PRINT (1, "Not running mod-mono-server: %s", config->run_xsp);
 		ap_log_error (APLOG_MARK, APLOG_DEBUG, STATUS_AND_SERVER,
-				"Not running mod-mono-server.exe");
+			      "Not running mod-mono-server.exe");
 		return;
 	}
 
@@ -1366,11 +1366,11 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	DEBUG_PRINT (1, "Config file: %s", config->appconfig_file);
 	DEBUG_PRINT (1, "Config dir.: %s", config->appconfig_dir);
 	if (!is_master && config->applications == NULL && config->appconfig_file == NULL &&
-		config->appconfig_dir == NULL) {
+	    config->appconfig_dir == NULL) {
 		ap_log_error (APLOG_MARK, APLOG_ERR,
-				STATUS_AND_SERVER,
-				"Not running mod-mono-server.exe because no MonoApplications, "
-				"MonoApplicationsConfigFile or MonoApplicationConfigDir specified.");
+			      STATUS_AND_SERVER,
+			      "Not running mod-mono-server.exe because no MonoApplications, "
+			      "MonoApplicationsConfigFile or MonoApplicationConfigDir specified.");
 		return;
 	}
 
@@ -1378,8 +1378,8 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	DEBUG_PRINT (1, "Listen port: %s", config->listen_port);
 	if (config->listen_port != NULL && config->filename != NULL) {
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-				"Not running mod-mono-server.exe because both MonoUnixSocket and "
-				"MonoListenPort specified.");
+			      "Not running mod-mono-server.exe because both MonoUnixSocket and "
+			      "MonoListenPort specified.");
 		return;
 	}
 
@@ -1387,8 +1387,8 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	DEBUG_PRINT (1, "Listen address: %s", config->listen_address);
 	if (config->listen_port == NULL && config->listen_address != NULL) {
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-			"Not running mod-mono-server.exe because MonoListenAddress "
-			"is present and there is no MonoListenPort.");
+			      "Not running mod-mono-server.exe because MonoListenAddress "
+			      "is present and there is no MonoListenPort.");
 		return;
 	}
 
@@ -1415,23 +1415,23 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	chdir ("/");
 
 #if defined (APR_HAS_USER) && !defined (WIN32)
-  /*
-   * Make sure the backend runs with proper uid/gid if we're forking
-   * from the module postconfig handler.
-   */
-  if (apr_uid_current (&cur_uid, &cur_gid, pool) == APR_SUCCESS && cur_uid == 0) {
+	/*
+	 * Make sure the backend runs with proper uid/gid if we're forking
+	 * from the module postconfig handler.
+	 */
+	if (apr_uid_current (&cur_uid, &cur_gid, pool) == APR_SUCCESS && cur_uid == 0) {
 		DEBUG_PRINT (2, "switching forked process group to %u", (unsigned)unixd_config.group_id);
-    if (setgid (unixd_config.group_id) == -1)
-      ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
-                    "setgid: unable to set group id to %u. %s",
-                    (unsigned)unixd_config.group_id, strerror (errno));
+		if (setgid (unixd_config.group_id) == -1)
+			ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
+				      "setgid: unable to set group id to %u. %s",
+				      (unsigned)unixd_config.group_id, strerror (errno));
 
 		DEBUG_PRINT (2, "switching forked process user to %s", unixd_config.user_name);
-    if (setuid (unixd_config.user_id) == -1)
-      ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
-                    "setuid: unable to set user id to %u. %s",
-                    (unsigned)unixd_config.user_id, strerror (errno));
-  }
+		if (setuid (unixd_config.user_id) == -1)
+			ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
+				      "setuid: unable to set user id to %u. %s",
+				      (unsigned)unixd_config.user_id, strerror (errno));
+	}
 #endif
   
 	if (config->umask_value == NULL)
@@ -1473,7 +1473,7 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	mkdir (wapidir, 0700);
 	if (chmod (wapidir, 0700) != 0 && (errno == EPERM || errno == EACCES)) {
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-				"%s: %s", wapidir, strerror (errno));
+			      "%s: %s", wapidir, strerror (errno));
 		exit (1);
 	}
 
@@ -1528,27 +1528,27 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	if (is_master)
 		argv [argi++] = "--master";
 	/*
-	* The last element in the argv array must always be NULL
-	* to terminate the array for execv().
-	*
-	* Any new argi++'s that are added here must also increase
-	* the maxargs argument at the top of this method to prevent
-	* array out-of-bounds. 
-	*/
+	 * The last element in the argv array must always be NULL
+	 * to terminate the array for execv().
+	 *
+	 * Any new argi++'s that are added here must also increase
+	 * the maxargs argument at the top of this method to prevent
+	 * array out-of-bounds. 
+	 */
 
 	ap_log_error (APLOG_MARK, APLOG_DEBUG, STATUS_AND_SERVER,
-			"running '%s %s %s %s %s %s %s %s %s %s %s %s %s'",
-			argv [0], argv [1], argv [2], argv [3], argv [4],
-			argv [5], argv [6], argv [7], argv [8], 
-			argv [9], argv [10], argv [11], argv [12]);
+		      "running '%s %s %s %s %s %s %s %s %s %s %s %s %s'",
+		      argv [0], argv [1], argv [2], argv [3], argv [4],
+		      argv [5], argv [6], argv [7], argv [8], 
+		      argv [9], argv [10], argv [11], argv [12]);
 
 	execv (argv [0], argv);
 	ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-			"Failed running '%s %s %s %s %s %s %s %s %s %s %s %s %s'. Reason: %s",
-			argv [0], argv [1], argv [2], argv [3], argv [4],
-			argv [5], argv [6], argv [7], argv [8],
-			argv [9], argv [10], argv [11], argv [12],
-			strerror (errno));
+		      "Failed running '%s %s %s %s %s %s %s %s %s %s %s %s %s'. Reason: %s",
+		      argv [0], argv [1], argv [2], argv [3], argv [4],
+		      argv [5], argv [6], argv [7], argv [8],
+		      argv [9], argv [10], argv [11], argv [12],
+		      strerror (errno));
 	exit (1);
 }
 
@@ -1687,10 +1687,10 @@ send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 	DEBUG_PRINT (2, "Send init1");
 	size = 1;
 	size += ((r->method != NULL) ? strlen (r->method) : 0) + sizeof (int32_t);
-  if (s != NULL)
-    size += ((s->is_virtual && s->server_hostname != NULL) ? strlen (s->server_hostname) : 0) + sizeof (int32_t);
-  else
-    size += sizeof (int32_t);
+	if (s != NULL)
+		size += ((s->is_virtual && s->server_hostname != NULL) ? strlen (s->server_hostname) : 0) + sizeof (int32_t);
+	else
+		size += sizeof (int32_t);
 	size += ((r->uri != NULL) ? strlen (r->uri) : 0) + sizeof (int32_t);
 	size += ((r->args != NULL) ? strlen (r->args) : 0) + sizeof (int32_t);
 	size += ((r->protocol != NULL) ? strlen (r->protocol) : 0) + sizeof (int32_t);
@@ -1712,10 +1712,10 @@ send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 	ptr = str = apr_pcalloc (r->pool, size);
 	*ptr++ = 7; /* version. Keep in sync with ModMonoRequest. */
 	ptr += write_string_to_buffer (ptr, 0, r->method);
-  if (s != NULL)
-    ptr += write_string_to_buffer (ptr, 0, (s->is_virtual ? s->server_hostname : NULL));
-  else
-    ptr += write_string_to_buffer (ptr, 0, NULL);
+	if (s != NULL)
+		ptr += write_string_to_buffer (ptr, 0, (s->is_virtual ? s->server_hostname : NULL));
+	else
+		ptr += write_string_to_buffer (ptr, 0, NULL);
 	ptr += write_string_to_buffer (ptr, 0, r->uri);
 	ptr += write_string_to_buffer (ptr, 0, r->args);
 	ptr += write_string_to_buffer (ptr, 0, r->protocol);
@@ -1754,10 +1754,10 @@ mono_execute_request (request_rec *r, char auto_app)
 	module_cfg *config;
 	per_dir_config *dir_config = NULL;
 	int idx;
-  xsp_data *conf;
-  int connect_attempts;
-  int start_wait_time;
-  char *socket_name = NULL;
+	xsp_data *conf;
+	int connect_attempts;
+	int start_wait_time;
+	char *socket_name = NULL;
   
 	config = ap_get_module_config (r->server->module_config, &mono_module);
 	DEBUG_PRINT (2, "config = 0x%lx", (uint64_t) config);
@@ -1786,26 +1786,26 @@ mono_execute_request (request_rec *r, char auto_app)
 #ifdef APACHE13
 	sock = apr_pcalloc (r->pool, sizeof (apr_socket_t));
 #endif
-  conf = &config->servers [idx];
+	conf = &config->servers [idx];
 	
-  if (conf->filename != NULL)
-    socket_name = conf->filename;
-  else
-    socket_name = get_default_socket_name (r->pool, conf->alias, SOCKET_FILE);
+	if (conf->filename != NULL)
+		socket_name = conf->filename;
+	else
+		socket_name = get_default_socket_name (r->pool, conf->alias, SOCKET_FILE);
 	
-  connect_attempts = atoi (conf->start_attempts);
-  start_wait_time = atoi (conf->start_wait_time);
-  if (connect_attempts < 0)
-    connect_attempts = 3;
-  if (start_wait_time < 2)
-    start_wait_time = 2;
+	connect_attempts = atoi (conf->start_attempts);
+	start_wait_time = atoi (conf->start_wait_time);
+	if (connect_attempts < 0)
+		connect_attempts = 3;
+	if (start_wait_time < 2)
+		start_wait_time = 2;
   
-  while (connect_attempts--) {
-    rv = setup_socket (&sock, conf, r->pool);
-    DEBUG_PRINT (2, "After setup_socket");
-    if (rv != APR_SUCCESS) {
-      if (rv != -1)
-        return HTTP_SERVICE_UNAVAILABLE;
+	while (connect_attempts--) {
+		rv = setup_socket (&sock, conf, r->pool);
+		DEBUG_PRINT (2, "After setup_socket");
+		if (rv != APR_SUCCESS) {
+			if (rv != -1)
+				return HTTP_SERVICE_UNAVAILABLE;
 			DEBUG_PRINT (2, "No backend found, will start a new copy.");
 
 			rv = apr_global_mutex_lock (conf->dashboard_mutex);
@@ -1818,22 +1818,22 @@ mono_execute_request (request_rec *r, char auto_app)
 				return HTTP_SERVICE_UNAVAILABLE;
 			}
       
-      if (socket_name != NULL && unlink (socket_name) < 0 && errno != ENOENT)
-        ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
-                      "Could not remove stale socket %s. %s. Further requests will probably fail.",
-                      socket_name, strerror (errno));
+			if (socket_name != NULL && unlink (socket_name) < 0 && errno != ENOENT)
+				ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
+					      "Could not remove stale socket %s. %s. Further requests will probably fail.",
+					      socket_name, strerror (errno));
 			start_xsp (config, 0, conf->alias);
-      /* give some time for warm-up */
-      DEBUG_PRINT (2, "Started new backend, sleeping %us to let it configure", (unsigned)start_wait_time);
-      apr_sleep (apr_time_from_sec (start_wait_time));
+			/* give some time for warm-up */
+			DEBUG_PRINT (2, "Started new backend, sleeping %us to let it configure", (unsigned)start_wait_time);
+			apr_sleep (apr_time_from_sec (start_wait_time));
 			rv = apr_global_mutex_unlock (conf->dashboard_mutex);
 			if (rv != APR_SUCCESS)
 				ap_log_error (APLOG_MARK, APLOG_ALERT, STATCODE_AND_SERVER (rv),
 					      "Failed to release %s lock, the process may deadlock!",
 					      conf->dashboard_lock_file);
-    } else
-      break; /* connected */
-  }
+		} else
+			break; /* connected */
+	}
   
 	DEBUG_PRINT (2, "Sending init data");
 	if (send_initial_data (r, sock, auto_app) != 0) {
@@ -1922,40 +1922,40 @@ mono_execute_request (request_rec *r, char auto_app)
   static int
   check_file_extension (char *filename)
   {
-	int len;
-	char *ext;
-	const char **extensions;
+  int len;
+  char *ext;
+  const char **extensions;
 
-	if (filename == NULL)
-		return FALSE;
+  if (filename == NULL)
+  return FALSE;
 
-	len = strlen (filename);
-	if (len <= 4)
-		return FALSE;
+  len = strlen (filename);
+  if (len <= 4)
+  return FALSE;
 
-	ext = strrchr (filename, '.');
-	if (ext == NULL)
-		return FALSE;
+  ext = strrchr (filename, '.');
+  if (ext == NULL)
+  return FALSE;
 
-	switch (filename - ext + len - 1) {
-	case 3:
-		* Check for xxx/Trace.axd *
-		if (len >=10 && !strcmp ("axd", ext + 1))
-			return !strncmp ("/Trace", ext - 6, 6);
-		return !strcmp ("rem", ext + 1);
-	case 4:
-		extensions = (const char **) known_extensions4;
-		while (*extensions != NULL) {
-			if (!strcmp (*extensions, ext + 1))
-				return TRUE;
-			extensions++;
-		}
-		break;
-	case 5:
-		return !strcmp ("config", ext + 1);
-	}
+  switch (filename - ext + len - 1) {
+  case 3:
+  * Check for xxx/Trace.axd *
+  if (len >=10 && !strcmp ("axd", ext + 1))
+  return !strncmp ("/Trace", ext - 6, 6);
+  return !strcmp ("rem", ext + 1);
+  case 4:
+  extensions = (const char **) known_extensions4;
+  while (*extensions != NULL) {
+  if (!strcmp (*extensions, ext + 1))
+  return TRUE;
+  extensions++;
+  }
+  break;
+  case 5:
+  return !strcmp ("config", ext + 1);
+  }
 
-	return FALSE;
+  return FALSE;
   }
 */
 
@@ -1981,8 +1981,8 @@ mono_handler (request_rec *r)
 		return DECLINED;
 
 	/*
-	if (FALSE == check_file_extension (r->filename))
-		return DECLINED;
+	  if (FALSE == check_file_extension (r->filename))
+	  return DECLINED;
 	*/
 
 	/* Handle on-demand created applications */
@@ -2054,7 +2054,7 @@ start_xsp (module_cfg *config, int is_restart, char *alias)
 		if (xsp->dashboard) {
 			xsp->dashboard->start_time = time (NULL);
 			xsp->dashboard->handled_requests = 0;
-	}
+		}
 	}
 }
 
@@ -2164,7 +2164,7 @@ mono_control_panel_handler (request_rec *r)
 				continue;
 
 			buffer = apr_psprintf (r->pool, "<li>%s: <a href=\"?restart=%s\">"
-							"Restart Server</a></li>\n", xsp->alias, xsp->alias);
+					       "Restart Server</a></li>\n", xsp->alias, xsp->alias);
 			request_send_response_string(r, buffer);
 		}
 		
@@ -2216,14 +2216,14 @@ mono_init_handler (server_rec *s, pool *p)
 #else
 static int
 mono_init_handler (apr_pool_t *p,
-		      apr_pool_t *plog,
-		      apr_pool_t *ptemp,
-		      server_rec *s)
+		   apr_pool_t *plog,
+		   apr_pool_t *ptemp,
+		   server_rec *s)
 {
 	void *data;
 	const char *userdata_key = "mono_module_init";
 #if defined (APR_HAS_USER) && !defined (WIN32)
-  module_cfg *config;
+	module_cfg *config;
 #endif
   
 	/*
@@ -2234,7 +2234,7 @@ mono_init_handler (apr_pool_t *p,
 	apr_pool_userdata_get (&data, userdata_key, s->process->pool);
 	if (!data) {
 		apr_pool_userdata_set ((const void *) 1, userdata_key,
-					apr_pool_cleanup_null, s->process->pool);
+				       apr_pool_cleanup_null, s->process->pool);
 		return OK;
 	}
 
@@ -2244,7 +2244,7 @@ mono_init_handler (apr_pool_t *p,
 	apr_pool_cleanup_register (pconf, s, terminate_xsp, apr_pool_cleanup_null);
 
 #if defined (APR_HAS_USER) && !defined (WIN32)
-  config = ap_get_module_config (s->module_config, &mono_module);
+	config = ap_get_module_config (s->module_config, &mono_module);
 	start_xsp (config, 0, NULL);
 #endif
   
@@ -2262,10 +2262,10 @@ mono_child_init (
 #endif
 )
 {
-  module_cfg *config;
+	module_cfg *config;
 	
 	DEBUG_PRINT (0, "Mono Child Init");
-  config = ap_get_module_config (s->module_config, &mono_module);
+	config = ap_get_module_config (s->module_config, &mono_module);
 	start_xsp (config, 0, NULL);
 }
 #endif
@@ -2292,141 +2292,141 @@ mono_register_hooks (apr_pool_t * p)
 
 static const command_rec mono_cmds [] = {
 	MAKE_CMD12 (MonoUnixUmask, umask_value,
-  "Value of the file mode creation mask (see umask(2))"
-  "Default: 0077"
-  ),
+		    "Value of the file mode creation mask (see umask(2))"
+		    "Default: 0077"
+	),
 	MAKE_CMD12 (MonoUnixSocket, filename,
-	"Named pipe file name. Mutually exclusive with MonoListenPort. "
-	"Default: /tmp/mod_mono_server"
+		    "Named pipe file name. Mutually exclusive with MonoListenPort. "
+		    "Default: /tmp/mod_mono_server"
 	),
 
 	MAKE_CMD12 (MonoListenPort, listen_port,
-	"TCP port on which mod-mono-server should listen/is listening on. Mutually "
-	"exclusive with MonoUnixSocket. "
-	"When this options is specified, "
-	"mod-mono-server and mod_mono will use a TCP socket for communication. "
-	"Default: none"
+		    "TCP port on which mod-mono-server should listen/is listening on. Mutually "
+		    "exclusive with MonoUnixSocket. "
+		    "When this options is specified, "
+		    "mod-mono-server and mod_mono will use a TCP socket for communication. "
+		    "Default: none"
 	),
 
 	MAKE_CMD12 (MonoListenAddress, listen_address,
-	"IP address where mod-mono-server should listen/is listening on. Can "
-	"only be used when MonoListenPort is specified."
-	"Default: \"127.0.0.1\""
+		    "IP address where mod-mono-server should listen/is listening on. Can "
+		    "only be used when MonoListenPort is specified."
+		    "Default: \"127.0.0.1\""
 	),
 
 	MAKE_CMD12 (MonoRunXSP, run_xsp,
-	"It can be False or True. If it is True, asks the module to "
-	"start mod-mono-server.exe if it's not already there. Default: True"
+		    "It can be False or True. If it is True, asks the module to "
+		    "start mod-mono-server.exe if it's not already there. Default: True"
 	),
 
 	MAKE_CMD12 (MonoXSPStartAttempts, start_attempts,
-            "Number of attempts to make when a backend is found to be dead. "
-            "Cannot be less than 0. Default: 3"),
+		    "Number of attempts to make when a backend is found to be dead. "
+		    "Cannot be less than 0. Default: 3"),
 
 	MAKE_CMD12 (MonoXSPStartWaitTime, start_wait_time,
-            "Number of seconds to wait for the backend to come up. Cannot be less "
-            "than 2. Default: 2"),
+		    "Number of seconds to wait for the backend to come up. Cannot be less "
+		    "than 2. Default: 2"),
 
 	MAKE_CMD12 (MonoExecutablePath, executable_path,
-	"(Obsolete) If MonoRunXSP is True, this is the full path where mono is located. "
-	"Default: /usr/bin/mono"
+		    "(Obsolete) If MonoRunXSP is True, this is the full path where mono is located. "
+		    "Default: /usr/bin/mono"
 	),
 
 	MAKE_CMD12 (MonoPath, path,
-	"If MonoRunXSP is True, this will be the content of MONO_PATH "
-	"environment variable. Default: \"\""
+		    "If MonoRunXSP is True, this will be the content of MONO_PATH "
+		    "environment variable. Default: \"\""
 	),
 
 	MAKE_CMD12 (MonoServerPath, server_path,
-	"If MonoRunXSP is True, this is the full path to the mod-mono-server script. "
-	"Default: " MODMONO_SERVER_PATH
+		    "If MonoRunXSP is True, this is the full path to the mod-mono-server script. "
+		    "Default: " MODMONO_SERVER_PATH
 	),
 
 	MAKE_CMD12 (MonoApplications, applications,
-	"Comma separated list with virtual directories and real directories. "
-	"One ASP.NET application will be created for each pair. Default: \"\" "
+		    "Comma separated list with virtual directories and real directories. "
+		    "One ASP.NET application will be created for each pair. Default: \"\" "
 	),
 
 	MAKE_CMD12 (MonoWapiDir, wapidir,
-	"The directory where mono runtime will create the '.wapi' directory "
-	"used to emulate windows I/O. It's used to set MONO_SHARED_DIR. "
-	"Default value: \"/tmp\""
+		    "The directory where mono runtime will create the '.wapi' directory "
+		    "used to emulate windows I/O. It's used to set MONO_SHARED_DIR. "
+		    "Default value: \"/tmp\""
 	),
 
 	MAKE_CMD12 (MonoDocumentRootDir, document_root,
-	"The argument passed in --root argument to mod-mono-server. "
-	"This tells mod-mono-server to change the directory to the "
-	"value specified before doing anything else. Default: /"
+		    "The argument passed in --root argument to mod-mono-server. "
+		    "This tells mod-mono-server to change the directory to the "
+		    "value specified before doing anything else. Default: /"
 	),
 
 	MAKE_CMD12 (MonoApplicationsConfigFile, appconfig_file,
-	"Adds application definitions from the  XML configuration file. "
-	"See Appendix C for details on the file format. "
-	"Default value: \"\""
+		    "Adds application definitions from the  XML configuration file. "
+		    "See Appendix C for details on the file format. "
+		    "Default value: \"\""
 	),
 
 	MAKE_CMD12 (MonoApplicationsConfigDir, appconfig_dir,
-	"Adds application definitions from all XML files found in the "
-	"specified directory DIR. Files must have '.webapp' extension. "
-	"Default value: \"\""
+		    "Adds application definitions from all XML files found in the "
+		    "specified directory DIR. Files must have '.webapp' extension. "
+		    "Default value: \"\""
 	),
 
 #ifndef HAVE_SETRLIMIT
 	MAKE_CMD12 (MonoMaxMemory, max_memory,
-	"If MonoRunXSP is True, the maximum size of the process's data segment "
-	"(data size) in bytes allowed for the spawned mono process. It will "
-	"be restarted when the limit is reached.  .. but your system doesn't "
-	"support setrlimit. Sorry, this feature will not be available. "
-	"Default value: system default"
+		    "If MonoRunXSP is True, the maximum size of the process's data segment "
+		    "(data size) in bytes allowed for the spawned mono process. It will "
+		    "be restarted when the limit is reached.  .. but your system doesn't "
+		    "support setrlimit. Sorry, this feature will not be available. "
+		    "Default value: system default"
 	),
 #else
 	MAKE_CMD12 (MonoMaxMemory, max_memory,
-	"If MonoRunXSP is True, the maximum size of the process's data "
-	"segment (data size) in bytes allowed "
-	"for the spawned mono process. It will be restarted when the limit "
-	"is reached."
-	" Default value: system default"
+		    "If MonoRunXSP is True, the maximum size of the process's data "
+		    "segment (data size) in bytes allowed "
+		    "for the spawned mono process. It will be restarted when the limit "
+		    "is reached."
+		    " Default value: system default"
 	),
 #endif
 
 #ifndef HAVE_SETRLIMIT
 	MAKE_CMD12 (MonoMaxCPUTime, max_cpu_time,
-	"If MonoRunXSP is True, CPU time limit in seconds allowed for "
-	"the spawned mono process. Beyond that, it will be restarted."
-	".. but your system doesn't support setrlimit. Sorry, this feature "
-	"will not be available."
-	" Default value: system default"
+		    "If MonoRunXSP is True, CPU time limit in seconds allowed for "
+		    "the spawned mono process. Beyond that, it will be restarted."
+		    ".. but your system doesn't support setrlimit. Sorry, this feature "
+		    "will not be available."
+		    " Default value: system default"
 	),
 #else
 	MAKE_CMD12 (MonoMaxCPUTime, max_cpu_time,
-	"If MonoRunXSP is True, CPU time limit in seconds allowed for "
-	"the spawned mono process. Beyond that, it will be restarted."
-	" Default value: system default"
+		    "If MonoRunXSP is True, CPU time limit in seconds allowed for "
+		    "the spawned mono process. Beyond that, it will be restarted."
+		    " Default value: system default"
 	),
 #endif
 	MAKE_CMD12 (MonoDebug, debug,
-       "If MonoDebug is true, mono will be run in debug mode."
-       " Default value: False"
-       ),
+		    "If MonoDebug is true, mono will be run in debug mode."
+		    " Default value: False"
+	),
 
 	MAKE_CMD12 (MonoSetEnv, env_vars,
-	"A string of name=value pairs separated by semicolons."
-	"For each pair, setenv(name, value) is called before running "
-	"mod-mono-server."
-	" Default value: Default: \"\""
-       ),
+		    "A string of name=value pairs separated by semicolons."
+		    "For each pair, setenv(name, value) is called before running "
+		    "mod-mono-server."
+		    " Default value: Default: \"\""
+	),
 
 	MAKE_CMD_ITERATE2 (AddMonoApplications, applications,
-	"Appends an application."
+			   "Appends an application."
 	),
 
 	MAKE_CMD_ACCESS (MonoSetServerAlias, set_alias,
-	"Uses the server named by this alias inside this Directory/Location."
+			 "Uses the server named by this alias inside this Directory/Location."
 	),
 	MAKE_CMD1 (MonoAutoApplication, set_auto_application,
-	"Disables automatic creation of applications. "
-	"Default value: 'Disabled' if there's any other application for the server. "
-	"'Enabled' otherwise."
+		   "Disables automatic creation of applications. "
+		   "Default value: 'Disabled' if there's any other application for the server. "
+		   "'Enabled' otherwise."
 	),
 	MAKE_CMD12 (MonoAutoRestartMode, restart_mode,
 		    "Set the auto-restart mode for the backend(s). Three modes are available: "
@@ -2446,27 +2446,27 @@ static const command_rec mono_cmds [] = {
 #ifdef APACHE13
 module MODULE_VAR_EXPORT mono_module =
 {
-    STANDARD_MODULE_STUFF,
-    mono_init_handler,		/* initializer */
-    create_dir_config,		/* dir config creater */
-    NULL,			/* dir merger --- default is to override */
-    create_mono_server_config,	/* server config */
-    merge_config,		/* merge server configs */
-    mono_cmds,			/* command table */
-    mono_handlers,		/* handlers */
-    NULL,                       /* filename translation */
-    NULL,                       /* check_user_id */
-    NULL,                       /* check auth */
-    NULL,                       /* check access */
-    NULL,                       /* type_checker */
-    NULL,			/* fixups */
-    NULL,                       /* logger */
-    NULL,                       /* header parser */
+	STANDARD_MODULE_STUFF,
+	mono_init_handler,		/* initializer */
+	create_dir_config,		/* dir config creater */
+	NULL,			/* dir merger --- default is to override */
+	create_mono_server_config,	/* server config */
+	merge_config,		/* merge server configs */
+	mono_cmds,			/* command table */
+	mono_handlers,		/* handlers */
+	NULL,                       /* filename translation */
+	NULL,                       /* check_user_id */
+	NULL,                       /* check auth */
+	NULL,                       /* check access */
+	NULL,                       /* type_checker */
+	NULL,			/* fixups */
+	NULL,                       /* logger */
+	NULL,                       /* header parser */
 #if !defined (APR_HAS_USER) || defined (WIN32)
-    mono_child_init,		/* child_init */
+	mono_child_init,		/* child_init */
 #endif
-    NULL,                       /* child_exit */
-    NULL                        /* post read-request */
+	NULL,                       /* child_exit */
+	NULL                        /* post read-request */
 };
 #else
 module AP_MODULE_DECLARE_DATA mono_module = {
