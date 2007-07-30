@@ -5,6 +5,8 @@
 	initialize mod_mono. The call needs to be made in the child
 	process, so it can't stay in the initialization section of
 	ensure_dashboard_initialized.
+	(ensure_dashboard_initialized): if necessary, set the global mutex
+	permissions.
 
 2007-07-26  Marek Habersack  <mhabersack@novell.com>
 

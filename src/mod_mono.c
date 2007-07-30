@@ -296,6 +296,17 @@ ensure_dashboard_initialized (xsp_data *xsp, apr_pool_t *p)
 				      "Failed to create mutex '%s'", xsp->dashboard_lock_file);
 			goto restore_creds;
 		}
+
+#if AP_NEED_SET_MUTEX_PERMS
+		DEBUG_PRINT (1, "Setting mutex permissions for %s", xsp->dashboard_lock_file);
+		rv = unixd_set_global_mutex_perms (xsp->dashboard_mutex);
+		if (rv != APR_SUCCESS) {
+			ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),
+				      "Failed to set mutex permissions for %s",
+				      xsp->dashboard_lock_file);
+			goto restore_creds;
+		}
+#endif
 	}
 
 	if (!xsp->dashboard_shm) {
