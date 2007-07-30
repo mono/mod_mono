@@ -33,10 +33,6 @@
 #endif
 
 #include "mod_mono.h"
-#include "apr_shm.h"
-#ifndef WIN32
-#include "unixd.h"
-#endif
 
 DEFINE_MODULE (mono_module);
 
@@ -267,10 +263,18 @@ ensure_dashboard_initialized (xsp_data *xsp, apr_pool_t *p)
 {
 	apr_status_t rv;
 	mode_t old_umask;
-#if defined (APR_HAS_USER) && !defined (WIN32)
+#if defined (APR_HAS_USER) && defined (HAVE_UNIXD)
 	apr_uid_t cur_uid;
 	apr_gid_t cur_gid;
 	int switch_back_to_root = 0;
+
+	if (unixd_config.user_id == -1 || unixd_config.group_id == -1) {
+		ap_log_error (APLOG_MARK, APLOG_CRIT, STATUS_AND_SERVER,
+			      "The unix daemon module not initialized yet. Please make sure that "
+			      "your mod_mono module is loaded after the User/Group directives have "
+			      "been parsed. Not initializing the dashboard.");
+		return;
+	}
 	
 	if (apr_uid_current (&cur_uid, &cur_gid, p) == APR_SUCCESS && cur_uid == 0) {
 		DEBUG_PRINT (2, "Temporarily switching to target uid/gid");
@@ -297,7 +301,7 @@ ensure_dashboard_initialized (xsp_data *xsp, apr_pool_t *p)
 			goto restore_creds;
 		}
 
-#if AP_NEED_SET_MUTEX_PERMS
+#if defined (AP_NEED_SET_MUTEX_PERMS) && defined (HAVE_UNIXD)
 		DEBUG_PRINT (1, "Setting mutex permissions for %s", xsp->dashboard_lock_file);
 		rv = unixd_set_global_mutex_perms (xsp->dashboard_mutex);
 		if (rv != APR_SUCCESS) {
@@ -1348,9 +1352,17 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	int max_cpu_time = 0;
 	int status;
 	char is_master;
-#ifdef APR_HAS_USER
+#if defined (APR_HAS_USER) && defined (HAVE_UNIXD)
 	apr_uid_t cur_uid;
 	apr_gid_t cur_gid;
+
+	if (unixd_config.user_id == -1 || unixd_config.group_id == -1) {
+		ap_log_error (APLOG_MARK, APLOG_CRIT, STATUS_AND_SERVER,
+			      "The unix daemon module not initialized yet. Please make sure that "
+			      "your mod_mono module is loaded after the User/Group directives have "
+			      "been parsed. Not forking the backend.");
+		return;
+	}
 #endif
   
 	/* Running mod-mono-server not requested */
@@ -1419,7 +1431,7 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	setsid ();
 	chdir ("/");
 
-#if defined (APR_HAS_USER) && !defined (WIN32)
+#if defined (APR_HAS_USER) && defined (HAVE_UNIXD)
 	/*
 	 * Make sure the backend runs with proper uid/gid if we're forking
 	 * from the module postconfig handler.

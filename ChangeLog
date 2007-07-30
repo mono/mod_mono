@@ -1,5 +1,8 @@
 2007-07-30  Marek Habersack  <mhabersack@novell.com>
 
+	* src/mod_mono.h (HAVE_UNIXD): define HAVE_UNIXD if we're running
+	on a platform that uses it.
+
 	* src/mod_mono.c (mono_execute_request): initialize the global
 	mutex in the child process at the first request after we
 	initialize mod_mono. The call needs to be made in the child
@@ -7,6 +10,9 @@
 	ensure_dashboard_initialized.
 	(ensure_dashboard_initialized): if necessary, set the global mutex
 	permissions.
+	(ensure_dashboard_initialized): check if unixd_config has correct
+	data before attempting to use it.
+	(fork_mod_mono_server): as above.
 
 2007-07-26  Marek Habersack  <mhabersack@novell.com>
 

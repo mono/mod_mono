@@ -52,6 +52,12 @@
 #include "http_log.h"
 #include "http_config.h"
 
+#include "apr_shm.h"
+#if !defined (WIN32) && !defined (OS2) && !defined (BEOS) && !defined (NETWARE)
+#define HAVE_UNIXD
+#include "unixd.h"
+#endif
+
 #ifdef APACHE13
 /* Functions needed for making Apache 1.3 module as similar
 as possible to Apache 2 module, reducing ifdefs in the code itself*/
