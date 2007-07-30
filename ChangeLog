@@ -1,3 +1,11 @@
+2007-07-30  Marek Habersack  <mhabersack@novell.com>
+
+	* src/mod_mono.c (mono_execute_request): initialize the global
+	mutex in the child process at the first request after we
+	initialize mod_mono. The call needs to be made in the child
+	process, so it can't stay in the initialization section of
+	ensure_dashboard_initialized.
+
 2007-07-26  Marek Habersack  <mhabersack@novell.com>
 
 	* man/mod_mono.8.in: added documentation for the new directives

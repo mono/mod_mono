@@ -102,6 +102,7 @@ typedef struct xsp_data {
 	apr_shm_t *dashboard_shm;
 	dashboard_data *dashboard;
 	apr_global_mutex_t *dashboard_mutex;
+	char dashboard_mutex_initialized_in_child;
 	char *dashboard_file;
 	char *dashboard_lock_file;
 } xsp_data;
@@ -295,14 +296,6 @@ ensure_dashboard_initialized (xsp_data *xsp, apr_pool_t *p)
 				      "Failed to create mutex '%s'", xsp->dashboard_lock_file);
 			goto restore_creds;
 		}
-
-		rv = apr_global_mutex_child_init (&xsp->dashboard_mutex, xsp->dashboard_lock_file, p);
-		if (rv != APR_SUCCESS) {
-			ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),
-				      "Failed to attach to the dashboard mutex '%s'",
-				      xsp->dashboard_lock_file);
-			goto restore_creds;
-		}
 	}
 
 	if (!xsp->dashboard_shm) {
@@ -412,6 +405,7 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->dashboard_shm = NULL;
 	server->dashboard = NULL;
 	server->dashboard_mutex = NULL;
+	server->dashboard_mutex_initialized_in_child = 0;
 	server->restart_mode = AUTORESTART_MODE_INVALID;
 	server->restart_requests = 0;
 	server->restart_time = 0;
@@ -1799,7 +1793,18 @@ mono_execute_request (request_rec *r, char auto_app)
 		connect_attempts = 3;
 	if (start_wait_time < 2)
 		start_wait_time = 2;
-  
+
+	if (!conf->dashboard_mutex_initialized_in_child) {
+		rv = apr_global_mutex_child_init (&conf->dashboard_mutex, conf->dashboard_lock_file, pconf);
+		if (rv != APR_SUCCESS) {
+			ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),
+				      "Failed to initialize the dashboard mutex '%s' in child process",
+				      conf->dashboard_lock_file);
+			/* continue despite the error, the init doesn't have to be necessary on this platform */
+		} else
+			conf->dashboard_mutex_initialized_in_child = 1;
+	}
+	
 	while (connect_attempts--) {
 		rv = setup_socket (&sock, conf, r->pool);
 		DEBUG_PRINT (2, "After setup_socket");
