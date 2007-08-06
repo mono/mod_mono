@@ -5,7 +5,7 @@ mod_mono is an apache module that provides ASP.NET functionality.
 See INSTALL for installation instructions
 
 You can reach the maintainer at:
-	gonzalo @ ximian.com
+	mhabersack @ novell.com
 
 Questions are usually sent to mono-list
 (http://lists.ximian.com/mailman/listinfo/mono-list).

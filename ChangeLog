@@ -1,5 +1,8 @@
 2007-08-06  Marek Habersack  <mhabersack@novell.com>
 
+	* configure.in: added --enable-gcov option to enable gcov(1)
+	compilation options.
+
 	* src/mod_mono.c (get_apr_locking_mechanism): use the
 	MOD_MONO_LOCKING_MECHANISM environment variable which lets the
 	user choose the dashboard locking mechanism on the runtime. It
