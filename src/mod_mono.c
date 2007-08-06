@@ -89,7 +89,7 @@ typedef struct xsp_data {
 	char is_virtual; /* is the server virtual? */
 	char *start_attempts;
 	char *start_wait_time;
-
+  
 	/* auto-restart stuff */
 	auto_restart_mode restart_mode;
 	uint32_t restart_requests;
@@ -115,9 +115,57 @@ typedef struct {
 	char *client_block_buffer;
 } request_data;
 
+typedef struct {
+	char *name;
+	apr_lockmech_e sym;
+	char available;
+} lock_mechanism;
+
+#define LOCK_MECH(name) {#name, APR_LOCK_ ## name, APR_HAS_ ## name ## _SERIALIZE}
+  
+static lock_mechanism lockMechanisms [] = {
+	LOCK_MECH (FCNTL),
+	LOCK_MECH (FLOCK),
+	LOCK_MECH (SYSVSEM),
+	LOCK_MECH (PROC_PTHREAD),
+	LOCK_MECH (POSIXSEM),
+	{"DEFAULT", APR_LOCK_DEFAULT, 1},
+	{NULL, 0, 0}
+};
+
 static int send_table (apr_pool_t *pool, apr_table_t *table, apr_socket_t *sock);
 static void start_xsp (module_cfg *config, int is_restart, char *alias);
 static apr_status_t terminate_xsp2 (void *data, char *alias, int for_restart);
+
+static apr_lockmech_e
+get_apr_locking_mechanism ()
+{
+	char *name = getenv ("MOD_MONO_LOCKING_MECHANISM");
+	int i = 0;
+
+	DEBUG_PRINT (0, "Requested locking mechanism name: %s", name);
+	if (!name)
+		return APR_LOCK_DEFAULT;
+	while (lockMechanisms [i].name) {
+		if (!strncasecmp (name, lockMechanisms [i].name, strlen (lockMechanisms [i].name))) {
+			if (lockMechanisms [i].available) {
+				DEBUG_PRINT (1, "Using configured lock mechanism: %s", lockMechanisms [i].name);
+				return lockMechanisms [i].sym;
+			} else {
+				ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
+					      "Locking mechanism '%s' is unavailable for this platform. Using the default one.",
+					      lockMechanisms [i].name);
+				return APR_LOCK_DEFAULT;
+			}
+		}
+		i++;
+	}
+
+	ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
+		      "No locking mechanism matching '%s' has been found for this platform. Using the default one.",
+		      name);
+	return APR_LOCK_DEFAULT;
+}
 
 /* */
 static int
@@ -259,7 +307,7 @@ get_restart_mode (xsp_data *xsp, const char *value)
 }
 
 static void
-ensure_dashboard_initialized (xsp_data *xsp, apr_pool_t *p)
+ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 {
 	apr_status_t rv;
 	mode_t old_umask;
@@ -294,7 +342,7 @@ ensure_dashboard_initialized (xsp_data *xsp, apr_pool_t *p)
 	if (!xsp->dashboard_mutex) {
 		DEBUG_PRINT (1, "creating dashboard mutex = %s", xsp->dashboard_lock_file);
 		rv = apr_global_mutex_create (&xsp->dashboard_mutex, xsp->dashboard_lock_file,
-					      APR_LOCK_DEFAULT, p);
+					      get_apr_locking_mechanism (), p);
 		if (rv != APR_SUCCESS) {
 			ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),
 				      "Failed to create mutex '%s'", xsp->dashboard_lock_file);
@@ -425,7 +473,7 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->restart_requests = 0;
 	server->restart_time = 0;
   
-	ensure_dashboard_initialized (server, pool);
+	ensure_dashboard_initialized (config, server, pool);
 	
 	nservers = config->nservers + 1;
 	servers = config->servers;
@@ -529,7 +577,7 @@ store_config_xsp (cmd_parms *cmd, void *notused, const char *first, const char *
 		idx = add_xsp_server (cmd->pool, alias, config, is_default, cmd->server->is_virtual);
 
 	ptr = (char *) &config->servers [idx];
-
+  
 	/* special handling for restart fields */
 	if (handle_restart_config (ptr, offset, value))
 		return NULL;
@@ -600,10 +648,11 @@ create_mono_server_config (apr_pool_t *p, server_rec *s)
 {
 	module_cfg *server;
 
+	DEBUG_PRINT (0, "creating mono server config");
 	server = apr_pcalloc (p, sizeof (module_cfg));
 	server->auto_app = TRUE;
 	server->auto_app_set = FALSE;
-  
+	
 	add_xsp_server (p, "XXGLOBAL", server, FALSE, FALSE);
 	server->servers [0].filename = get_default_global_socket_name (p, SOCKET_FILE);
 	return server;
@@ -1891,7 +1940,7 @@ mono_execute_request (request_rec *r, char auto_app)
 		
 		rv = apr_global_mutex_lock (conf->dashboard_mutex);
 		DEBUG_PRINT (1, "Acquired the %s lock for backend auto-restart check", conf->dashboard_lock_file);
-		ensure_dashboard_initialized (conf, pconf);
+		ensure_dashboard_initialized (config, conf, pconf);
 		
 		if (rv != APR_SUCCESS) {
 			ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),

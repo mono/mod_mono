@@ -237,6 +237,20 @@ Mono will verify the client certificates. This can be changed to either
 "apache" or "mono" to limit the validity check to either environment.
 This variable can be set using MonoSetEnv to allow different vhost to 
 use separate validation techniques.
+.PP
+The MOD_MONO_LOCKING_MECHANISM variable may be used to choose the APR
+locking mechanism for the dashboard. The currently defined mechanism
+names are: DEFAULT, FCNT, FLOCK, SYSVSEM, PROC_PTHREAD, POSIXSEM. Note
+that not every mechanism may be available for your platform. In such
+case, mod_mono will fallback to using the DEFAULT value which lets the
+APR decide which locking mechanism to use. DEFAULT is also the default
+value for the option if the environment variable is not set or its
+value is unknown. This value 
+.B "MUST NOT" 
+be set using MonoSetEnv - it
+.B MUST 
+be present in the Apache environment before the module is
+initialized and its configuration parsed.
 .SH FILES
 .PP
 httpd.conf

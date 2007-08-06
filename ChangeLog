@@ -1,3 +1,15 @@
+2007-08-06  Marek Habersack  <mhabersack@novell.com>
+
+	* src/mod_mono.c (get_apr_locking_mechanism): use the
+	MOD_MONO_LOCKING_MECHANISM environment variable which lets the
+	user choose the dashboard locking mechanism on the runtime. It
+	must be set through the envvar since the module must know the
+	value before launching the backends, and that happens before the
+	config is fully parsed and merged.
+
+	* man/mod_mono.8.in: documented new environment variable
+	MOD_MONO_LOCKING_MECHANISM.
+
 2007-07-30  Marek Habersack  <mhabersack@novell.com>
 
 	* src/mod_mono.h (HAVE_UNIXD): define HAVE_UNIXD if we're running
