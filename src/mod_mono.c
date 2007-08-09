@@ -62,6 +62,7 @@ typedef enum {
 typedef struct {
 	uint32_t handled_requests;
 	time_t start_time;
+	char restart_issued;
 } dashboard_data;
 
 typedef struct xsp_data {
@@ -392,6 +393,7 @@ ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 				xsp->dashboard = apr_shm_baseaddr_get (xsp->dashboard_shm);
 				xsp->dashboard->start_time = time (NULL);
 				xsp->dashboard->handled_requests = 0;
+				xsp->dashboard->restart_issued = 0;
 				goto restore_creds;
 			}
 		}
@@ -472,7 +474,7 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->restart_mode = AUTORESTART_MODE_INVALID;
 	server->restart_requests = 0;
 	server->restart_time = 0;
-  
+
 	ensure_dashboard_initialized (config, server, pool);
 	
 	nservers = config->nservers + 1;
@@ -1362,27 +1364,39 @@ set_environment_variables (apr_pool_t *pool, char *environment_variables)
 }
 
 static void
-set_process_limits (int max_cpu_time, int max_memory)
-{
-#ifdef HAVE_SETRLIMIT
+set_process_limits2 (int resource, int max, char *name) {
 	struct rlimit limit;
 
-	if (max_cpu_time > 0) {
+	if (max > 0) {
+#ifdef HAVE_SETRLIMIT
 		/* We don't want SIGXCPU */
-		limit.rlim_cur = max_cpu_time;
-		limit.rlim_max = max_cpu_time;
-		DEBUG_PRINT (1, "Setting CPU time limit to %d", max_cpu_time);
-		(void) setrlimit (RLIMIT_CPU, &limit);
-	}
-
-	if (max_memory > 0) {
-		/* We don't want ENOMEM */
-		limit.rlim_cur = max_memory;
-		limit.rlim_max = max_memory;
-		DEBUG_PRINT (1, "Setting memory limit to %d", max_memory);
-		(void) setrlimit (RLIMIT_DATA, &limit);
-	}
+		limit.rlim_cur = max;
+		limit.rlim_max = max;
+		DEBUG_PRINT (1, "Setting %s limit to %d", name, max);
+		if (setrlimit (resource, &limit) == -1) {
+			if (errno == EPERM)
+				ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+					      "Failed to set %s process limit on mod-mono-server to %d: The value is greater than an existing hard limit", name, max);
+			else
+				ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+					      "Failed to set %s process limit on mod-mono-server to %d.", name, max);
+		}
+#else
+		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+			      "Setting %s process limit is not supported on this platform.", name);
 #endif
+	}
+}
+
+static void
+set_process_limits (int max_cpu_time, int max_memory)
+{
+#ifndef HAVE_SETRLIMIT
+#define RLIMIT_CPU 0
+#define RLIMIT_DATA 0
+#endif
+	set_process_limits2 (RLIMIT_CPU, max_cpu_time, "CPU time");
+	set_process_limits2 (RLIMIT_DATA, max_memory, "memory (data segment)");
 }
 
 static void
@@ -1813,7 +1827,7 @@ mono_execute_request (request_rec *r, char auto_app)
 {
 	apr_socket_t *sock;
 	apr_status_t rv;
-	int command;
+	int command = -1;
 	int result = FALSE;
 	apr_status_t input;
 	int status = 0;
@@ -1866,8 +1880,20 @@ mono_execute_request (request_rec *r, char auto_app)
 	if (start_wait_time < 2)
 		start_wait_time = 2;
 
-	if (!conf->dashboard_mutex_initialized_in_child) {
-		rv = apr_global_mutex_child_init (&conf->dashboard_mutex, conf->dashboard_lock_file, pconf);
+	ensure_dashboard_initialized (config, conf, pconf);
+	if (conf->dashboard_mutex && !conf->dashboard_mutex_initialized_in_child) {
+		/* Avoiding to call apr_global_mutex_child_init is a hack since in certain
+		 * conditions it may lead to apache deadlock. Since we don't know the exact cause
+		 * and usually it is not necessary to use the environment variable to work around
+		 * the apr's default locking mechanism, we skip the call in case the envvar is
+		 * used.
+		 */
+		if (!getenv ("MOD_MONO_LOCKING_MECHANISM")) {
+			rv = apr_global_mutex_child_init (&conf->dashboard_mutex, conf->dashboard_lock_file, pconf);
+		} else {
+			DEBUG_PRINT (0, "Skipping apr_global_mutex_child_init on '%s'", conf->dashboard_lock_file);
+			rv = APR_SUCCESS;
+		}
 		if (rv != APR_SUCCESS) {
 			ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),
 				      "Failed to initialize the dashboard mutex '%s' in child process",
@@ -1885,8 +1911,11 @@ mono_execute_request (request_rec *r, char auto_app)
 				return HTTP_SERVICE_UNAVAILABLE;
 			DEBUG_PRINT (2, "No backend found, will start a new copy.");
 
-			rv = apr_global_mutex_lock (conf->dashboard_mutex);
-			DEBUG_PRINT (1, "Acquired the %s lock for backend start", conf->dashboard_lock_file);
+			if (conf->dashboard_mutex)
+				rv = apr_global_mutex_lock (conf->dashboard_mutex);
+			else
+				rv = APR_SUCCESS;
+			DEBUG_PRINT (1, "Acquiring the %s lock for backend start", conf->dashboard_lock_file);
       
 			if (rv != APR_SUCCESS) {
 				ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),
@@ -1903,11 +1932,13 @@ mono_execute_request (request_rec *r, char auto_app)
 			/* give some time for warm-up */
 			DEBUG_PRINT (2, "Started new backend, sleeping %us to let it configure", (unsigned)start_wait_time);
 			apr_sleep (apr_time_from_sec (start_wait_time));
-			rv = apr_global_mutex_unlock (conf->dashboard_mutex);
-			if (rv != APR_SUCCESS)
-				ap_log_error (APLOG_MARK, APLOG_ALERT, STATCODE_AND_SERVER (rv),
-					      "Failed to release %s lock, the process may deadlock!",
-					      conf->dashboard_lock_file);
+			if (conf->dashboard_mutex) {
+				rv = apr_global_mutex_unlock (conf->dashboard_mutex);
+				if (rv != APR_SUCCESS)
+					ap_log_error (APLOG_MARK, APLOG_ALERT, STATCODE_AND_SERVER (rv),
+						      "Failed to release %s lock, the process may deadlock!",
+						      conf->dashboard_lock_file);
+			}
 		} else
 			break; /* connected */
 	}
@@ -1930,23 +1961,29 @@ mono_execute_request (request_rec *r, char auto_app)
 	} while (input == sizeof (int32_t) && result == TRUE);
 
 	apr_socket_close (sock);
-	if (input != sizeof (int32_t))
+	if (input != sizeof (int32_t)) {
+		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+			      "Command stream corrupted, last command was %d", command);
 		status = HTTP_INTERNAL_SERVER_ERROR;
+	}
 
 	if (conf->restart_mode > AUTORESTART_MODE_NONE) {
 		int do_restart = 0;
 		
 		DEBUG_PRINT (2, "Auto-restart enabled for '%s', checking if restart required", conf->alias);
 		
+		ensure_dashboard_initialized (config, conf, pconf);
+		if (!conf->dashboard_mutex)
+			return status;
+
 		rv = apr_global_mutex_lock (conf->dashboard_mutex);
 		DEBUG_PRINT (1, "Acquired the %s lock for backend auto-restart check", conf->dashboard_lock_file);
-		ensure_dashboard_initialized (config, conf, pconf);
 		
 		if (rv != APR_SUCCESS) {
 			ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),
-				      "Failed to acquire %s lock, cannot continue starting new process",
+				      "Failed to acquire %s lock, cannot continue auto-restart check",
 				      conf->dashboard_lock_file);
-			return HTTP_SERVICE_UNAVAILABLE;
+			return status;
 		}
 
 		if (conf->restart_mode == AUTORESTART_MODE_REQUESTS) {
@@ -1970,17 +2007,21 @@ mono_execute_request (request_rec *r, char auto_app)
 			}
 		}
 
-		if (do_restart) {
+		if (do_restart && !conf->dashboard->restart_issued) {
 			/* we just need to stop it, it will be started at the next request */
 			DEBUG_PRINT (0, "Stopping the backend '%s', it will be started at the next request",
 				     conf->alias);
+			ap_log_error (APLOG_MARK, APLOG_ALERT, STATCODE_AND_SERVER (rv),
+				      "Requesting termination of %s mod-mono-server for restart...",
+				      conf->alias);
+			conf->dashboard->restart_issued = 1;
 			terminate_xsp2 (r->server, conf->alias, 1);
 		}
 		
 		rv = apr_global_mutex_unlock (conf->dashboard_mutex);
 		if (rv != APR_SUCCESS)
 			ap_log_error (APLOG_MARK, APLOG_ALERT, STATCODE_AND_SERVER (rv),
-				      "Failed to release %s lock, the process may deadlock!",
+				      "Failed to release %s lock after auto-restart check, the process may deadlock!",
 				      conf->dashboard_lock_file);
 	}
 	
@@ -2100,7 +2141,7 @@ start_xsp (module_cfg *config, int is_restart, char *alias)
 
 		if (!strcmp ("XXGLOBAL", xsp->alias) && config->auto_app == FALSE)
 			continue;
-		
+
 #ifdef APACHE13
 		sock = apr_pcalloc (pconf, sizeof (apr_socket_t));
 #endif
@@ -2116,7 +2157,6 @@ start_xsp (module_cfg *config, int is_restart, char *alias)
 				i--;
 				continue; /* Wait for the previous to die */
 			}
-
 			apr_socket_close (sock);
 			xsp->status = FORK_SUCCEEDED;
 		} else {
@@ -2124,13 +2164,13 @@ start_xsp (module_cfg *config, int is_restart, char *alias)
 			/* need fork */
 			xsp->status = FORK_INPROCESS;
 			DEBUG_PRINT (0, "forking %s", xsp->alias);
-			/* Give some time for clean up */
 			fork_mod_mono_server (pconf, xsp);
 			xsp->status = FORK_SUCCEEDED;
-		}
-		if (xsp->dashboard) {
-			xsp->dashboard->start_time = time (NULL);
-			xsp->dashboard->handled_requests = 0;
+			if (xsp->dashboard) {
+				xsp->dashboard->start_time = time (NULL);
+				xsp->dashboard->handled_requests = 0;
+				xsp->dashboard->restart_issued = 0;
+			}
 		}
 	}
 }
@@ -2216,6 +2256,7 @@ mono_control_panel_handler (request_rec *r)
 	xsp_data *xsp;
 	int i;
 	char *buffer;
+	apr_status_t rv;
 
 	if (strcmp (r->handler, "mono-ctrl"))
 		return DECLINED;
@@ -2241,8 +2282,32 @@ mono_control_panel_handler (request_rec *r)
 				continue;
 
 			buffer = apr_psprintf (r->pool, "<li>%s: <a href=\"?restart=%s\">"
-					       "Restart Server</a></li>\n", xsp->alias, xsp->alias);
+					       "Restart Server</a>", xsp->alias, xsp->alias);
 			request_send_response_string(r, buffer);
+
+			ensure_dashboard_initialized (config, xsp, pconf);
+			if (xsp->dashboard_mutex) {
+				rv = apr_global_mutex_lock (xsp->dashboard_mutex);
+				if (rv == APR_SUCCESS) {
+					if (xsp->restart_mode == AUTORESTART_MODE_REQUESTS) {
+						buffer = apr_psprintf (r->pool, " [%d requests served; limit: %d]",
+								       xsp->dashboard->handled_requests, xsp->restart_requests);
+						request_send_response_string(r, buffer);
+					} else if (xsp->restart_mode == AUTORESTART_MODE_TIME) {
+						buffer = apr_psprintf (r->pool, " [%ds time running; limit: %ds]",
+								       (int)(time(NULL) - xsp->dashboard->start_time), (int)xsp->restart_time);
+						request_send_response_string(r, buffer);
+					}
+
+					rv = apr_global_mutex_unlock (xsp->dashboard_mutex);
+					if (rv != APR_SUCCESS)
+						ap_log_error (APLOG_MARK, APLOG_ALERT, STATCODE_AND_SERVER (rv),
+							      "Failed to release %s lock after mono-ctrl output, the process may deadlock!",
+							      xsp->dashboard_lock_file);
+				}
+			}
+
+			request_send_response_string(r, "</li>\n");
 		}
 		
 		request_send_response_string (r, "</ul>\n");

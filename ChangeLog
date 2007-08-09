@@ -1,3 +1,22 @@
+2007-08-08  Joshua Tauberer  <jit@occams.info>
+
+	* src/mod_mono.c: some fixes for the cross-process
+	locking and refactored process limits.
+	- Added a flag in the dashboard to ensure only one child process
+	issues an automated restart request to xsp.
+	- Don't assume the mutex is actually ever created in case of problems.
+	- Don't call apr_global_mutex_child_init if MOD_MONO_LOCKING_MECHANISM
+	is set, since for me this causes all locks to block forever.
+	- Improved some error messages and added one about command stream
+	corruption.
+	- When the auto-restart check cannot get a lock, don't return a
+	HTTP_SERVICE_UNAVAILABLE status code, since we've already successfully
+	sent page output.
+	- Don't reset the dashboard in start_xsp if no fork was necessary.
+	- Included dashboard info in the control panel.
+	- Refactored process limits in order to aid debugging on why it
+	doesn't work at all.
+
 2007-08-06  Marek Habersack  <mhabersack@novell.com>
 
 	* configure.in: added --enable-gcov option to enable gcov(1)
