@@ -420,7 +420,7 @@ test "$APUCONFIG" && \
 echo "   * apu-config = $APUCONFIG"
 echo "   * CFLAGS = $CFLAGS"
 echo "   * Verbose logging (debug) = $enable_debug"
-echo "   * GCOV options used = $enable_gconv"
+echo "   * GCOV options used = $enable_gcov"
 echo "   * mono prefix = $MONO_PREFIX"
 echo "   * Default MonoApplicationsConfigDir = $DFLT_MONO_CONFIG_DIR"
 dnl echo "   * Build old module: $enable_old_module"

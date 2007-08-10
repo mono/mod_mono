@@ -136,7 +136,7 @@ static lock_mechanism lockMechanisms [] = {
 
 static int send_table (apr_pool_t *pool, apr_table_t *table, apr_socket_t *sock);
 static void start_xsp (module_cfg *config, int is_restart, char *alias);
-static apr_status_t terminate_xsp2 (void *data, char *alias, int for_restart);
+static apr_status_t terminate_xsp2 (void *data, char *alias, int for_restart, int lock_held);
 
 static apr_lockmech_e
 get_apr_locking_mechanism ()
@@ -2015,7 +2015,7 @@ mono_execute_request (request_rec *r, char auto_app)
 				      "Requesting termination of %s mod-mono-server for restart...",
 				      conf->alias);
 			conf->dashboard->restart_issued = 1;
-			terminate_xsp2 (r->server, conf->alias, 1);
+			terminate_xsp2 (r->server, conf->alias, 1, 1);
 		}
 		
 		rv = apr_global_mutex_unlock (conf->dashboard_mutex);
@@ -2176,7 +2176,7 @@ start_xsp (module_cfg *config, int is_restart, char *alias)
 }
 
 static apr_status_t
-terminate_xsp2 (void *data, char *alias, int for_restart)
+terminate_xsp2 (void *data, char *alias, int for_restart, int lock_held)
 {
 	/* alias may be NULL to terminate all XSPs */
 	server_rec *server;
@@ -2186,7 +2186,8 @@ terminate_xsp2 (void *data, char *alias, int for_restart)
 	char *termstr = "";
 	xsp_data *xsp;
 	int i;
-
+	int release_lock = 0;
+	
 	DEBUG_PRINT (0, "Terminate XSP");
 	server = (server_rec *) data;
 	config = ap_get_module_config (server->module_config, &mono_module);
@@ -2217,24 +2218,45 @@ terminate_xsp2 (void *data, char *alias, int for_restart)
 
 			remove (fn); /* Don't bother checking error */
 		}
-    
+		
 		/* destroy the dashboard */     
 		if (!for_restart && xsp->dashboard_shm) {
 			DEBUG_PRINT (0, "Destroying dashboard for %s", xsp->alias);
-			rv = apr_shm_detach (xsp->dashboard_shm);
-			if (rv != APR_SUCCESS)
-				ap_log_error (APLOG_MARK, APLOG_WARNING, STATCODE_AND_SERVER (rv),
-					      "Failed to detach from the '%s' shared memory dashboard",
-					      xsp->dashboard_file);
-			rv = apr_shm_destroy (xsp->dashboard_shm);
-			if (rv != APR_SUCCESS)
-				ap_log_error (APLOG_MARK, APLOG_WARNING, STATCODE_AND_SERVER (rv),
-					      "Failed to destroy the '%s' shared memory dashboard",
-					      xsp->dashboard_file);
+			if (!lock_held && xsp->dashboard_mutex) {
+				rv = apr_global_mutex_lock (xsp->dashboard_mutex);
+				if (rv != APR_SUCCESS)
+					ap_log_error (APLOG_MARK, APLOG_ALERT, STATCODE_AND_SERVER (rv),
+						      "Failed to acquire dashboard lock before destroying the dashboard");
+				else
+					release_lock = 1;
+			}
+			
+			if (xsp->dashboard_shm) { // it might've been released while we had been waiting
+						  // for the lock
+				rv = apr_shm_detach (xsp->dashboard_shm);
+				if (rv != APR_SUCCESS)
+					ap_log_error (APLOG_MARK, APLOG_WARNING, STATCODE_AND_SERVER (rv),
+						      "Failed to detach from the '%s' shared memory dashboard",
+						      xsp->dashboard_file);
+				
+				rv = apr_shm_destroy (xsp->dashboard_shm);
+				if (rv != APR_SUCCESS)
+					ap_log_error (APLOG_MARK, APLOG_WARNING, STATCODE_AND_SERVER (rv),
+						      "Failed to destroy the '%s' shared memory dashboard",
+						      xsp->dashboard_file);
+			}
+			
+			if (release_lock) {
+				rv = apr_global_mutex_unlock (xsp->dashboard_mutex);
+				if (rv != APR_SUCCESS)
+					ap_log_error (APLOG_MARK, APLOG_WARNING, STATCODE_AND_SERVER (rv),
+						      "Failed to release dashboard lock after destroying the dashboard");
+			}
+			
 			xsp->dashboard_shm = NULL;
 			xsp->dashboard = NULL;
 		}
-    
+			
 		xsp->status = FORK_NONE;
 	}
 
@@ -2245,7 +2267,7 @@ terminate_xsp2 (void *data, char *alias, int for_restart)
 static apr_status_t
 terminate_xsp (void *data)
 {
-	return terminate_xsp2(data, NULL, 0);
+	return terminate_xsp2(data, NULL, 0, 0);
 }
 
 static int
@@ -2317,7 +2339,7 @@ mono_control_panel_handler (request_rec *r)
 			char *alias = uri->query + 8; /* +8 == .Substring(8) */
 			if (!strcmp (alias, "ALL"))
 				alias = NULL;
-			terminate_xsp2 (r->server, alias, 1); 
+			terminate_xsp2 (r->server, alias, 1, 0); 
 			start_xsp (config, 1, alias);
 			request_send_response_string (r, "<div style=\"text-align: center;\">mod-mono-server processes restarted.</div><br>\n");
 		} else {

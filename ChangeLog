@@ -1,3 +1,11 @@
+2007-08-10  Marek Habersack  <mhabersack@novell.com>
+
+	* src/mod_mono.c (terminate_xsp2): take an extra argument telling
+	whether to acquire the dashboard lock before attempting to destroy
+	the dashboard.
+
+	* configure.in: typo fixed
+
 2007-08-08  Joshua Tauberer  <jit@occams.info>
 
 	* src/mod_mono.c: some fixes for the cross-process
