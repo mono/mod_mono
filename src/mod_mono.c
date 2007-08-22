@@ -2256,7 +2256,18 @@ terminate_xsp2 (void *data, char *alias, int for_restart, int lock_held)
 			xsp->dashboard_shm = NULL;
 			xsp->dashboard = NULL;
 		}
-			
+
+		if (!for_restart && xsp->dashboard_mutex) {
+			DEBUG_PRINT (0, "Destroying dasboard mutex %s", xsp->dashboard_lock_file);
+			rv = apr_global_mutex_destroy (xsp->dashboard_mutex);
+			if (rv != APR_SUCCESS)
+				ap_log_error (APLOG_MARK, APLOG_WARNING, STATCODE_AND_SERVER (rv),
+					      "Failed to destroy the dashboard mutex '%s'",
+					      xsp->dashboard_lock_file);
+			else
+				xsp->dashboard_mutex = NULL;
+		}
+		
 		xsp->status = FORK_NONE;
 	}
 
@@ -2267,6 +2278,7 @@ terminate_xsp2 (void *data, char *alias, int for_restart, int lock_held)
 static apr_status_t
 terminate_xsp (void *data)
 {
+	DEBUG_PRINT (0, "Cleaning up for shutdown");
 	return terminate_xsp2(data, NULL, 0, 0);
 }
 

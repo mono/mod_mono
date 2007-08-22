@@ -1,3 +1,8 @@
+2007-08-22  Marek Habersack  <mhabersack@novell.com>
+
+	* src/mod_mono.c (terminate_xsp2): if apache is shutting down,
+	destroy the mutex too, to avoid a leak.
+
 2007-08-10  Marek Habersack  <mhabersack@novell.com>
 
 	* src/mod_mono.c (terminate_xsp2): take an extra argument telling
