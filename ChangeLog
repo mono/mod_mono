@@ -1,3 +1,9 @@
+2007-09-16  Joshua Tauberer  <jit@occams.info>
+
+	* src/mod_mono.c (mono_execute_request): if it can't establish a
+	connection after several attempts at forking, emit an error and
+	don't continue on assuming the connection is there (causes ENOTCONN).
+
 2007-08-22  Marek Habersack  <mhabersack@novell.com>
 
 	* src/mod_mono.c (terminate_xsp2): if apache is shutting down,

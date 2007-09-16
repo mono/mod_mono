@@ -1826,7 +1826,7 @@ static int
 mono_execute_request (request_rec *r, char auto_app)
 {
 	apr_socket_t *sock;
-	apr_status_t rv;
+	apr_status_t rv, rv2;
 	int command = -1;
 	int result = FALSE;
 	apr_status_t input;
@@ -1902,23 +1902,25 @@ mono_execute_request (request_rec *r, char auto_app)
 		} else
 			conf->dashboard_mutex_initialized_in_child = 1;
 	}
-	
+
+	rv = -1; /* avoid a warning about uninitialized value */
 	while (connect_attempts--) {
 		rv = setup_socket (&sock, conf, r->pool);
 		DEBUG_PRINT (2, "After setup_socket");
+		// Note that rv's value after the loop ends is important.
 		if (rv != APR_SUCCESS) {
 			if (rv != -1)
 				return HTTP_SERVICE_UNAVAILABLE;
 			DEBUG_PRINT (2, "No backend found, will start a new copy.");
 
 			if (conf->dashboard_mutex)
-				rv = apr_global_mutex_lock (conf->dashboard_mutex);
+				rv2 = apr_global_mutex_lock (conf->dashboard_mutex);
 			else
-				rv = APR_SUCCESS;
+				rv2 = APR_SUCCESS;
 			DEBUG_PRINT (1, "Acquiring the %s lock for backend start", conf->dashboard_lock_file);
       
-			if (rv != APR_SUCCESS) {
-				ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),
+			if (rv2 != APR_SUCCESS) {
+				ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv2),
 					      "Failed to acquire %s lock, cannot continue starting new process",
 					      conf->dashboard_lock_file);
 				return HTTP_SERVICE_UNAVAILABLE;
@@ -1933,14 +1935,21 @@ mono_execute_request (request_rec *r, char auto_app)
 			DEBUG_PRINT (2, "Started new backend, sleeping %us to let it configure", (unsigned)start_wait_time);
 			apr_sleep (apr_time_from_sec (start_wait_time));
 			if (conf->dashboard_mutex) {
-				rv = apr_global_mutex_unlock (conf->dashboard_mutex);
-				if (rv != APR_SUCCESS)
-					ap_log_error (APLOG_MARK, APLOG_ALERT, STATCODE_AND_SERVER (rv),
+				rv2 = apr_global_mutex_unlock (conf->dashboard_mutex);
+				if (rv2 != APR_SUCCESS)
+					ap_log_error (APLOG_MARK, APLOG_ALERT, STATCODE_AND_SERVER (rv2),
 						      "Failed to release %s lock, the process may deadlock!",
 						      conf->dashboard_lock_file);
 			}
 		} else
 			break; /* connected */
+	}
+	
+	if (rv != APR_SUCCESS) {
+		/* Failed to connect to mod-mono-server after several attempts. */
+		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+			      "Failed to connect to mod-mono-server after several attempts to spawn the process.");
+		return HTTP_SERVICE_UNAVAILABLE;
 	}
   
 	DEBUG_PRINT (2, "Sending init data");
