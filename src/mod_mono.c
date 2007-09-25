@@ -307,36 +307,78 @@ get_restart_mode (xsp_data *xsp, const char *value)
 	}
 }
 
+inline static uid_t
+apache_get_userid ()
+{
+#ifdef HAVE_UNIXD
+	return unixd_config.user_id;
+#else
+	return ap_user_id;
+#endif
+}
+
+inline static gid_t
+apache_get_groupid ()
+{
+#ifdef HAVE_UNIXD
+	return unixd_config.group_id;
+#elif
+	return ap_group_id;
+#endif
+}
+
+inline static char *
+apache_get_username ()
+{
+#ifdef HAVE_UNIXD
+	return unixd_config.user_name;
+#else
+	return ap_user_name;
+#endif
+}
+
 static void
 ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 {
 	apr_status_t rv;
 	mode_t old_umask;
-#if defined (APR_HAS_USER) && defined (HAVE_UNIXD)
+#if defined (APR_HAS_USER)
 	apr_uid_t cur_uid;
 	apr_gid_t cur_gid;
 	int switch_back_to_root = 0;
 
-	if (unixd_config.user_id == -1 || unixd_config.group_id == -1) {
+	if (apache_get_userid () == -1 || apache_get_groupid () == -1) {
 		ap_log_error (APLOG_MARK, APLOG_CRIT, STATUS_AND_SERVER,
 			      "The unix daemon module not initialized yet. Please make sure that "
 			      "your mod_mono module is loaded after the User/Group directives have "
 			      "been parsed. Not initializing the dashboard.");
 		return;
 	}
+#endif
+
+	if (!xsp->dashboard_shm) {
+		DEBUG_PRINT (1, "removing dashboard file '%s' as root", xsp->dashboard_file);
+		if (unlink (xsp->dashboard_file) == -1 && errno != ENOENT) {
+			ap_log_error (APLOG_MARK, APLOG_CRIT, STATUS_AND_SERVER,
+				      "Failed to remove dashboard file '%s', further actions impossible. %s",
+				      xsp->dashboard_file, strerror (errno));
+			return;
+		}
+	}
 	
+#if defined (APR_HAS_USER)
 	if (apr_uid_current (&cur_uid, &cur_gid, p) == APR_SUCCESS && cur_uid == 0) {
 		DEBUG_PRINT (2, "Temporarily switching to target uid/gid");
 		switch_back_to_root = 1;
-		if (setegid (unixd_config.group_id) == -1)
+		if (setegid (apache_get_groupid ()) == -1)
 			ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
 				      "setegid: unable to set effective group id to %u. %s",
-				      (unsigned)unixd_config.group_id, strerror (errno));
+				      (unsigned)apache_get_groupid (), strerror (errno));
 		
-		if (seteuid (unixd_config.user_id) == -1)
+		if (seteuid (apache_get_userid ()) == -1)
 			ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
 				      "seteuid: unable to set effective user id to %u. %s",
-				      (unsigned)unixd_config.user_id, strerror (errno));
+				      (unsigned)apache_get_userid (), strerror (errno));
 	}
 #endif
 
@@ -366,12 +408,6 @@ ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 		rv = apr_shm_attach (&xsp->dashboard_shm, xsp->dashboard_file, p);
 		if (rv != APR_SUCCESS) {
 			DEBUG_PRINT (1, "creating dashboard '%s'", xsp->dashboard_file);
-			if (unlink (xsp->dashboard_file) == -1 && errno != ENOENT) {
-				ap_log_error (APLOG_MARK, APLOG_CRIT, STATUS_AND_SERVER,
-					      "Failed to remove dashboard file '%s', further actions impossible. %s",
-					      xsp->dashboard_file, strerror (errno));
-				goto restore_creds;
-			}
 			
 			old_umask = umask (0077);
 			rv = apr_shm_create (&xsp->dashboard_shm, sizeof (dashboard_data), xsp->dashboard_file, p);
@@ -1415,11 +1451,11 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	int max_cpu_time = 0;
 	int status;
 	char is_master;
-#if defined (APR_HAS_USER) && defined (HAVE_UNIXD)
+#if defined (APR_HAS_USER)
 	apr_uid_t cur_uid;
 	apr_gid_t cur_gid;
 
-	if (unixd_config.user_id == -1 || unixd_config.group_id == -1) {
+	if (apache_get_userid () == -1 || apache_get_groupid () == -1) {
 		ap_log_error (APLOG_MARK, APLOG_CRIT, STATUS_AND_SERVER,
 			      "The unix daemon module not initialized yet. Please make sure that "
 			      "your mod_mono module is loaded after the User/Group directives have "
@@ -1494,23 +1530,23 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	setsid ();
 	chdir ("/");
 
-#if defined (APR_HAS_USER) && defined (HAVE_UNIXD)
+#if defined (APR_HAS_USER)
 	/*
 	 * Make sure the backend runs with proper uid/gid if we're forking
 	 * from the module postconfig handler.
 	 */
 	if (apr_uid_current (&cur_uid, &cur_gid, pool) == APR_SUCCESS && cur_uid == 0) {
-		DEBUG_PRINT (2, "switching forked process group to %u", (unsigned)unixd_config.group_id);
-		if (setgid (unixd_config.group_id) == -1)
+		DEBUG_PRINT (2, "switching forked process group to %u", (unsigned)apache_get_groupid ());
+		if (setgid (apache_get_groupid ()) == -1)
 			ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
 				      "setgid: unable to set group id to %u. %s",
-				      (unsigned)unixd_config.group_id, strerror (errno));
+				      (unsigned)apache_get_groupid (), strerror (errno));
 
-		DEBUG_PRINT (2, "switching forked process user to %s", unixd_config.user_name);
-		if (setuid (unixd_config.user_id) == -1)
+		DEBUG_PRINT (2, "switching forked process user to %s", apache_get_username ());
+		if (setuid (apache_get_userid ()) == -1)
 			ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
 				      "setuid: unable to set user id to %u. %s",
-				      (unsigned)unixd_config.user_id, strerror (errno));
+				      (unsigned)apache_get_userid (), strerror (errno));
 	}
 #endif
   

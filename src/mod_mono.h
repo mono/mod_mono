@@ -53,9 +53,13 @@
 #include "http_config.h"
 
 #include "apr_shm.h"
+#if defined (APACHE13)
+#include "http_conf_globals.h"
+#else
 #if !defined (WIN32) && !defined (OS2) && !defined (BEOS) && !defined (NETWARE)
 #define HAVE_UNIXD
 #include "unixd.h"
+#endif
 #endif
 
 #ifdef APACHE13
