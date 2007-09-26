@@ -322,7 +322,7 @@ apache_get_groupid ()
 {
 #ifdef HAVE_UNIXD
 	return unixd_config.group_id;
-#elif
+#else
 	return ap_group_id;
 #endif
 }
