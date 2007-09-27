@@ -1,3 +1,15 @@
+2007-09-27  Marek Habersack  <mhabersack@novell.com>
+
+	* man/mod_mono.8.in: document the restart options as Apache 2.0+
+	only.
+
+	* src/mod_mono.h: move all apr includes to the APACHE2-only
+	section.
+
+	* src/mod_mono.c: disable dashboard (and restart) for Apache 1.3 -
+	the support requires apr, which cannot be used in 1.3 modules (as
+	far as I know). Module compiles fine with Apache 1.3 now
+
 2007-09-26  Marek Habersack  <mhabersack@novell.com>
 
 	* src/mod_mono.c: added three wrapper functions to get the apache

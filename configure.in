@@ -176,7 +176,7 @@ fi
 if test -z "$APRCONFIG"; then
   AC_PATH_PROG(APRCONFIG, apr-config)
 fi
-
+   
 # apu-config - libapr-util can have different prefixes than libapr, check from apu-1-config to make sure
 #  (suse 10.1 is an example of this)
 
@@ -384,9 +384,9 @@ if test "$MONO_PREFIX" = NONE ; then
 fi
 AC_DEFINE_UNQUOTED([MONO_PREFIX],"$MONO_PREFIX",[Mono installation prefix])
 
-AC_CHECK_HEADER(http_protocol.h, \
-	AC_DEFINE([HAVE_HTTP_PROTOCOL_H],1,\
-	[Define to 1 if you have the <http_protocol.h> header file.]),,\
+AC_CHECK_HEADER(http_protocol.h, 
+	AC_DEFINE([HAVE_HTTP_PROTOCOL_H],,
+	[Define to 1 if you have the <http_protocol.h> header file.]),,
 	[#include <httpd.h>])
 
 

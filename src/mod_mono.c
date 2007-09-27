@@ -90,18 +90,20 @@ typedef struct xsp_data {
 	char is_virtual; /* is the server virtual? */
 	char *start_attempts;
 	char *start_wait_time;
-  
+
 	/* auto-restart stuff */
 	auto_restart_mode restart_mode;
 	uint32_t restart_requests;
 	uint32_t restart_time;
-	
+
+#ifndef APACHE13
 	apr_shm_t *dashboard_shm;
 	dashboard_data *dashboard;
 	apr_global_mutex_t *dashboard_mutex;
 	char dashboard_mutex_initialized_in_child;
 	char *dashboard_file;
 	char *dashboard_lock_file;
+#endif
 } xsp_data;
 
 typedef struct {
@@ -116,6 +118,7 @@ typedef struct {
 	char *client_block_buffer;
 } request_data;
 
+#ifndef APACHE13
 typedef struct {
 	char *name;
 	apr_lockmech_e sym;
@@ -133,11 +136,13 @@ static lock_mechanism lockMechanisms [] = {
 	{"DEFAULT", APR_LOCK_DEFAULT, 1},
 	{NULL, 0, 0}
 };
+#endif
 
 static int send_table (apr_pool_t *pool, apr_table_t *table, apr_socket_t *sock);
 static void start_xsp (module_cfg *config, int is_restart, char *alias);
 static apr_status_t terminate_xsp2 (void *data, char *alias, int for_restart, int lock_held);
 
+#ifndef APACHE13
 static apr_lockmech_e
 get_apr_locking_mechanism ()
 {
@@ -167,6 +172,7 @@ get_apr_locking_mechanism ()
 		      name);
 	return APR_LOCK_DEFAULT;
 }
+#endif
 
 /* */
 static int
@@ -228,6 +234,7 @@ set_auto_application (cmd_parms *cmd, void *mconfig, const char *value)
 	sconfig->auto_app_set = TRUE;
 	return NULL;
 }
+
 
 static unsigned long
 parse_restart_time (const char *t)
@@ -337,6 +344,7 @@ apache_get_username ()
 #endif
 }
 
+#ifndef APACHE13
 static void
 ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 {
@@ -452,6 +460,7 @@ ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 	}
 #endif
 }
+#endif
 
 static int
 add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_default, int is_virtual)
@@ -460,8 +469,10 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	xsp_data *servers;
 	int nservers;
 	int i;
+#ifndef APACHE13
 	char num [8];
-
+#endif
+	
 	i = search_for_alias (alias, config);
 	if (i >= 0)
 		return i;
@@ -494,6 +505,7 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->start_attempts = "3";
 	server->start_wait_time = "2";
 
+#ifndef APACHE13
 	apr_snprintf (num, sizeof (num), "%u", (unsigned)config->nservers + 1);
 	server->dashboard_file = apr_pstrcat (pool,
 					      DASHBOARD_FILE,
@@ -512,6 +524,7 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->restart_time = 0;
 
 	ensure_dashboard_initialized (config, server, pool);
+#endif
 	
 	nservers = config->nservers + 1;
 	servers = config->servers;
@@ -1862,7 +1875,10 @@ static int
 mono_execute_request (request_rec *r, char auto_app)
 {
 	apr_socket_t *sock;
-	apr_status_t rv, rv2;
+	apr_status_t rv;
+#ifndef APACHE13
+	apr_status_t rv2;
+#endif
 	int command = -1;
 	int result = FALSE;
 	apr_status_t input;
@@ -1916,6 +1932,7 @@ mono_execute_request (request_rec *r, char auto_app)
 	if (start_wait_time < 2)
 		start_wait_time = 2;
 
+#ifndef APACHE13
 	ensure_dashboard_initialized (config, conf, pconf);
 	if (conf->dashboard_mutex && !conf->dashboard_mutex_initialized_in_child) {
 		/* Avoiding to call apr_global_mutex_child_init is a hack since in certain
@@ -1938,7 +1955,8 @@ mono_execute_request (request_rec *r, char auto_app)
 		} else
 			conf->dashboard_mutex_initialized_in_child = 1;
 	}
-
+#endif
+	
 	rv = -1; /* avoid a warning about uninitialized value */
 	while (connect_attempts--) {
 		rv = setup_socket (&sock, conf, r->pool);
@@ -1949,6 +1967,7 @@ mono_execute_request (request_rec *r, char auto_app)
 				return HTTP_SERVICE_UNAVAILABLE;
 			DEBUG_PRINT (2, "No backend found, will start a new copy.");
 
+#ifndef APACHE13
 			if (conf->dashboard_mutex)
 				rv2 = apr_global_mutex_lock (conf->dashboard_mutex);
 			else
@@ -1961,7 +1980,8 @@ mono_execute_request (request_rec *r, char auto_app)
 					      conf->dashboard_lock_file);
 				return HTTP_SERVICE_UNAVAILABLE;
 			}
-      
+#endif
+			
 			if (socket_name != NULL && unlink (socket_name) < 0 && errno != ENOENT)
 				ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
 					      "Could not remove stale socket %s. %s. Further requests will probably fail.",
@@ -1970,13 +1990,16 @@ mono_execute_request (request_rec *r, char auto_app)
 			/* give some time for warm-up */
 			DEBUG_PRINT (2, "Started new backend, sleeping %us to let it configure", (unsigned)start_wait_time);
 			apr_sleep (apr_time_from_sec (start_wait_time));
+#ifndef APACHE13
 			if (conf->dashboard_mutex) {
 				rv2 = apr_global_mutex_unlock (conf->dashboard_mutex);
 				if (rv2 != APR_SUCCESS)
 					ap_log_error (APLOG_MARK, APLOG_ALERT, STATCODE_AND_SERVER (rv2),
 						      "Failed to release %s lock, the process may deadlock!",
 						      conf->dashboard_lock_file);
+
 			}
+#endif
 		} else
 			break; /* connected */
 	}
@@ -2012,11 +2035,12 @@ mono_execute_request (request_rec *r, char auto_app)
 		status = HTTP_INTERNAL_SERVER_ERROR;
 	}
 
+#ifndef APACHE13
 	if (conf->restart_mode > AUTORESTART_MODE_NONE) {
 		int do_restart = 0;
 		
 		DEBUG_PRINT (2, "Auto-restart enabled for '%s', checking if restart required", conf->alias);
-		
+
 		ensure_dashboard_initialized (config, conf, pconf);
 		if (!conf->dashboard_mutex)
 			return status;
@@ -2030,7 +2054,7 @@ mono_execute_request (request_rec *r, char auto_app)
 				      conf->dashboard_lock_file);
 			return status;
 		}
-
+		
 		if (conf->restart_mode == AUTORESTART_MODE_REQUESTS) {
 			conf->dashboard->handled_requests++;
 			if (conf->dashboard->handled_requests > conf->restart_requests) {
@@ -2069,6 +2093,7 @@ mono_execute_request (request_rec *r, char auto_app)
 				      "Failed to release %s lock after auto-restart check, the process may deadlock!",
 				      conf->dashboard_lock_file);
 	}
+#endif
 	
 	DEBUG_PRINT (2, "Done. Status: %d", status);
 	return status;
@@ -2211,11 +2236,13 @@ start_xsp (module_cfg *config, int is_restart, char *alias)
 			DEBUG_PRINT (0, "forking %s", xsp->alias);
 			fork_mod_mono_server (pconf, xsp);
 			xsp->status = FORK_SUCCEEDED;
+#ifndef APACHE13
 			if (xsp->dashboard) {
 				xsp->dashboard->start_time = time (NULL);
 				xsp->dashboard->handled_requests = 0;
 				xsp->dashboard->restart_issued = 0;
 			}
+#endif
 		}
 	}
 }
@@ -2231,7 +2258,9 @@ terminate_xsp2 (void *data, char *alias, int for_restart, int lock_held)
 	char *termstr = "";
 	xsp_data *xsp;
 	int i;
+#ifndef APACHE13
 	int release_lock = 0;
+#endif
 	
 	DEBUG_PRINT (0, "Terminate XSP");
 	server = (server_rec *) data;
@@ -2263,7 +2292,8 @@ terminate_xsp2 (void *data, char *alias, int for_restart, int lock_held)
 
 			remove (fn); /* Don't bother checking error */
 		}
-		
+
+#ifndef APACHE13
 		/* destroy the dashboard */     
 		if (!for_restart && xsp->dashboard_shm) {
 			DEBUG_PRINT (0, "Destroying dashboard for %s", xsp->alias);
@@ -2314,8 +2344,9 @@ terminate_xsp2 (void *data, char *alias, int for_restart, int lock_held)
 		}
 		
 		xsp->status = FORK_NONE;
+#endif
 	}
-
+	
 	apr_sleep (apr_time_from_sec (1));
 	return APR_SUCCESS;
 }
@@ -2335,8 +2366,10 @@ mono_control_panel_handler (request_rec *r)
 	xsp_data *xsp;
 	int i;
 	char *buffer;
+#ifndef APACHE13
 	apr_status_t rv;
-
+#endif
+	
 	if (strcmp (r->handler, "mono-ctrl"))
 		return DECLINED;
 
@@ -2364,6 +2397,7 @@ mono_control_panel_handler (request_rec *r)
 					       "Restart Server</a>", xsp->alias, xsp->alias);
 			request_send_response_string(r, buffer);
 
+#ifndef APACHE13
 			ensure_dashboard_initialized (config, xsp, pconf);
 			if (xsp->dashboard_mutex) {
 				rv = apr_global_mutex_lock (xsp->dashboard_mutex);
@@ -2385,7 +2419,8 @@ mono_control_panel_handler (request_rec *r)
 							      xsp->dashboard_lock_file);
 				}
 			}
-
+#endif
+			
 			request_send_response_string(r, "</li>\n");
 		}
 		
@@ -2474,7 +2509,7 @@ mono_init_handler (apr_pool_t *p,
 #endif
 
 #if !defined (APR_HAS_USER) || defined (WIN32)
-static void
+void
 mono_child_init (
 #ifdef APACHE2
 	apr_pool_t *p, server_rec *s

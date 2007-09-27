@@ -52,7 +52,6 @@
 #include "http_log.h"
 #include "http_config.h"
 
-#include "apr_shm.h"
 #if defined (APACHE13)
 #include "http_conf_globals.h"
 #else
@@ -68,7 +67,7 @@ as possible to Apache 2 module, reducing ifdefs in the code itself*/
 #ifdef HAVE_HTTP_PROTOCOL_H
 #include "http_protocol.h"
 #endif
-#define STATCODE_AND_SERVER (code) NULL
+#define STATCODE_AND_SERVER(__code__) NULL
 #ifndef TRUE
 #define TRUE 1
 #define FALSE 0
@@ -148,6 +147,7 @@ extern time_t ap_restart_time;
 #include <apr_version.h>
 #include <apr_strings.h>
 #include <apr_support.h>
+#include <apr_shm.h>
 
 #if APR_MAJOR_VERSION <= 0
 #define APR_SOCKET_CREATE(sock, family, type, protocol, pool) apr_socket_create (sock, family, type, pool)

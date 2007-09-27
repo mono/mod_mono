@@ -68,7 +68,7 @@ the backend initialize properly before attempting to connect to
 it. Value cannot be lower than 2.
 Default value: 2
 .TP
-.I "MonoAutoRestartMode"
+.I "MonoAutoRestartMode (Apache 2.0+ only)"
 Set the auto-restart mode for the backend(s). Three modes are available:
 None - do not auto-restart, Requests - restart after a configured number of 
 requests served, Time - restart after the backend has been up for the specified
@@ -78,12 +78,12 @@ off-process state server, since on every restart your application
 state will be lost.
 Default value: None
 .TP
-.I "MonoAutoRestartRequests"
+.I "MonoAutoRestartRequests (Apache 2.0+ only)"
 Number of requests for a backend to serve before auto-restarting. The value here 
 is taken into account only when MonoAutoRestartMode is set to Requests.
 Default value: 10000
 .TP
-.I "MonoAutoRestartTime"
+.I "MonoAutoRestartTime (Apache 2.0+ only)"
 Time after which the backend should be auto-restarted. The time format is:
 DD[:HH[:MM[:SS]]]. Default value: 00:12:00:00
 .TP
