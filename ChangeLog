@@ -1,3 +1,12 @@
+2007-10-01  Marek Habersack  <mhabersack@novell.com>
+
+	* src/mod_mono.c: implemented support for flushing the Apache
+	output buffers on every write, configurable via the
+	MonoFlushOnWrite directive.
+
+	* man/mod_mono.8.in: added documentation of the MonoFlushOnWrite
+	directive.
+
 2007-09-27  Marek Habersack  <mhabersack@novell.com>
 
 	* man/mod_mono.8.in: document the restart options as Apache 2.0+

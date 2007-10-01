@@ -145,7 +145,14 @@ disabled. The possible values are 'enabled' or 'disabled'.
 .TP
 .I "MonoDebug"
 Runs mono in debug mode, which produces stack traces with line numbers.
-Default value: false.
+Default value: False.
+.TP
+.I "MonoFlushOnWrite"
+If MonoFlushOnWrite is true, mod_mono will flush the Apache output buffers on 
+every write. Note that Apache2 supports a notion of output filters, which will be 
+invoked on every write if this option is set to true. This may have a severe impact 
+on your application performance. 
+Default: False
 .TP
 .I "MonoSetServerAlias"
 Takes a server alias name. This is to be used inside <Directory> or
