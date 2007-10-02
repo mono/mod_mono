@@ -149,9 +149,11 @@ Default value: False.
 .TP
 .I "MonoFlushOnWrite"
 If MonoFlushOnWrite is true, mod_mono will flush the Apache output buffers on 
-every write. Note that Apache2 supports a notion of output filters, which will be 
-invoked on every write if this option is set to true. This may have a severe impact 
-on your application performance. 
+every write. It might be useful if you rely on the output your ASP.NET application
+produces being delivered to the client immediately. Note that Apache2 supports a notion 
+of output filters, which will be invoked on every write if this option is set to true. 
+This may have a severe impact on your application performance. It is strongly advised
+that you do not use this setting unless you are absolutely sure you need such behavior.
 Default: False
 .TP
 .I "MonoSetServerAlias"

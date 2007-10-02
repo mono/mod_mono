@@ -1,3 +1,8 @@
+2007-10-02  Marek Habersack  <grendello@gmail.com>
+
+	* man/mod_mono.8.in: added more info for  the MonoFlushOnWrite
+	directive.
+
 2007-10-01  Marek Habersack  <mhabersack@novell.com>
 
 	* src/mod_mono.c: implemented support for flushing the Apache
