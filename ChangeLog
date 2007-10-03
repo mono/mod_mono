@@ -1,3 +1,20 @@
+2007-10-03  Marek Habersack  <mhabersack@novell.com>
+
+	* man/mod_mono.8.in: removed documentation of the recently added
+	MonoFlushOnWrite directive. It is replaced by the new protocol
+	command described below.
+
+	* src/mod_mono.h: added the PROTOCOL_VERSION define (and bumped
+	the protocol value to 8, as a new command has been added).
+	Defined a new command, SET_CONFIGURATION, which is used to
+	configure mod_mono/apache from within the Mono ASP.NET runtime
+	(currently only HttpResponse.BufferOutput is sent)
+
+	* src/mod_mono.c: implemented new command, SET_CONFIGURATION.
+	Use PROTOCOL_VERSION macro when necessary instead of using the
+	literal integer value.
+	Removed the recently added MonoFlushOnWrite directive.
+
 2007-10-02  Marek Habersack  <grendello@gmail.com>
 
 	* man/mod_mono.8.in: added more info for  the MonoFlushOnWrite

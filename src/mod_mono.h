@@ -61,6 +61,9 @@
 #endif
 #endif
 
+/* KEEP IN SYNC WITH ModMonoRequest!! */
+#define PROTOCOL_VERSION 8
+
 #ifdef APACHE13
 /* Functions needed for making Apache 1.3 module as similar
 as possible to Apache 2 module, reducing ifdefs in the code itself*/
@@ -218,6 +221,7 @@ enum Cmd {
 	MYNOT_FOUND, /* apache 1.3 already defines NOT_FOUND */
 	IS_CONNECTED,
 	SEND_FILE,
+	SET_CONFIGURATION,
 	LAST_COMMAND
 };
 
@@ -234,6 +238,7 @@ static char *cmdNames [] = {
 	"DECLINE_REQUEST",
 	"NOT_FOUND",
 	"IS_CONNECTED",
+	"SET_CONFIGURATION",
 	"SEND_FILE"
 };
 

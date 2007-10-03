@@ -84,7 +84,6 @@ typedef struct xsp_data {
 	char *max_cpu_time;
 	char *max_memory;
 	char *debug;
-	char *flushOnWrite;
 	char *env_vars;
 	char status; /* One of the FORK_* in the enum above.
 		      * Don't care if run_xsp is "false" */
@@ -97,6 +96,9 @@ typedef struct xsp_data {
 	uint32_t restart_requests;
 	uint32_t restart_time;
 
+	/* other settings */
+	unsigned char do_flush;
+	
 #ifndef APACHE13
 	apr_shm_t *dashboard_shm;
 	dashboard_data *dashboard;
@@ -505,7 +507,8 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->is_virtual = is_virtual;
 	server->start_attempts = "3";
 	server->start_wait_time = "2";
-
+	server->do_flush = 0;
+	
 #ifndef APACHE13
 	apr_snprintf (num, sizeof (num), "%u", (unsigned)config->nservers + 1);
 	server->dashboard_file = apr_pstrcat (pool,
@@ -1004,7 +1007,7 @@ get_client_block_buffer (request_rec *r, uint32_t requested_size, uint32_t *actu
 }
 
 static int
-do_command (int command, apr_socket_t *sock, request_rec *r, int *result, int doFlush)
+do_command (int command, apr_socket_t *sock, request_rec *r, int *result, xsp_data *xsp)
 {
 	int32_t size;
 	char *str;
@@ -1033,7 +1036,7 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result, int do
 				apr_pool_destroy (temp_pool);
 				break;
 			}
-			request_send_response_from_memory (r, str, size, doFlush);
+			request_send_response_from_memory (r, str, size, xsp->do_flush);
 			apr_pool_destroy (temp_pool);
 			break;
 		case GET_SERVER_VARIABLES:
@@ -1152,6 +1155,17 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result, int do
 			if (status == -1)
 				error_message = "failed to send file (file data)";
 			break;
+
+
+		case SET_CONFIGURATION: {
+			if (read_data (sock, &xsp->do_flush, sizeof (xsp->do_flush)) == -1) {
+				error_message = "failed to set configuration (output buffering)";
+				status = -1;
+				break;
+			}
+			break;
+		}
+			
 		default:
 			error_message = "unknown command";
 			status = -1;
@@ -1844,7 +1858,7 @@ send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 	}
 
 	ptr = str = apr_pcalloc (r->pool, size);
-	*ptr++ = 7; /* version. Keep in sync with ModMonoRequest. */
+	*ptr++ = PROTOCOL_VERSION; /* version. Keep in sync with ModMonoRequest. */
 	ptr += write_string_to_buffer (ptr, 0, r->method);
 	if (s != NULL)
 		ptr += write_string_to_buffer (ptr, 0, (s->is_virtual ? s->server_hostname : NULL));
@@ -2028,10 +2042,8 @@ mono_execute_request (request_rec *r, char auto_app)
 	do {
 		input = read_data (sock, (char *) &command, sizeof (int32_t));
 		if (input == sizeof (int32_t)) {
-			int doFlush = conf->flushOnWrite && (strcasecmp (conf->flushOnWrite, "True") == 0);
-			
 			command = INT_FROM_LE (command);
-			result = do_command (command, sock, r, &status, doFlush);
+			result = do_command (command, sock, r, &status, conf);
 		}
 	} while (input == sizeof (int32_t) && result == TRUE);
 
@@ -2703,12 +2715,6 @@ static const command_rec mono_cmds [] = {
 	MAKE_CMD12 (MonoAutoRestartTime, restart_time,
 		    "Time after which the backend should be auto-restarted. The time format is: "
 		    "DD[:HH[:MM[:SS]]]. Default value: 00:12:00:00"),
-	MAKE_CMD12 (MonoFlushOnWrite, flushOnWrite,
-		    "If MonoFlushOnWrite is true, mod_mono will flush the Apache output buffers on "
-		    "every write. Note that Apache2 supports a notion of output filters, which will be "
-		    "invoked on every write if this option is set to true. This may have a severe impact "
-		    "on your application performance. "
-		    "Default: False"),
 	{ NULL }
 };
 
