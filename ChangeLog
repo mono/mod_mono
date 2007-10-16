@@ -1,3 +1,11 @@
+2007-10-16  Marek Habersack  <mhabersack@novell.com>
+
+	* src/mod_mono.c (xsp_data): revert the flush logic - use
+	'no_flush' instead of 'do_flush' as it matches the managed side
+	more closely. Fixes (again) bug #325441
+
+	* src/mod_mono.h (cmdNames): reorder the names to match the enum.
+
 2007-10-03  Marek Habersack  <mhabersack@novell.com>
 
 	* man/mod_mono.8.in: removed documentation of the recently added

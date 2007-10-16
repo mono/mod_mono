@@ -238,8 +238,8 @@ static char *cmdNames [] = {
 	"DECLINE_REQUEST",
 	"NOT_FOUND",
 	"IS_CONNECTED",
-	"SET_CONFIGURATION",
-	"SEND_FILE"
+	"SEND_FILE",
+	"SET_CONFIGURATION"
 };
 
 /* Module definition */

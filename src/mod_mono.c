@@ -97,7 +97,7 @@ typedef struct xsp_data {
 	uint32_t restart_time;
 
 	/* other settings */
-	unsigned char do_flush;
+	unsigned char no_flush;
 	
 #ifndef APACHE13
 	apr_shm_t *dashboard_shm;
@@ -507,7 +507,7 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->is_virtual = is_virtual;
 	server->start_attempts = "3";
 	server->start_wait_time = "2";
-	server->do_flush = 0;
+	server->no_flush = 1;
 	
 #ifndef APACHE13
 	apr_snprintf (num, sizeof (num), "%u", (unsigned)config->nservers + 1);
@@ -714,15 +714,17 @@ create_mono_server_config (apr_pool_t *p, server_rec *s)
 }
 
 static void
-request_send_response_from_memory (request_rec *r, char *byteArray, int size, int doFlush)
+request_send_response_from_memory (request_rec *r, char *byteArray, int size, int noFlush)
 {
+	DEBUG_PRINT (0, "sending from memory with%s flush", noFlush ? "out" : "");
+	
 #ifdef APACHE13
 	if (r->sent_bodyct == 0)
 		ap_send_http_header (r);
 #endif
 
 	ap_rwrite (byteArray, size, r);
-	if (doFlush) {
+	if (!noFlush) {
 		DEBUG_PRINT (0, "flushing");
 		ap_rflush (r);
 	}
@@ -1025,7 +1027,7 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result, xsp_da
 		return FALSE;
 	}
 
-	DEBUG_PRINT (2, "Command received: %s", cmdNames [command]);
+	DEBUG_PRINT (2, "Command received: %s (%u)", cmdNames [command], command);
 	*result = OK;
 	switch (command) {
 		case SEND_FROM_MEMORY:
@@ -1036,7 +1038,7 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result, xsp_da
 				apr_pool_destroy (temp_pool);
 				break;
 			}
-			request_send_response_from_memory (r, str, size, xsp->do_flush);
+			request_send_response_from_memory (r, str, size, xsp->no_flush);
 			apr_pool_destroy (temp_pool);
 			break;
 		case GET_SERVER_VARIABLES:
@@ -1158,7 +1160,7 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result, xsp_da
 
 
 		case SET_CONFIGURATION: {
-			if (read_data (sock, &xsp->do_flush, sizeof (xsp->do_flush)) == -1) {
+			if (read_data (sock, &xsp->no_flush, sizeof (xsp->no_flush)) == -1) {
 				error_message = "failed to set configuration (output buffering)";
 				status = -1;
 				break;
