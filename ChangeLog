@@ -1,3 +1,9 @@
+2007-11-07  Marek Habersack  <mhabersack@novell.com>
+
+	* configure.in: added a --with-apu-config option, which lets one
+	select an apu-config path different to the auto-detected
+	one. Fixes bug #324685
+
 2007-10-16  Marek Habersack  <mhabersack@novell.com>
 
 	* src/mod_mono.c (xsp_data): revert the flush logic - use

@@ -179,15 +179,36 @@ fi
    
 # apu-config - libapr-util can have different prefixes than libapr, check from apu-1-config to make sure
 #  (suse 10.1 is an example of this)
+AC_ARG_WITH(apu-config,
+[  --with-apu-config=PATH  Path to apu-config (apache 2.0). You may use
+                          this option when apu-config is not in the same
+			  directory as apxs and the output of
+			  'apu-config --includes' is different from
+			  'apxs -q INCLUDEDIR'.
+],
+[
+  if test -x "$withval"
+  then
+    AC_MSG_RESULT([$withval executable, good])
+    APUCONFIG=$withval
+  else
+    if test "xno" = "x$withval" ; then
+    	AC_MSG_RESULT([no])
+    else
+        AC_MSG_ERROR([$withval not found or not executable])
+    fi
+  fi
+],)
 
-for mydir in `dirname ${APXS}` \
+if test -z "$APUCONFIG"; then
+  for mydir in `dirname ${APXS}` \
 		/usr/local/apache2/sbin	\
   		/usr/local/apache2/bin	\
   		/usr/local/apache/sbin	\
 		/usr/local/apache/bin	\
 		/usr/sbin		\
 		/usr/bin
-do
+  do
 	AC_MSG_CHECKING(for apu-1-config in $mydir)
   	A1="$mydir/apu-1-config"
   	if test -x "$A1" ; then
@@ -198,16 +219,17 @@ do
 		AC_MSG_RESULT(no)
 	fi
 
-	AC_MSG_CHECKING(for apr-config in $mydir)
-	A2="$mydir/apr-config"
+	AC_MSG_CHECKING(for apu-config in $mydir)
+	A2="$mydir/apu-config"
   	if test -x "$A2" ; then
-		APRCONFIG="$A2"
+		APUCONFIG="$A2"
 		AC_MSG_RESULT(found.)
 		break
 	else
 		AC_MSG_RESULT(no)
 	fi
-done
+  done
+fi
 
 # last resort 1
 if test -z "$APUCONFIG"; then
