@@ -1,3 +1,8 @@
+2008-01-21  Joshua Tauberer  <jit@occams.info>
+
+	* src/mod_mono.c: Implemented configurable rate limiting
+	  with MonoMaxActiveRequests and MonoMaxWaitingRequests.
+
 2008-01-20  Joshua Tauberer  <jit@occams.info>
 
 	* src/mod_mono.c:

@@ -63,6 +63,8 @@ typedef struct {
 	uint32_t handled_requests;
 	time_t start_time;
 	char restart_issued;
+	int active_requests;
+	int waiting_requests;
 } dashboard_data;
 
 typedef struct xsp_data {
@@ -90,7 +92,9 @@ typedef struct xsp_data {
 	char is_virtual; /* is the server virtual? */
 	char *start_attempts;
 	char *start_wait_time;
-
+	char *max_active_requests;
+	char *max_waiting_requests;
+  
 	/* auto-restart stuff */
 	auto_restart_mode restart_mode;
 	uint32_t restart_requests;
@@ -446,6 +450,8 @@ ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 				xsp->dashboard->start_time = time (NULL);
 				xsp->dashboard->handled_requests = 0;
 				xsp->dashboard->restart_issued = 0;
+				xsp->dashboard->active_requests = 0;
+				xsp->dashboard->waiting_requests = 0;
 			}
 		}
 	}
@@ -510,6 +516,8 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->start_attempts = "3";
 	server->start_wait_time = "2";
 	server->no_flush = 1;
+	server->max_active_requests = "20";
+	server->max_waiting_requests = "20";
 	
 #ifndef APACHE13
 	apr_snprintf (num, sizeof (num), "%u", (unsigned)config->nservers + 1);
@@ -1895,6 +1903,118 @@ send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 }
 
 static int
+increment_active_requests (xsp_data *conf)
+{
+	apr_status_t rv;
+	
+	int max_active_requests = atoi(conf->max_active_requests);
+	int max_waiting_requests = atoi(conf->max_waiting_requests);
+
+	/* Limit the number of concurrent requests. If no
+	 * limiting is in effect (or can't be done because
+	 * there is no dashboard), return the OK status. 
+	 * Same test as in the decrement function. */
+	if (max_active_requests == 0 || !conf->dashboard_mutex || !conf->dashboard)
+		return 1;
+		
+	rv = apr_global_mutex_lock (conf->dashboard_mutex);
+	/* Drop the request on failure to lock the dashboard because
+	 * we don't want to decrement the counter later since we couldn't
+	 * increment it here. */
+	if (rv != APR_SUCCESS)
+		return 0;
+		
+	// From here on, rv holds onto whether we still have
+	// the lock acquired, just in case some error ocurrs
+	// acquiring it during the loop.
+	if (conf->dashboard->active_requests >= max_active_requests) {
+		/* We need to wait until the active requests
+		 * go below the maximum. */
+		 
+		/* However, we won't keep more than max_waiting_req requests
+		 * waiting, which means the max number of active Apache
+		 * connections associated with this mod-mono-server
+		 * is max_active_req+max_waiting_req.
+		 */
+		if (conf->dashboard->waiting_requests >= max_waiting_requests) {
+			apr_global_mutex_unlock (conf->dashboard_mutex);
+			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+			      "Maximum number of concurrent mod_mono requests to %s reached (%d active, %d waiting). Request dropped.",
+		    	  conf->dashboard_lock_file, max_active_requests, max_waiting_requests);
+			return 0;
+		}
+
+		ap_log_error (APLOG_MARK, APLOG_INFO, STATUS_AND_SERVER,
+		      "Maximum number of concurrent mod_mono requests to %s reached (%d). Will wait and retry.",
+		      conf->dashboard_lock_file, max_active_requests);
+		      
+		conf->dashboard->waiting_requests++;
+
+		int retries = 20;
+		while (retries-- > 0) {
+			// Release the lock, wait some time, and then re-acquire.
+			apr_global_mutex_unlock (conf->dashboard_mutex);
+			apr_sleep (500000); // 0.5 seconds
+			rv = apr_global_mutex_lock (conf->dashboard_mutex);
+		 	if (rv != APR_SUCCESS) break;
+			 	
+		 	// If the number of requests is low enough, we
+		 	// can stop waiting.
+			if (conf->dashboard->active_requests < max_active_requests)
+		 		break;
+		}
+
+		// Hopefully we haven't lost the lock, but if we have we still
+		// want to at least attempt to decrement the counter.
+		conf->dashboard->waiting_requests--;
+
+	 	// If we got to the end of the loop and still too
+	 	// many requests are going, stop processing the
+	 	// request.
+		if (rv == APR_SUCCESS && conf->dashboard->active_requests >= max_active_requests) {
+			apr_global_mutex_unlock (conf->dashboard_mutex);
+			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+				      "Maximum number (%d) of concurrent mod_mono requests to %s reached. Droping request.",
+				      max_active_requests, conf->dashboard_lock_file);
+			return 0;
+		}
+	}
+		
+	/* If we lost the lock during the loop, drop the request
+	 * because we don't want to decrement the counter later
+	 * since we couldn't increment it here. */
+	if (rv != APR_SUCCESS)
+		return 0;
+
+	conf->dashboard->active_requests++;
+	apr_global_mutex_unlock (conf->dashboard_mutex);
+	
+	return 1;
+}
+
+static void
+decrement_active_requests (xsp_data *conf)
+{
+	apr_status_t rv;
+
+	int max_active_requests = atoi(conf->max_active_requests);
+
+	/* Check if limiting is in effect. Same test as in the
+	 * increment function. */
+	if (max_active_requests == 0 || !conf->dashboard_mutex || !conf->dashboard)
+		return;
+		
+	rv = apr_global_mutex_lock (conf->dashboard_mutex);
+	// Since we incremented the counter, even if we can't
+	// get a lock, we had better attempt to decrement it.
+		
+	conf->dashboard->active_requests--;
+
+	if (rv == APR_SUCCESS)
+		apr_global_mutex_unlock (conf->dashboard_mutex);
+}
+
+static int
 mono_execute_request (request_rec *r, char auto_app)
 {
 	apr_socket_t *sock;
@@ -1981,13 +2101,18 @@ mono_execute_request (request_rec *r, char auto_app)
 #endif
 	
 	rv = -1; /* avoid a warning about uninitialized value */
+	if (!increment_active_requests (conf))
+		return HTTP_SERVICE_UNAVAILABLE;
+	
 	while (connect_attempts--) {
 		rv = setup_socket (&sock, conf, r->pool);
 		DEBUG_PRINT (2, "After setup_socket");
 		// Note that rv's value after the loop ends is important.
 		if (rv != APR_SUCCESS) {
-			if (rv != -1)
+			if (rv != -1) {
+				decrement_active_requests (conf);
 				return HTTP_SERVICE_UNAVAILABLE;
+			}
 			DEBUG_PRINT (2, "No backend found, will start a new copy.");
 
 #ifndef APACHE13
@@ -2001,6 +2126,7 @@ mono_execute_request (request_rec *r, char auto_app)
 				ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv2),
 					      "Failed to acquire %s lock, cannot continue starting new process",
 					      conf->dashboard_lock_file);
+				decrement_active_requests (conf);
 				return HTTP_SERVICE_UNAVAILABLE;
 			}
 #endif
@@ -2031,6 +2157,7 @@ mono_execute_request (request_rec *r, char auto_app)
 		/* Failed to connect to mod-mono-server after several attempts. */
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
 			      "Failed to connect to mod-mono-server after several attempts to spawn the process.");
+		decrement_active_requests (conf);
 		return HTTP_SERVICE_UNAVAILABLE;
 	}
   
@@ -2039,6 +2166,7 @@ mono_execute_request (request_rec *r, char auto_app)
 		ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
 			      "Failed to send initial data. %s", strerror (errno));
 		apr_socket_close (sock);
+		decrement_active_requests (conf);
 		return HTTP_SERVICE_UNAVAILABLE;
 	}
 	
@@ -2057,6 +2185,8 @@ mono_execute_request (request_rec *r, char auto_app)
 			      "Command stream corrupted, last command was %d", command);
 		status = HTTP_INTERNAL_SERVER_ERROR;
 	}
+	
+	decrement_active_requests (conf);
 
 #ifndef APACHE13
 	if (conf->restart_mode > AUTORESTART_MODE_NONE) {
@@ -2715,6 +2845,15 @@ static const command_rec mono_cmds [] = {
 	MAKE_CMD12 (MonoAutoRestartTime, restart_time,
 		    "Time after which the backend should be auto-restarted. The time format is: "
 		    "DD[:HH[:MM[:SS]]]. Default value: 00:12:00:00"),
+
+	MAKE_CMD12 (MonoMaxActiveRequests, max_active_requests,
+		    "The maximum number of concurrent requests mod_mono will pass off to the ASP.NET backend. "
+		    "Set to zero to turn off the limit. Default value: 20"),
+	MAKE_CMD12 (MonoMaxWaitingRequests, max_waiting_requests,
+		    "The maximum number of concurrent requests mod_mono will hold while the ASP.NET backend is busy "
+		    "with the maximum number of requests specified by MonoMaxActiveRequests. "
+		    "Requests that can't be processed or held are dropped with Service Unavailable." 
+		    "Default value: 20"),
 	{ NULL }
 };
 

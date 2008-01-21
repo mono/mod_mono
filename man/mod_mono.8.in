@@ -155,6 +155,17 @@ Default value: 'default' if the directive is not used.
 .I "MonoSetEnv"
 Takes a string of 'name=value' pairs separated by semicolons. For each
 pair, it calls setenv (name, value) before running mod-mono-server.
+.TP
+.I "MonoMaxActiveRequests"
+The maximum number of concurrent requests mod_mono will pass off to
+the ASP.NET backend. Set to zero to turn off the limit. Default value:
+20.
+.TP
+.I "MonoMaxWaitingRequests"
+The maximum number of concurrent requests mod_mono will hold while
+the ASP.NET backend is busy with the maximum number of requests
+specified by MonoMaxActiveRequests. Requests that can't be processed
+or held are dropped with Service Unavailable. Default value: 20.
 .SH SAMPLE CONFIGURATION
 This one using <Directory>:
 .nf
