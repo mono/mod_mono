@@ -367,16 +367,6 @@ ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 	}
 #endif
 
-	if (!xsp->dashboard_shm) {
-		DEBUG_PRINT (1, "removing dashboard file '%s' as root", xsp->dashboard_file);
-		if (unlink (xsp->dashboard_file) == -1 && errno != ENOENT) {
-			ap_log_error (APLOG_MARK, APLOG_CRIT, STATUS_AND_SERVER,
-				      "Failed to remove dashboard file '%s', further actions impossible. %s",
-				      xsp->dashboard_file, strerror (errno));
-			return;
-		}
-	}
-	
 #if defined (APR_HAS_USER)
 	if (apr_uid_current (&cur_uid, &cur_gid, p) == APR_SUCCESS && cur_uid == 0) {
 		DEBUG_PRINT (2, "Temporarily switching to target uid/gid");
@@ -395,6 +385,12 @@ ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 
 	if (!xsp->dashboard_mutex) {
 		DEBUG_PRINT (1, "creating dashboard mutex = %s", xsp->dashboard_lock_file);
+		
+		if (unlink (xsp->dashboard_lock_file) == -1 && errno != ENOENT) {
+			ap_log_error (APLOG_MARK, APLOG_CRIT, STATUS_AND_SERVER,
+				      "Failed to remove dashboard mutex file '%s'; will attempt to continue. %s",
+				      xsp->dashboard_lock_file, strerror (errno));
+		}
 		rv = apr_global_mutex_create (&xsp->dashboard_mutex, xsp->dashboard_lock_file,
 					      get_apr_locking_mechanism (), p);
 		if (rv != APR_SUCCESS) {
@@ -417,7 +413,17 @@ ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 
 	if (!xsp->dashboard_shm) {
 		rv = apr_shm_attach (&xsp->dashboard_shm, xsp->dashboard_file, p);
-		if (rv != APR_SUCCESS) {
+		if (rv == APR_SUCCESS) {
+			xsp->dashboard = apr_shm_baseaddr_get (xsp->dashboard_shm);
+		} else {
+			DEBUG_PRINT (1, "removing dashboard file '%s'", xsp->dashboard_file);
+			if (unlink (xsp->dashboard_file) == -1 && errno != ENOENT) {
+				ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),
+				      "Failed to attach to existing dashboard, and removing dashboard file '%s' failed (%s). Further action impossible.",
+				      xsp->dashboard_file, strerror (errno));
+				goto restore_creds;
+			}
+	
 			DEBUG_PRINT (1, "creating dashboard '%s'", xsp->dashboard_file);
 			
 			old_umask = umask (0077);
@@ -425,28 +431,24 @@ ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 			umask (old_umask);
 			if (rv != APR_SUCCESS) {
 				ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),
-					      "Failed to create shared memory segment for backend '%s'",
-					      xsp->alias);
-				goto restore_creds;
+					      "Failed to create shared memory segment for backend '%s' at '%s'.",
+					      xsp->alias, xsp->dashboard_file);
 			} else {
 				rv = apr_shm_attach (&xsp->dashboard_shm, xsp->dashboard_file, p);
 				if (rv != APR_SUCCESS) {
 					ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),
 						      "Failed to attach to the dashboard '%s'",
 						      xsp->dashboard_file);
-					return;
+					goto restore_creds;
 				}
           
 				xsp->dashboard = apr_shm_baseaddr_get (xsp->dashboard_shm);
 				xsp->dashboard->start_time = time (NULL);
 				xsp->dashboard->handled_requests = 0;
 				xsp->dashboard->restart_issued = 0;
-				goto restore_creds;
 			}
 		}
 	}
-
-	xsp->dashboard = apr_shm_baseaddr_get (xsp->dashboard_shm);
 
   restore_creds:
 #if defined (APR_HAS_USER) && !defined (WIN32)
@@ -2063,7 +2065,7 @@ mono_execute_request (request_rec *r, char auto_app)
 		DEBUG_PRINT (2, "Auto-restart enabled for '%s', checking if restart required", conf->alias);
 
 		ensure_dashboard_initialized (config, conf, pconf);
-		if (!conf->dashboard_mutex)
+		if (!conf->dashboard_mutex || !conf->dashboard)
 			return status;
 
 		rv = apr_global_mutex_lock (conf->dashboard_mutex);
@@ -2223,8 +2225,10 @@ start_xsp (module_cfg *config, int is_restart, char *alias)
 		if (xsp->run_xsp && !strcasecmp (xsp->run_xsp, "false"))
 			continue;
 
+#ifdef APACHE13
 		if (xsp->status != FORK_NONE)
 			continue;
+#endif
 		
 		/* If alias isn't null, skip XSPs that don't have that alias. */
 		if (alias != NULL && strcmp (xsp->alias, alias))
@@ -2327,20 +2331,14 @@ terminate_xsp2 (void *data, char *alias, int for_restart, int lock_held)
 					release_lock = 1;
 			}
 			
-			if (xsp->dashboard_shm) { // it might've been released while we had been waiting
-						  // for the lock
-				rv = apr_shm_detach (xsp->dashboard_shm);
-				if (rv != APR_SUCCESS)
-					ap_log_error (APLOG_MARK, APLOG_WARNING, STATCODE_AND_SERVER (rv),
-						      "Failed to detach from the '%s' shared memory dashboard",
-						      xsp->dashboard_file);
-				
-				rv = apr_shm_destroy (xsp->dashboard_shm);
-				if (rv != APR_SUCCESS)
-					ap_log_error (APLOG_MARK, APLOG_WARNING, STATCODE_AND_SERVER (rv),
-						      "Failed to destroy the '%s' shared memory dashboard",
-						      xsp->dashboard_file);
-			}
+			// No need to detach before destroying, and in that case we must not.
+			// But should we detach instead of destroy if we weren't the creating
+			// process?
+			rv = apr_shm_destroy (xsp->dashboard_shm);
+			if (rv != APR_SUCCESS)
+				ap_log_error (APLOG_MARK, APLOG_WARNING, STATCODE_AND_SERVER (rv),
+					      "Failed to destroy the '%s' shared memory dashboard",
+					      xsp->dashboard_file);
 			
 			if (release_lock) {
 				rv = apr_global_mutex_unlock (xsp->dashboard_mutex);

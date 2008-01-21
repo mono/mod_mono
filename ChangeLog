@@ -1,3 +1,26 @@
+2008-01-20  Joshua Tauberer  <jit@occams.info>
+
+	* src/mod_mono.c:
+	  ensure_dashboard_initialized:
+	  - Try to delete an existing lockfile before creating a mutex
+	    (relevant if the lock type uses files).
+	  - Don't always try to remove the shm file (as root). This
+	    means we could never attach to an existing shm. The file
+	    ought to always be created as the apache user anyway.
+	    Instead, only delete after a failed attach.
+	  - Don't always call apr_shm_baseaddr_get in every call to this.
+	  - Code cleanup and fixes (a return should have been a goto).
+	  mono_execute_request:
+	  - Check that dashboard was actually created before accessing it.
+	  start_xsp:
+	  - Don't use the xsp->status flag in Apache 2+ since this is
+	    handled by the new cross-process locking mechanism.
+	  terminate_xsp2:
+	  - No need to check if xsp->dashboard_shm was changed while
+	    waiting for a lock: that's impossible. (It's not multi-threaded.)
+	  - Don't call apr_shm_detach before apr_shm_destroy. That's not
+	    the right use of the API.
+
 2007-11-08  Wade Berrier  <wberrier@novell.com>
 
 	* configure.in: Version bump -> 1.2.6
