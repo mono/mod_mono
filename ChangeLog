@@ -1,3 +1,7 @@
+2008-01-28  Wade Berrier  <wberrier@novell.com>
+
+	* configure.in: Version bump -> 1.9
+
 2008-01-21  Joshua Tauberer  <jit@occams.info>
 
 	* src/mod_mono.c: Implemented configurable rate limiting
