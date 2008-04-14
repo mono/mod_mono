@@ -1905,6 +1905,7 @@ send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 static int
 increment_active_requests (xsp_data *conf)
 {
+#ifndef APACHE13
 	apr_status_t rv;
 	
 	int max_active_requests = atoi(conf->max_active_requests);
@@ -1990,11 +1991,15 @@ increment_active_requests (xsp_data *conf)
 	apr_global_mutex_unlock (conf->dashboard_mutex);
 	
 	return 1;
+#else
+	return 1;
+#endif
 }
 
-static void
+ static void
 decrement_active_requests (xsp_data *conf)
 {
+#ifndef APACHE13
 	apr_status_t rv;
 
 	int max_active_requests = atoi(conf->max_active_requests);
@@ -2012,6 +2017,7 @@ decrement_active_requests (xsp_data *conf)
 
 	if (rv == APR_SUCCESS)
 		apr_global_mutex_unlock (conf->dashboard_mutex);
+#endif
 }
 
 static int

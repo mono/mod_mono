@@ -1,3 +1,8 @@
+2008-04-14  Marek Habersack  <mhabersack@novell.com>
+
+	* src/mod_mono.c: add several ifdefs for compilation with apache
+	1.3. Fixes bug #374272
+
 2008-01-28  Wade Berrier  <wberrier@novell.com>
 
 	* configure.in: Version bump -> 1.9
