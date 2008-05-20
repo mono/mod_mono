@@ -719,7 +719,6 @@ create_mono_server_config (apr_pool_t *p, server_rec *s)
 	server->auto_app_set = FALSE;
 	
 	add_xsp_server (p, "XXGLOBAL", server, FALSE, FALSE);
-	server->servers [0].filename = get_default_global_socket_name (p, SOCKET_FILE);
 	return server;
 }
 
@@ -1299,7 +1298,7 @@ get_default_socket_name (apr_pool_t *pool, const char *alias, const char *base)
 }
 
 static apr_status_t 
-try_connect (xsp_data *conf, apr_socket_t **sock, apr_pool_t *pool)
+try_connect (xsp_data *conf, apr_socket_t **sock, apr_int32_t family, apr_pool_t *pool)
 {
 	char *error;
 	struct sockaddr_un unix_address;
@@ -1328,7 +1327,7 @@ try_connect (xsp_data *conf, apr_socket_t **sock, apr_pool_t *pool)
 		apr_sockaddr_t *sa;
 
 		la = conf->listen_address ? conf->listen_address : LISTEN_ADDRESS;
-		rv = apr_sockaddr_info_get (&sa, la, APR_INET,
+		rv = apr_sockaddr_info_get (&sa, la, family,
 					    atoi (conf->listen_port), 0, pool);
 
 		if (rv != APR_SUCCESS) {
@@ -1507,7 +1506,10 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 		return;
 	}
 #endif
-  
+	is_master = (0 == strcmp ("XXGLOBAL", config->alias));
+	if (is_master && config->listen_port == NULL && config->filename == NULL)
+		config->filename = get_default_global_socket_name (pool, SOCKET_FILE);
+
 	/* Running mod-mono-server not requested */
 	if (!strcasecmp (config->run_xsp, "false")) {
 		DEBUG_PRINT (1, "Not running mod-mono-server: %s", config->run_xsp);
@@ -1516,7 +1518,6 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 		return;
 	}
 
-	is_master = (0 == strcmp ("XXGLOBAL", config->alias));
 	/*
 	 * At least one of MonoApplications, MonoApplicationsConfigFile or
 	 * MonoApplicationsConfigDir must be specified, except for the 'global'
@@ -1718,7 +1719,33 @@ setup_socket (apr_socket_t **sock, xsp_data *conf, apr_pool_t *pool)
 	apr_status_t rv;
 	int family, proto;
 
-	family = (conf->listen_port != NULL) ? AF_UNSPEC : PF_UNIX;
+	if (conf->listen_port != NULL) {
+#if APR_HAVE_IPV6
+		apr_status_t rv;
+		apr_sockaddr_t *sa;
+		char *la = NULL;
+#endif
+		family = AF_UNSPEC;
+
+#if APR_HAVE_IPV6
+		la = conf->listen_address ? conf->listen_address : LISTEN_ADDRESS;
+		rv = apr_sockaddr_info_get (&sa, la, family,
+					    atoi (conf->listen_port), 
+					    APR_IPV6_ADDR_OK,
+					    pool);
+
+		if (rv != APR_SUCCESS) {
+			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+				      "mod_mono: error in address ('%s') or port ('%s'). Assuming AF_UNSPEC.",
+				      la, conf->listen_port);
+		} else {
+			family = sa->family;
+		}
+
+#endif
+	} else {
+		family = PF_UNIX;
+	}
 	/* APR_PROTO_TCP = 6 */
 	proto = (family == AF_UNSPEC) ? 6 : 0;
 #ifdef APACHE2
@@ -1735,7 +1762,7 @@ setup_socket (apr_socket_t **sock, xsp_data *conf, apr_pool_t *pool)
 		return rv;
 	}
 
-	rv = try_connect (conf, sock, pool);
+	rv = try_connect (conf, sock, family, pool);
 	DEBUG_PRINT (1, "try_connect: %d", (int) rv);
 	return rv;
 }

@@ -1,3 +1,13 @@
+2008-05-20  Marek Habersack  <mhabersack@novell.com>
+
+	* src/mod_mono.c: work correctly with IPv6 sockets, by detecting
+	the socket family instead of hard-coding it to AF_INET.
+	Do not get the default server's socket name until it is known
+	which mode the server should work in (tcp or unix sockets).
+	Fixes bug #392235
+	Patches contributed by Alex Villacís Lasso
+	<avillaci@ceibo.fiec.espol.edu.ec>, thanks!
+
 2008-04-14  Marek Habersack  <mhabersack@novell.com>
 
 	* src/mod_mono.c: add several ifdefs for compilation with apache
