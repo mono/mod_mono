@@ -67,6 +67,20 @@ typedef struct {
 	int waiting_requests;
 } dashboard_data;
 
+#define INITIAL_DATA_MAX_ALLOCA_SIZE 8192
+typedef struct {
+	size_t      method_len;
+	size_t      server_hostname_len;
+	size_t      uri_len;
+	size_t      args_len;
+	size_t      protocol_len;
+	size_t      local_ip_len;
+	size_t      remote_ip_len;
+	const char *remote_name;
+	size_t      remote_name_len;
+	size_t      filename_len;
+} initial_data_info;
+
 typedef struct xsp_data {
 	char is_default;
 	char *alias;
@@ -1768,14 +1782,20 @@ setup_socket (apr_socket_t **sock, xsp_data *conf, apr_pool_t *pool)
 }
 
 static int
-write_string_to_buffer (char *buffer, int offset, const char *str)
+write_string_to_buffer (char *buffer, int offset, const char *str, size_t str_length)
 {
-	int tmp;
 	int le;
-
+	int tmp;
+	
 	buffer += offset;
-	tmp = (str != NULL) ? strlen (str) : 0;
+	if (str && !str_length) {
+		tmp = strlen (str);
+		le = LE_FROM_INT (tmp);
+	} else
+		tmp = (int)str_length;
+	
 	le = LE_FROM_INT (tmp);
+	
 	memcpy (buffer, &le, sizeof (int32_t));
 	if (tmp > 0) {
 		buffer += sizeof (int32_t);
@@ -1797,7 +1817,7 @@ get_table_send_size (apr_table_t *table)
 	if (elts->nelts == 0)
 		return sizeof (int32_t);
 
-	size = sizeof (int32_t);
+	size = sizeof (int32_t) * 2;
 	t_elt = (const apr_table_entry_t *) (elts->elts);
 	t_end = t_elt + elts->nelts;
 
@@ -1820,8 +1840,10 @@ write_table_to_buffer (char *buffer, apr_table_t *table)
 	const apr_table_entry_t *t_elt;
 	const apr_table_entry_t *t_end;
 	char *ptr;
-	int32_t count = 0;
-
+	int32_t count = 0, size;
+	char *countLocation = buffer + sizeof (int32_t);
+	char *sizeLocation = buffer;
+	
 	elts = apr_table_elts (table);
 	if (elts->nelts == 0) { /* size is sizeof (int32_t) */
 		int32_t *i32 = (int32_t *) buffer;
@@ -1830,16 +1852,17 @@ write_table_to_buffer (char *buffer, apr_table_t *table)
 	}
 
 	ptr = buffer;
+	/* the size is set after the loop */
 	/* the count is set after the loop */
-	ptr += sizeof (int32_t);
+	ptr += sizeof (int32_t) * 2;
 	t_elt = (const apr_table_entry_t *) (elts->elts);
 	t_end = t_elt + elts->nelts;
-
+	
 	do {
 		if (t_elt->val != NULL) {
 			DEBUG_PRINT (3, "%s: %s", t_elt->key, t_elt->val);
-			ptr += write_string_to_buffer (ptr, 0, t_elt->key);
-			ptr += write_string_to_buffer (ptr, 0, t_elt->val);
+			ptr += write_string_to_buffer (ptr, 0, t_elt->key, 0);
+			ptr += write_string_to_buffer (ptr, 0, t_elt->val, 0);
 			count++;
 		}
 
@@ -1847,7 +1870,11 @@ write_table_to_buffer (char *buffer, apr_table_t *table)
 	} while (t_elt < t_end);
 
 	count = LE_FROM_INT (count);
-	memcpy (buffer, &count, sizeof (int32_t));
+	memcpy (countLocation, &count, sizeof (int32_t));
+	size = (ptr - buffer) - sizeof (int32_t);
+	size = LE_FROM_INT (size);
+	memcpy (sizeLocation, &size, sizeof (int32_t));
+	
 	return (ptr - buffer);
 }
 
@@ -1866,62 +1893,97 @@ send_table (apr_pool_t *pool, apr_table_t *table, apr_socket_t *sock)
 static int
 send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 {
-	int i;
-	char *str, *ptr;
-	int size;
-	server_rec *s = r->server;
+	int                i;
+	char              *str, *ptr;
+	int                size;
+	server_rec        *s = r->server;
+	initial_data_info  info;
+	
+	DEBUG_PRINT (2, "Send init");
+	size = 1 + sizeof (size);
 
-	DEBUG_PRINT (2, "Send init1");
-	size = 1;
-	size += ((r->method != NULL) ? strlen (r->method) : 0) + sizeof (int32_t);
-	if (s != NULL)
-		size += ((s->is_virtual && s->server_hostname != NULL) ? strlen (s->server_hostname) : 0) + sizeof (int32_t);
-	else
+	info.method_len = ((r->method != NULL) ? strlen (r->method) : 0);
+	size += info.method_len + sizeof (int32_t);
+	if (s != NULL) {
+		info.server_hostname_len = ((s->is_virtual && s->server_hostname != NULL) ? strlen (s->server_hostname) : 0);
+		size += info.server_hostname_len + sizeof (int32_t);
+	} else {
+		info.server_hostname_len = 0;
 		size += sizeof (int32_t);
-	size += ((r->uri != NULL) ? strlen (r->uri) : 0) + sizeof (int32_t);
-	size += ((r->args != NULL) ? strlen (r->args) : 0) + sizeof (int32_t);
-	size += ((r->protocol != NULL) ? strlen (r->protocol) : 0) + sizeof (int32_t);
-	size += strlen (r->connection->local_ip) + sizeof (int32_t);
+	}
+
+	info.uri_len = ((r->uri != NULL) ? strlen (r->uri) : 0);
+	size += info.uri_len + sizeof (int32_t);
+
+	info.args_len = ((r->args != NULL) ? strlen (r->args) : 0);
+	size += info.args_len + sizeof (int32_t);
+
+	info.protocol_len = ((r->protocol != NULL) ? strlen (r->protocol) : 0);
+	size += info.protocol_len + sizeof (int32_t);
+
+	info.local_ip_len = strlen (r->connection->local_ip);
+	size += info.local_ip_len + sizeof (int32_t);
+	
 	size += sizeof (int32_t);
-	size += strlen (r->connection->remote_ip) + sizeof (int32_t);
+
+	info.remote_ip_len = strlen (r->connection->remote_ip);
+	size += info.remote_ip_len + sizeof (int32_t);
+	
 	size += sizeof (int32_t);
-	size += strlen (connection_get_remote_name (r)) + sizeof (int32_t);
+
+	info.remote_name = connection_get_remote_name (r);
+	info.remote_name_len = strlen (info.remote_name);
+	
+	size += info.remote_name_len + sizeof (int32_t);
+	
 	size += get_table_send_size (r->headers_in);
+	
 	size++; /* byte. TRUE->auto_app, FALSE: configured application */
 	if (auto_app != FALSE) {
 		if (r->filename != NULL) {
-			size += strlen (r->filename) + sizeof (int32_t);
+			info.filename_len = strlen (r->filename);
+			size += info.filename_len + sizeof (int32_t);
 		} else {
+			info.filename_len = 0;
 			auto_app = FALSE;
 		}
-	}
+	} else
+		info.filename_len = 0;
 
-	ptr = str = apr_pcalloc (r->pool, size);
-	*ptr++ = PROTOCOL_VERSION; /* version. Keep in sync with ModMonoRequest. */
-	ptr += write_string_to_buffer (ptr, 0, r->method);
-	if (s != NULL)
-		ptr += write_string_to_buffer (ptr, 0, (s->is_virtual ? s->server_hostname : NULL));
+	DEBUG_PRINT (2, "Initial data size: %u", size);
+
+	if (size <= INITIAL_DATA_MAX_ALLOCA_SIZE)
+		ptr = str = alloca (size);
 	else
-		ptr += write_string_to_buffer (ptr, 0, NULL);
-	ptr += write_string_to_buffer (ptr, 0, r->uri);
-	ptr += write_string_to_buffer (ptr, 0, r->args);
-	ptr += write_string_to_buffer (ptr, 0, r->protocol);
+		ptr = str = apr_pcalloc (r->pool, size);
+	*ptr++ = (char)PROTOCOL_VERSION; /* version. Keep in sync with ModMonoRequest. */
+	i = LE_FROM_INT (size);
+	memcpy (ptr, &i, sizeof (int32_t));
+	ptr += sizeof (int32_t);
+	ptr += write_string_to_buffer (ptr, 0, r->method, info.method_len);
+	if (s != NULL)
+		ptr += write_string_to_buffer (ptr, 0, (s->is_virtual ? s->server_hostname : NULL), info.server_hostname_len);
+	else
+		ptr += write_string_to_buffer (ptr, 0, NULL, 0);
+	ptr += write_string_to_buffer (ptr, 0, r->uri, info.uri_len);
+	ptr += write_string_to_buffer (ptr, 0, r->args, info.args_len);
+	ptr += write_string_to_buffer (ptr, 0, r->protocol, info.protocol_len);
 
-	ptr += write_string_to_buffer (ptr, 0, r->connection->local_ip);
+	ptr += write_string_to_buffer (ptr, 0, r->connection->local_ip, info.local_ip_len);
 	i = request_get_server_port (r);
 	i = LE_FROM_INT (i);
 	memcpy (ptr, &i, sizeof (int32_t));
 	ptr += sizeof (int32_t);
-	ptr += write_string_to_buffer (ptr, 0, r->connection->remote_ip);
+	ptr += write_string_to_buffer (ptr, 0, r->connection->remote_ip, info.remote_ip_len);
 	i = connection_get_remote_port (r->connection);
 	i = LE_FROM_INT (i);
 	memcpy (ptr, &i, sizeof (int32_t));
 	ptr += sizeof (int32_t);
-	ptr += write_string_to_buffer (ptr, 0, connection_get_remote_name (r));
+	ptr += write_string_to_buffer (ptr, 0, info.remote_name, info.remote_name_len);
 	ptr += write_table_to_buffer (ptr, r->headers_in);
 	*ptr++ = auto_app;
 	if (auto_app != FALSE)
-		ptr += write_string_to_buffer (ptr, 0, r->filename);
+		ptr += write_string_to_buffer (ptr, 0, r->filename, info.filename_len);
 
 	if (write_data (sock, str, size) != size)
 		return -1;

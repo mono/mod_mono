@@ -62,7 +62,7 @@
 #endif
 
 /* KEEP IN SYNC WITH ModMonoRequest!! */
-#define PROTOCOL_VERSION 8
+#define PROTOCOL_VERSION 9
 
 #ifdef APACHE13
 /* Functions needed for making Apache 1.3 module as similar

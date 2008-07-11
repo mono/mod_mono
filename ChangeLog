@@ -1,3 +1,23 @@
+2008-07-11  Marek Habersack  <mhabersack@novell.com>
+
+	* src/mod_mono.h (PROTOCOL_VERSION): bumped to 9
+
+	* src/mod_mono.c: added new structure, initial_data_info, used to
+	optimize the send_initial_data function.
+	(write_string_to_buffer): added new parameter, str_length, which
+	optionally provides the string length.
+	(get_table_send_size, write_table_to_buffer): serialized table
+	contains the whole table size in addition to element count now.
+	(send_initial_data): when calculating the initial data size use
+	the initial_data_info structure to store the figures, so that we
+	don't have to do it again later on in the code.
+	Protocol version is followed by the total block size now, so that
+	mod_mono_server can retrieve the initial data in one recv call
+	instead of in a series of those.
+
+	* configure.in: added support for compiling with profiling
+	information (--enable-gprof)
+
 2008-05-20  Marek Habersack  <mhabersack@novell.com>
 
 	* src/mod_mono.c: work correctly with IPv6 sockets, by detecting
