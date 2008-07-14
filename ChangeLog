@@ -1,3 +1,16 @@
+2008-07-14  Joshua Tauberer  <jit@occams.info>
+
+	* src/mod_mono.c: Always acquire a lock at the start of processing
+	a request. The active requests counter function now assumes the
+	lock is already aquired. Also added a accepting_requests flag
+	to the dashboard so that xsp configurations can be paused. Now
+	when restarting mod-mono-server from the control panel, the
+	configuration is set to not accepting requests (503s returned)
+	until after the restart. This fixed a problem that when requests
+	came in during a restart, mod-mono-server would never successfully
+	come back but it would keep getting forked. The flag can also
+	be turned on and off through the control panel.
+
 2008-07-14  Marek Habersack  <mhabersack@novell.com>
 
 	* src/mod_mono.c (write_string_to_buffer, send_initial_data): use

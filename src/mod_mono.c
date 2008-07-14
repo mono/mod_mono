@@ -65,6 +65,7 @@ typedef struct {
 	char restart_issued;
 	int active_requests;
 	int waiting_requests;
+	int accepting_requests;
 } dashboard_data;
 
 #define INITIAL_DATA_MAX_ALLOCA_SIZE 8192
@@ -466,6 +467,7 @@ ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 				xsp->dashboard->restart_issued = 0;
 				xsp->dashboard->active_requests = 0;
 				xsp->dashboard->waiting_requests = 0;
+				xsp->dashboard->accepting_requests = 1;
 			}
 		}
 	}
@@ -1996,6 +1998,13 @@ static int
 increment_active_requests (xsp_data *conf)
 {
 #ifndef APACHE13
+	/* This function tries to increment the counters that limit
+	 * the number of simultaenous requests being processed. It
+	 * assumes that the mutex is held when the function is called
+	 * and returns with the mutex still held, although it may
+	 * unlock and lock the mutex itself.
+	 */
+
 	apr_status_t rv;
 	
 	int max_active_requests = atoi(conf->max_active_requests);
@@ -2004,21 +2013,20 @@ increment_active_requests (xsp_data *conf)
 	/* Limit the number of concurrent requests. If no
 	 * limiting is in effect (or can't be done because
 	 * there is no dashboard), return the OK status. 
-	 * Same test as in the decrement function. */
-	if (max_active_requests == 0 || !conf->dashboard_mutex || !conf->dashboard)
+	 * Same test as in the decrement function and the
+	 * control panel. */
+	if (!conf->dashboard_mutex || !conf->dashboard)
 		return 1;
-		
-	rv = apr_global_mutex_lock (conf->dashboard_mutex);
-	/* Drop the request on failure to lock the dashboard because
-	 * we don't want to decrement the counter later since we couldn't
-	 * increment it here. */
-	if (rv != APR_SUCCESS)
-		return 0;
 		
 	// From here on, rv holds onto whether we still have
 	// the lock acquired, just in case some error ocurrs
 	// acquiring it during the loop.
-	if (conf->dashboard->active_requests >= max_active_requests) {
+	rv = APR_SUCCESS;
+	
+	/* If any limiting is in effect, and if there are the maximum
+	 * allowed concurrent requests, then we have to hold the request
+	 * for a bit of time. */
+	if (max_active_requests > 0 && conf->dashboard->active_requests >= max_active_requests) {
 		/* We need to wait until the active requests
 		 * go below the maximum. */
 		 
@@ -2028,7 +2036,6 @@ increment_active_requests (xsp_data *conf)
 		 * is max_active_req+max_waiting_req.
 		 */
 		if (conf->dashboard->waiting_requests >= max_waiting_requests) {
-			apr_global_mutex_unlock (conf->dashboard_mutex);
 			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
 			      "Maximum number of concurrent mod_mono requests to %s reached (%d active, %d waiting). Request dropped.",
 		    	  conf->dashboard_lock_file, max_active_requests, max_waiting_requests);
@@ -2063,7 +2070,6 @@ increment_active_requests (xsp_data *conf)
 	 	// many requests are going, stop processing the
 	 	// request.
 		if (rv == APR_SUCCESS && conf->dashboard->active_requests >= max_active_requests) {
-			apr_global_mutex_unlock (conf->dashboard_mutex);
 			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
 				      "Maximum number (%d) of concurrent mod_mono requests to %s reached. Droping request.",
 				      max_active_requests, conf->dashboard_lock_file);
@@ -2078,7 +2084,6 @@ increment_active_requests (xsp_data *conf)
 		return 0;
 
 	conf->dashboard->active_requests++;
-	apr_global_mutex_unlock (conf->dashboard_mutex);
 	
 	return 1;
 #else
@@ -2092,11 +2097,9 @@ decrement_active_requests (xsp_data *conf)
 #ifndef APACHE13
 	apr_status_t rv;
 
-	int max_active_requests = atoi(conf->max_active_requests);
-
 	/* Check if limiting is in effect. Same test as in the
-	 * increment function. */
-	if (max_active_requests == 0 || !conf->dashboard_mutex || !conf->dashboard)
+	 * increment function and the control panel. */
+	if (!conf->dashboard_mutex || !conf->dashboard)
 		return;
 		
 	rv = apr_global_mutex_lock (conf->dashboard_mutex);
@@ -2194,12 +2197,23 @@ mono_execute_request (request_rec *r, char auto_app)
 		} else
 			conf->dashboard_mutex_initialized_in_child = 1;
 	}
+	
+	if (conf->dashboard_mutex && conf->dashboard) {
+		if (apr_global_mutex_lock (conf->dashboard_mutex) == APR_SUCCESS) {
+			int ok = conf->dashboard->accepting_requests;
+			if (ok)
+				ok = increment_active_requests (conf);
+			
+			apr_global_mutex_unlock (conf->dashboard_mutex);
+
+			if (!ok)
+				return HTTP_SERVICE_UNAVAILABLE;
+		}
+	}
 #endif
 	
 	rv = -1; /* avoid a warning about uninitialized value */
-	if (!increment_active_requests (conf))
-		return HTTP_SERVICE_UNAVAILABLE;
-	
+
 	while (connect_attempts--) {
 		rv = setup_socket (&sock, conf, r->pool);
 		DEBUG_PRINT (2, "After setup_socket");
@@ -2603,6 +2617,31 @@ terminate_xsp (void *data)
 	return terminate_xsp2(data, NULL, 0, 0);
 }
 
+static void
+set_accepting_requests (void *data, char *alias, int accepting_requests)
+{
+	server_rec *server;
+	module_cfg *config;
+	xsp_data *xsp;
+	int i;
+	
+	server = (server_rec *) data;
+	config = ap_get_module_config (server->module_config, &mono_module);
+
+	for (i = 0; i < config->nservers; i++) {
+		xsp = &config->servers [i];
+
+		/* If alias isn't null, skip XSPs that don't have that alias. */
+		if (alias != NULL && strcmp(xsp->alias, alias))
+			continue;
+		
+#ifndef APACHE13
+		if (xsp->dashboard)
+			xsp->dashboard->accepting_requests = accepting_requests;
+#endif
+	}
+}
+
 static int
 mono_control_panel_handler (request_rec *r)
 {
@@ -2630,43 +2669,63 @@ mono_control_panel_handler (request_rec *r)
 	uri = &r->parsed_uri;
 	if (!uri->query || !strcmp (uri->query, "")) {
 		/* No query string -> Emit links for configuration commands. */
-		request_send_response_string (r, "<ul style=\"text-align: center;\">\n");
+		request_send_response_string (r, "<ul>\n");
+		request_send_response_string (r, "<li><div>All Backends</div>\n<ul>\n");
 		request_send_response_string (r, "<li><a href=\"?restart=ALL\">Restart all mod-mono-server processes</a></li>\n");
+		request_send_response_string (r, "<li><a href=\"?pause=ALL\">Stop Accepting Requests</a></li>\n");
+		request_send_response_string (r, "<li><a href=\"?resume=ALL\">Resume Accepting Requests</a></li>\n");
+		request_send_response_string (r, "</ul></li>\n");
 
 		for (i = 0; i < config->nservers; i++) {
 			xsp = &config->servers [i];
 			if (xsp->run_xsp && !strcasecmp (xsp->run_xsp, "false"))
 				continue;
 
-			buffer = apr_psprintf (r->pool, "<li>%s: <a href=\"?restart=%s\">"
-					       "Restart Server</a>", xsp->alias, xsp->alias);
+			buffer = apr_psprintf (r->pool, "<li><div>%s</div><ul>\n", xsp->alias);
+			request_send_response_string(r, buffer);
+
+			buffer = apr_psprintf (r->pool, "<li><a href=\"?restart=%s\">Restart Server</a></li>\n", xsp->alias);
 			request_send_response_string(r, buffer);
 
 #ifndef APACHE13
 			ensure_dashboard_initialized (config, xsp, pconf);
-			if (xsp->dashboard_mutex) {
-				rv = apr_global_mutex_lock (xsp->dashboard_mutex);
-				if (rv == APR_SUCCESS) {
-					if (xsp->restart_mode == AUTORESTART_MODE_REQUESTS) {
-						buffer = apr_psprintf (r->pool, " [%d requests served; limit: %d]",
-								       xsp->dashboard->handled_requests, xsp->restart_requests);
-						request_send_response_string(r, buffer);
-					} else if (xsp->restart_mode == AUTORESTART_MODE_TIME) {
-						buffer = apr_psprintf (r->pool, " [%ds time running; limit: %ds]",
-								       (int)(time(NULL) - xsp->dashboard->start_time), (int)xsp->restart_time);
-						request_send_response_string(r, buffer);
-					}
+			if (xsp->dashboard_mutex && xsp->dashboard
+				&& apr_global_mutex_lock (xsp->dashboard_mutex) == APR_SUCCESS) {
 
-					rv = apr_global_mutex_unlock (xsp->dashboard_mutex);
-					if (rv != APR_SUCCESS)
-						ap_log_error (APLOG_MARK, APLOG_ALERT, STATCODE_AND_SERVER (rv),
-							      "Failed to release %s lock after mono-ctrl output, the process may deadlock!",
-							      xsp->dashboard_lock_file);
+				if (xsp->dashboard->accepting_requests)
+					buffer = apr_psprintf (r->pool, "<li><a href=\"?pause=%s\">Stop Accepting Requests</a></li>\n", xsp->alias);
+				else
+					buffer = apr_psprintf (r->pool, "<li><a href=\"?resume=%s\">Resume Accepting Requests</a></li>\n", xsp->alias);
+				request_send_response_string(r, buffer);
+				
+				if (xsp->restart_mode == AUTORESTART_MODE_REQUESTS) {
+					buffer = apr_psprintf (r->pool, "<li>%d requests served; limit: %d</li>\n",
+							       xsp->dashboard->handled_requests, xsp->restart_requests);
+					request_send_response_string(r, buffer);
+				} else if (xsp->restart_mode == AUTORESTART_MODE_TIME) {
+					buffer = apr_psprintf (r->pool, "<li>%ds time running; limit: %ds</li>\n",
+							       (int)(time(NULL) - xsp->dashboard->start_time), (int)xsp->restart_time);
+					request_send_response_string(r, buffer);
 				}
+
+				buffer = apr_psprintf (r->pool, "<li>%d requests currently being processed; limit: %s</li>\n",
+						       xsp->dashboard->active_requests, xsp->max_active_requests);
+				request_send_response_string(r, buffer);
+				
+				buffer = apr_psprintf (r->pool, "<li>%d requests currently waiting to be processed; limit: %s</li>\n",
+						       xsp->dashboard->waiting_requests, xsp->max_waiting_requests);
+				request_send_response_string(r, buffer);
+				
+
+				rv = apr_global_mutex_unlock (xsp->dashboard_mutex);
+				if (rv != APR_SUCCESS)
+					ap_log_error (APLOG_MARK, APLOG_ALERT, STATCODE_AND_SERVER (rv),
+						      "Failed to release %s lock after mono-ctrl output, the process may deadlock!",
+						      xsp->dashboard_lock_file);
 			}
 #endif
 			
-			request_send_response_string(r, "</li>\n");
+			request_send_response_string(r, "</ul></li>\n");
 		}
 		
 		request_send_response_string (r, "</ul>\n");
@@ -2676,9 +2735,25 @@ mono_control_panel_handler (request_rec *r)
 			char *alias = uri->query + 8; /* +8 == .Substring(8) */
 			if (!strcmp (alias, "ALL"))
 				alias = NULL;
+			set_accepting_requests (r->server, alias, 0);
 			terminate_xsp2 (r->server, alias, 1, 0); 
 			start_xsp (config, 1, alias);
+			set_accepting_requests (r->server, alias, 1);
 			request_send_response_string (r, "<div style=\"text-align: center;\">mod-mono-server processes restarted.</div><br>\n");
+		} else if (uri->query && !strncmp (uri->query, "pause=", 6)) {
+			/* Stop accepting requests for this server */
+			char *alias = uri->query + 6; /* +6 == .Substring(6) */
+			if (!strcmp (alias, "ALL"))
+				alias = NULL;
+			set_accepting_requests (r->server, alias, 0);
+			request_send_response_string (r, "<div style=\"text-align: center;\">no longer accepting requests</div><br>\n");
+		} else if (uri->query && !strncmp (uri->query, "resume=", 7)) {
+			/* Resume accepting requests for this server */
+			char *alias = uri->query + 7; /* +7 == .Substring(7) */
+			if (!strcmp (alias, "ALL"))
+				alias = NULL;
+			set_accepting_requests (r->server, alias, 1);
+			request_send_response_string (r, "<div style=\"text-align: center;\">resumed accepting requests</div><br>\n");
 		} else {
 			/* Invalid command. */
 			request_send_response_string (r, "<div style=\"text-align: center;\">Invalid query string command.</div>\n");
