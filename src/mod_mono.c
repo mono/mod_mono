@@ -1124,6 +1124,7 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result, xsp_da
 				abort();
 			}
 			str = get_client_block_buffer (r, (uint32_t) i, &actual_size);
+			DEBUG_PRINT (2, "requested size == %u, actual size == %u", i, actual_size);
 			i = ap_get_client_block (r, str, actual_size);
 			i = LE_FROM_INT (i);
 			status = write_data (sock, &i, sizeof (int32_t));
@@ -1784,25 +1785,25 @@ setup_socket (apr_socket_t **sock, xsp_data *conf, apr_pool_t *pool)
 static int
 write_string_to_buffer (char *buffer, int offset, const char *str, size_t str_length)
 {
-	int le;
-	int tmp;
+	uint32_t le;
+	uint32_t tmp;
 	
 	buffer += offset;
 	if (str && !str_length) {
 		tmp = strlen (str);
 		le = LE_FROM_INT (tmp);
 	} else
-		tmp = (int)str_length;
+		tmp = (uint32_t)str_length;
 	
 	le = LE_FROM_INT (tmp);
 	
-	memcpy (buffer, &le, sizeof (int32_t));
+	memcpy (buffer, &le, sizeof (uint32_t));
 	if (tmp > 0) {
-		buffer += sizeof (int32_t);
+		buffer += sizeof (uint32_t);
 		memcpy (buffer, str, tmp);
 	}
 
-	return tmp + sizeof (int32_t);
+	return tmp + sizeof (uint32_t);
 }
 
 static int32_t
@@ -1893,9 +1894,9 @@ send_table (apr_pool_t *pool, apr_table_t *table, apr_socket_t *sock)
 static int
 send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 {
-	int                i;
+	uint32_t           i;
 	char              *str, *ptr;
-	int                size;
+	uint32_t           size;
 	server_rec        *s = r->server;
 	initial_data_info  info;
 	
@@ -1958,7 +1959,7 @@ send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 		ptr = str = apr_pcalloc (r->pool, size);
 	*ptr++ = (char)PROTOCOL_VERSION; /* version. Keep in sync with ModMonoRequest. */
 	i = LE_FROM_INT (size);
-	memcpy (ptr, &i, sizeof (int32_t));
+	memcpy (ptr, &i, sizeof (i));
 	ptr += sizeof (int32_t);
 	ptr += write_string_to_buffer (ptr, 0, r->method, info.method_len);
 	if (s != NULL)
@@ -1972,12 +1973,12 @@ send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 	ptr += write_string_to_buffer (ptr, 0, r->connection->local_ip, info.local_ip_len);
 	i = request_get_server_port (r);
 	i = LE_FROM_INT (i);
-	memcpy (ptr, &i, sizeof (int32_t));
+	memcpy (ptr, &i, sizeof (i));
 	ptr += sizeof (int32_t);
 	ptr += write_string_to_buffer (ptr, 0, r->connection->remote_ip, info.remote_ip_len);
 	i = connection_get_remote_port (r->connection);
 	i = LE_FROM_INT (i);
-	memcpy (ptr, &i, sizeof (int32_t));
+	memcpy (ptr, &i, sizeof (i));
 	ptr += sizeof (int32_t);
 	ptr += write_string_to_buffer (ptr, 0, info.remote_name, info.remote_name_len);
 	ptr += write_table_to_buffer (ptr, r->headers_in);
