@@ -1,3 +1,8 @@
+2008-09-22  Juraj Skripsky  <js@hotfeet.ch>
+
+	* mod_mono.conf.in: Add new file types (as registered in
+	/etc/mono/2.0/web.config).
+
 2008-07-14  Joshua Tauberer  <jit@occams.info>
 
 	* src/mod_mono.c: Always acquire a lock at the start of processing
