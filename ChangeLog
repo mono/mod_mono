@@ -1,3 +1,7 @@
+2008-09-25  Joshua Tauberer  <jit@occams.info>
+
+	* src/mod_mono.c: Typo in error message "droping" now "dropping".
+
 2008-09-22  Juraj Skripsky  <js@hotfeet.ch>
 
 	* mod_mono.conf.in: Add new file types (as registered in

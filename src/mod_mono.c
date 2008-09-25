@@ -2071,7 +2071,7 @@ increment_active_requests (xsp_data *conf)
 	 	// request.
 		if (rv == APR_SUCCESS && conf->dashboard->active_requests >= max_active_requests) {
 			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-				      "Maximum number (%d) of concurrent mod_mono requests to %s reached. Droping request.",
+				      "Maximum number (%d) of concurrent mod_mono requests to %s reached. Dropping request.",
 				      max_active_requests, conf->dashboard_lock_file);
 			return 0;
 		}
