@@ -356,7 +356,7 @@ apache_get_groupid ()
 #endif
 }
 
-inline static char *
+inline static const char *
 apache_get_username ()
 {
 #ifdef HAVE_UNIXD
@@ -1590,7 +1590,7 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 		exit (0);
 
 	setsid ();
-	chdir ("/");
+	status = chdir ("/");
 
 #if defined (APR_HAS_USER)
 	/*
@@ -2134,11 +2134,11 @@ mono_execute_request (request_rec *r, char auto_app)
 	char *socket_name = NULL;
   
 	config = ap_get_module_config (r->server->module_config, &mono_module);
-	DEBUG_PRINT (2, "config = 0x%lx", (uint64_t) config);
+	DEBUG_PRINT (2, "config = 0x%p", config);
 	if (r->per_dir_config != NULL)
 		dir_config = ap_get_module_config (r->per_dir_config, &mono_module);
 
-	DEBUG_PRINT (2, "dir_config = 0x%lx", (uint64_t) dir_config);
+	DEBUG_PRINT (2, "dir_config = 0x%p", dir_config);
 	if (dir_config != NULL && dir_config->alias != NULL)
 		idx = search_for_alias (dir_config->alias, config);
 	else
