@@ -1,3 +1,13 @@
+2009-01-08  Marek Habersack  <mhabersack@novell.com>
+
+	* configure.in: added the --with-remove-display configure
+	parameter to enable removing of the DISPLAY variable
+	from the mod-mono-server backend's environment. Fixes bug #464225
+
+	* src/mod_mono.c (fork_mod_mono_server): remove the DISPLAY
+	variable from the child process environment if mod_mono was
+	compiled with REMOVE_DISPLAY defined. Fixes bug #464225
+
 2008-07-14  Joshua Tauberer  <jit@occams.info>
 
 	* src/mod_mono.c: Always acquire a lock at the start of processing
