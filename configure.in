@@ -25,7 +25,7 @@ AC_HEADER_TIME
 AC_FUNC_FORK
 AC_HEADER_STDC
 AC_FUNC_SELECT_ARGTYPES
-AC_CHECK_FUNCS([memset mkdir putenv setenv setrlimit select strcasecmp strerror strrchr dup2])
+AC_CHECK_FUNCS([memset mkdir unsetenv putenv setenv setrlimit select strcasecmp strerror strrchr dup2])
 
 #
 # --enable-debug
@@ -37,6 +37,18 @@ AC_ARG_ENABLE(debug,
 AC_MSG_RESULT($enable_debug)
 if test "x$enable_debug" = "xyes" ; then
 	CFLAGS="$CFLAGS -DDEBUG"
+fi
+
+#
+# --with-remove-display
+#
+AC_MSG_CHECKING([whether mod_mono should remove the DISPLAY variable from environment])
+AC_ARG_WITH(remove-display,
+	[ --with-remove-display    remove the DISPLAY variable from environment before starting backends],
+	no_display=$withval, no_display=no)
+AC_MSG_RESULT($no_display)
+if test "x$no_display" = "xyes" ; then
+   	CFLAGS="$CFLAGS -DREMOVE_DISPLAY"
 fi
 
 #
@@ -459,6 +471,8 @@ echo "   * GCOV options used = $enable_gcov"
 echo "   * Profiling enabled = $enable_gprof"
 echo "   * mono prefix = $MONO_PREFIX"
 echo "   * Default MonoApplicationsConfigDir = $DFLT_MONO_CONFIG_DIR"
+test "x$no_display" = "xyes" && \
+echo "   * DISPLAY variable will be removed before forking the mod-mono-server backend"
 dnl echo "   * Build old module: $enable_old_module"
 echo ""
 echo "---"

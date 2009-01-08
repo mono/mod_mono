@@ -1659,6 +1659,14 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	if (config->debug && !strcasecmp (config->debug, "True"))
 		SETENV (pool, "MONO_OPTIONS", "--debug");
 
+#ifdef REMOVE_DISPLAY
+#warning mod_mono is compiled with support for removing the DISPLAY variable (Bug 464225)
+#ifdef HAVE_UNSETENV
+	unsetenv ("DISPLAY");
+#else
+#warning unsetenv (2) is not available!
+#endif
+#endif
 	memset (argv, 0, sizeof (char *) * MAXARGS);
 	argi = 0;
 	argv [argi++] = config->server_path;
