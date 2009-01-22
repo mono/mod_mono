@@ -1,3 +1,9 @@
+2009-01-21 Gonzalo Paniagua Javier <gonzalo@novell.com>
+
+	* src/mod_mono.c: redirect stdout to null when not in debug mode. Now
+	we can write large amounts of text to the console without slowing down
+	mod_mono.
+
 2009-01-08  Marek Habersack  <mhabersack@novell.com>
 
 	* configure.in: added the --with-remove-display configure

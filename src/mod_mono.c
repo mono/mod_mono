@@ -1496,6 +1496,19 @@ set_process_limits (int max_cpu_time, int max_memory)
 }
 
 static void
+set_null_stdout ()
+{
+#ifndef WIN32
+       int fd;
+
+       fd = open ("/dev/null", O_WRONLY);
+       if (fd >= 0) {
+               dup2 (fd, 1);
+       }
+#endif
+}
+
+static void
 fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 {
 	pid_t pid;
@@ -1627,6 +1640,8 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 
 #ifdef DEBUG
 	dup2 (2, 1);
+#else
+	set_null_stdout ();
 #endif
 	for (i = getdtablesize () - 1; i >= 3; i--)
 		close (i);
