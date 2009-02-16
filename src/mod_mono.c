@@ -63,6 +63,7 @@ typedef struct {
 	uint32_t handled_requests;
 	time_t start_time;
 	char restart_issued;
+	char starting;
 	int active_requests;
 	int waiting_requests;
 	int accepting_requests;
@@ -467,6 +468,7 @@ ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 				xsp->dashboard->restart_issued = 0;
 				xsp->dashboard->active_requests = 0;
 				xsp->dashboard->waiting_requests = 0;
+				xsp->dashboard->starting = 0;
 				xsp->dashboard->accepting_requests = 1;
 			}
 		}
@@ -1524,6 +1526,7 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	int max_cpu_time = 0;
 	int status;
 	char is_master;
+	sigset_t sigset;
 #if defined (APR_HAS_USER)
 	apr_uid_t cur_uid;
 	apr_gid_t cur_gid;
@@ -1742,6 +1745,14 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 		      argv [0], argv [1], argv [2], argv [3], argv [4],
 		      argv [5], argv [6], argv [7], argv [8], 
 		      argv [9], argv [10], argv [11], argv [12]);
+
+	/* Unblock signals Mono uses: see bug #472732 */
+	sigemptyset (&sigset);
+	sigaddset (&sigset, SIGPWR);
+	sigaddset (&sigset, SIGXCPU);
+	sigaddset (&sigset, 33);
+	sigaddset (&sigset, 35);
+	sigprocmask (SIG_UNBLOCK, &sigset, NULL);
 
 	execv (argv [0], argv);
 	ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
@@ -2155,7 +2166,8 @@ mono_execute_request (request_rec *r, char auto_app)
 	int connect_attempts;
 	int start_wait_time;
 	char *socket_name = NULL;
-  
+	int retrying, was_starting;
+
 	config = ap_get_module_config (r->server->module_config, &mono_module);
 	DEBUG_PRINT (2, "config = 0x%p", config);
 	if (r->per_dir_config != NULL)
@@ -2237,6 +2249,10 @@ mono_execute_request (request_rec *r, char auto_app)
 	
 	rv = -1; /* avoid a warning about uninitialized value */
 
+#ifndef APACHE13
+	retrying = connect_attempts;
+	was_starting = 0;
+#endif
 	while (connect_attempts--) {
 		rv = setup_socket (&sock, conf, r->pool);
 		DEBUG_PRINT (2, "After setup_socket");
@@ -2262,12 +2278,37 @@ mono_execute_request (request_rec *r, char auto_app)
 				decrement_active_requests (conf);
 				return HTTP_SERVICE_UNAVAILABLE;
 			}
+
+			if (conf->dashboard->starting) {
+				retrying--;
+				was_starting = 1;
+
+				rv2 = apr_global_mutex_unlock (conf->dashboard_mutex);
+				if (rv2 != APR_SUCCESS)
+					ap_log_error (APLOG_MARK, APLOG_ALERT, STATCODE_AND_SERVER (rv2),
+						      "Failed to release %s lock, the process may deadlock!",
+						      conf->dashboard_lock_file);
+				if (retrying < 0) {
+					ap_log_error (APLOG_MARK, APLOG_CRIT, STATUS_AND_SERVER,
+						      "Another process is attempting to start the backend. This request will fail.");
+					decrement_active_requests (conf);
+					return HTTP_SERVICE_UNAVAILABLE;
+				}
+				connect_attempts++; /* keep trying */
+				apr_sleep (apr_time_from_sec (start_wait_time));
+				continue;
+			}
 #endif
-			
-			if (socket_name != NULL && unlink (socket_name) < 0 && errno != ENOENT)
-				ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
-					      "Could not remove stale socket %s. %s. Further requests will probably fail.",
-					      socket_name, strerror (errno));
+
+			if (was_starting) {
+				was_starting = 0;
+				connect_attempts++;
+
+				/* let's try one more time here */
+				apr_sleep (apr_time_from_sec (start_wait_time));
+				continue;
+			}
+
 			start_xsp (config, 0, conf->alias);
 			/* give some time for warm-up */
 			DEBUG_PRINT (2, "Started new backend, sleeping %us to let it configure", (unsigned)start_wait_time);
@@ -2502,6 +2543,9 @@ start_xsp (module_cfg *config, int is_restart, char *alias)
 
 #ifdef APACHE13
 		sock = apr_pcalloc (pconf, sizeof (apr_socket_t));
+#else
+		if (xsp->dashboard)
+			xsp->dashboard->starting = 1;
 #endif
 		rv = setup_socket (&sock, xsp, pconf);
 
@@ -2532,6 +2576,10 @@ start_xsp (module_cfg *config, int is_restart, char *alias)
 			}
 #endif
 		}
+#ifndef APACHE13
+		if (xsp->dashboard)
+			xsp->dashboard->starting = 0;
+#endif
 	}
 }
 

@@ -1,3 +1,13 @@
+2009-02-16  Marek Habersack  <mhabersack@novell.com>
+
+	* src/mod_mono.c (fork_mod_mono_server): unblock the signals Mono
+	needs (SIGPWR, SIGXCPU, 33, 35) just before executing the
+	backend. It appears that some versions of Apache block signals and
+	Mono uses the above in the runtime and in the GC. As the result of
+	those signals being blocked, the forked backend would lock up as
+	soon as GC would start collecting. Thanks to Zoltan Varga for
+	noticing that the signals are blocked. Fixes bug #472732
+
 2009-01-21 Gonzalo Paniagua Javier <gonzalo@novell.com>
 
 	* src/mod_mono.c: redirect stdout to null when not in debug mode. Now
