@@ -1,3 +1,24 @@
+2009-02-16  Marek Habersack  <mhabersack@novell.com>
+
+	* src/mod_mono.c (fork_mod_mono_server): unblock the signals Mono
+	needs (SIGPWR, SIGXCPU, 33, 35) just before executing the
+	backend. It appears that some versions of Apache block signals and
+	Mono uses the above in the runtime and in the GC. As the result of
+	those signals being blocked, the forked backend would lock up as
+	soon as GC would start collecting. Thanks to Zoltan Varga for
+	noticing that the signals are blocked. Fixes bug #472732
+	(mono_execute_request): When a connection attempt fails, do not
+	start the backend immediately but first check if another backend
+	is restarting it. If yes, retry several times to connect to the
+	new backend pausing between attempts. If all connection attempts
+	fail and we've been waiting on another copy of mod_mono to start
+	the backend, make another round (helpful on heavily loaded
+	servers). When we get to the point where we are about to start the
+	backend, do NOT remove the socket file. Doing so introduces a race
+	condition and we can safely assume that the owner of the socket
+	file hasn't change and therefore creating a new socket on top of
+	it will succeed. Fixes bug #472732
+
 2009-01-21 Gonzalo Paniagua Javier <gonzalo@novell.com>
 
 	* src/mod_mono.c: redirect stdout to null when not in debug mode. Now
