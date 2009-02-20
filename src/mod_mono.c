@@ -1,13 +1,13 @@
 /*
  * mod_mono.c
- * 
+ *
  * Authors:
  * 	Daniel Lopez Ridruejo
  * 	Gonzalo Paniagua Javier
  *      Marek Habersack
  *
  * Copyright (c) 2002 Daniel Lopez Ridruejo
- *           (c) 2002-2006 Novell, Inc.
+ *           (c) 2002-2009 Novell, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,13 @@
 #define DEBUG_LEVEL 0
 #endif
 
+#ifdef DEBUG
+#define STDOUT_NULL_DEFAULT 0
+#else
+#define STDOUT_NULL_DEFAULT 1
+#endif
+
+#include <stdlib.h>
 #include "mod_mono.h"
 
 DEFINE_MODULE (mono_module);
@@ -86,7 +93,7 @@ typedef struct {
 typedef struct xsp_data {
 	char is_default;
 	char *alias;
-	char *filename;
+	char *filename; /* Unix socket path */
 	char *umask_value;
 	char *run_xsp;
 	char *executable_path;
@@ -110,7 +117,7 @@ typedef struct xsp_data {
 	char *start_wait_time;
 	char *max_active_requests;
 	char *max_waiting_requests;
-  
+
 	/* auto-restart stuff */
 	auto_restart_mode restart_mode;
 	uint32_t restart_requests;
@@ -118,15 +125,14 @@ typedef struct xsp_data {
 
 	/* other settings */
 	unsigned char no_flush;
-	
-#ifndef APACHE13
+
+	/* The dashboard */
 	apr_shm_t *dashboard_shm;
 	dashboard_data *dashboard;
 	apr_global_mutex_t *dashboard_mutex;
 	char dashboard_mutex_initialized_in_child;
 	char *dashboard_file;
 	char *dashboard_lock_file;
-#endif
 } xsp_data;
 
 typedef struct {
@@ -141,7 +147,6 @@ typedef struct {
 	char *client_block_buffer;
 } request_data;
 
-#ifndef APACHE13
 typedef struct {
 	char *name;
 	apr_lockmech_e sym;
@@ -149,7 +154,7 @@ typedef struct {
 } lock_mechanism;
 
 #define LOCK_MECH(name) {#name, APR_LOCK_ ## name, APR_HAS_ ## name ## _SERIALIZE}
-  
+
 static lock_mechanism lockMechanisms [] = {
 	LOCK_MECH (FCNTL),
 	LOCK_MECH (FLOCK),
@@ -159,20 +164,40 @@ static lock_mechanism lockMechanisms [] = {
 	{"DEFAULT", APR_LOCK_DEFAULT, 1},
 	{NULL, 0, 0}
 };
-#endif
 
 static int send_table (apr_pool_t *pool, apr_table_t *table, apr_socket_t *sock);
 static void start_xsp (module_cfg *config, int is_restart, char *alias);
 static apr_status_t terminate_xsp2 (void *data, char *alias, int for_restart, int lock_held);
 
-#ifndef APACHE13
+#define IS_MASTER(__conf__) (!strcmp (GLOBAL_SERVER_NAME, (__conf__)->alias))
+
+static long
+string_to_long (char *str, char *what, long def)
+{
+	long retval;
+	char *endptr;
+
+	if (!str || !*str)
+		return def;
+
+	retval = strtol (str, &endptr, 0);
+	if ((retval == LONG_MAX && errno == ERANGE) || (str == endptr) || *endptr) {
+		ap_log_error (APLOG_MARK, APLOG_WARNING, STATUS_AND_SERVER,
+			      "%s: conversion to integer failed - returning the default value %lu.",
+			      what ? what : "Configuration", def);
+		return def;
+	}
+
+	return retval;
+}
+
 static apr_lockmech_e
 get_apr_locking_mechanism ()
 {
 	char *name = getenv ("MOD_MONO_LOCKING_MECHANISM");
 	int i = 0;
 
-	DEBUG_PRINT (0, "Requested locking mechanism name: %s", name);
+	DEBUG_PRINT (2, "Requested locking mechanism name: %s", name);
 	if (!name)
 		return APR_LOCK_DEFAULT;
 	while (lockMechanisms [i].name) {
@@ -195,7 +220,6 @@ get_apr_locking_mechanism ()
 		      name);
 	return APR_LOCK_DEFAULT;
 }
-#endif
 
 /* */
 static int
@@ -205,8 +229,11 @@ search_for_alias (const char *alias, module_cfg *config)
 	int i;
 	xsp_data *xsp;
 
+	DEBUG_PRINT (0, "Searching for alias %s", alias);
+	DEBUG_PRINT (0, "%u servers available", config->nservers);
 	for (i = 0; i < config->nservers; i++) {
 		xsp = &config->servers [i];
+		DEBUG_PRINT (0, "Server at index %u is '%s'", i, xsp->alias);
 		if ((alias == NULL || !strcmp (alias, "default")) && xsp->is_default)
 			return i;
 
@@ -367,7 +394,6 @@ apache_get_username ()
 #endif
 }
 
-#ifndef APACHE13
 static void
 ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 {
@@ -377,7 +403,12 @@ ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 	apr_uid_t cur_uid;
 	apr_gid_t cur_gid;
 	int switch_back_to_root = 0;
+#endif
 
+	if (!xsp->dashboard_mutex || !xsp->dashboard_shm)
+		xsp->dashboard = NULL;
+
+#if defined (APR_HAS_USER)
 	if (apache_get_userid () == -1 || apache_get_groupid () == -1) {
 		ap_log_error (APLOG_MARK, APLOG_CRIT, STATUS_AND_SERVER,
 			      "The unix daemon module not initialized yet. Please make sure that "
@@ -385,9 +416,7 @@ ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 			      "been parsed. Not initializing the dashboard.");
 		return;
 	}
-#endif
 
-#if defined (APR_HAS_USER)
 	if (apr_uid_current (&cur_uid, &cur_gid, p) == APR_SUCCESS && cur_uid == 0) {
 		DEBUG_PRINT (2, "Temporarily switching to target uid/gid");
 		switch_back_to_root = 1;
@@ -395,7 +424,7 @@ ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 			ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
 				      "setegid: unable to set effective group id to %u. %s",
 				      (unsigned)apache_get_groupid (), strerror (errno));
-		
+
 		if (seteuid (apache_get_userid ()) == -1)
 			ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
 				      "seteuid: unable to set effective user id to %u. %s",
@@ -405,7 +434,7 @@ ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 
 	if (!xsp->dashboard_mutex) {
 		DEBUG_PRINT (1, "creating dashboard mutex = %s", xsp->dashboard_lock_file);
-		
+
 		if (unlink (xsp->dashboard_lock_file) == -1 && errno != ENOENT) {
 			ap_log_error (APLOG_MARK, APLOG_CRIT, STATUS_AND_SERVER,
 				      "Failed to remove dashboard mutex file '%s'; will attempt to continue. %s",
@@ -431,46 +460,51 @@ ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 #endif
 	}
 
-	if (!xsp->dashboard_shm) {
+	if (!xsp->dashboard_shm)
 		rv = apr_shm_attach (&xsp->dashboard_shm, xsp->dashboard_file, p);
-		if (rv == APR_SUCCESS) {
-			xsp->dashboard = apr_shm_baseaddr_get (xsp->dashboard_shm);
-		} else {
-			DEBUG_PRINT (1, "removing dashboard file '%s'", xsp->dashboard_file);
-			if (unlink (xsp->dashboard_file) == -1 && errno != ENOENT) {
-				ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),
+	else
+		rv = APR_SUCCESS;
+
+	if (rv == APR_SUCCESS) {
+		DEBUG_PRINT (1, "Attaching to dashboard (file '%s')", xsp->dashboard_file);
+		xsp->dashboard = apr_shm_baseaddr_get (xsp->dashboard_shm);
+	} else {
+		DEBUG_PRINT (1, "removing dashboard file '%s'", xsp->dashboard_file);
+		if (unlink (xsp->dashboard_file) == -1 && errno != ENOENT) {
+			ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),
 				      "Failed to attach to existing dashboard, and removing dashboard file '%s' failed (%s). Further action impossible.",
 				      xsp->dashboard_file, strerror (errno));
+			xsp->dashboard = NULL;
+			goto restore_creds;
+		}
+
+		DEBUG_PRINT (1, "creating dashboard '%s'", xsp->dashboard_file);
+		old_umask = umask (0077);
+		rv = apr_shm_create (&xsp->dashboard_shm, sizeof (dashboard_data), xsp->dashboard_file, p);
+		umask (old_umask);
+		if (rv != APR_SUCCESS) {
+			xsp->dashboard = NULL;
+			ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),
+				      "Failed to create shared memory segment for backend '%s' at '%s'.",
+				      xsp->alias, xsp->dashboard_file);
+		} else {
+			rv = apr_shm_attach (&xsp->dashboard_shm, xsp->dashboard_file, p);
+			if (rv != APR_SUCCESS) {
+				xsp->dashboard = NULL;
+				ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),
+					      "Failed to attach to the dashboard '%s'",
+					      xsp->dashboard_file);
 				goto restore_creds;
 			}
-	
-			DEBUG_PRINT (1, "creating dashboard '%s'", xsp->dashboard_file);
-			
-			old_umask = umask (0077);
-			rv = apr_shm_create (&xsp->dashboard_shm, sizeof (dashboard_data), xsp->dashboard_file, p);
-			umask (old_umask);
-			if (rv != APR_SUCCESS) {
-				ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),
-					      "Failed to create shared memory segment for backend '%s' at '%s'.",
-					      xsp->alias, xsp->dashboard_file);
-			} else {
-				rv = apr_shm_attach (&xsp->dashboard_shm, xsp->dashboard_file, p);
-				if (rv != APR_SUCCESS) {
-					ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),
-						      "Failed to attach to the dashboard '%s'",
-						      xsp->dashboard_file);
-					goto restore_creds;
-				}
-          
-				xsp->dashboard = apr_shm_baseaddr_get (xsp->dashboard_shm);
-				xsp->dashboard->start_time = time (NULL);
-				xsp->dashboard->handled_requests = 0;
-				xsp->dashboard->restart_issued = 0;
-				xsp->dashboard->active_requests = 0;
-				xsp->dashboard->waiting_requests = 0;
-				xsp->dashboard->starting = 0;
-				xsp->dashboard->accepting_requests = 1;
-			}
+
+			xsp->dashboard = apr_shm_baseaddr_get (xsp->dashboard_shm);
+			xsp->dashboard->start_time = time (NULL);
+			xsp->dashboard->handled_requests = 0;
+			xsp->dashboard->restart_issued = 0;
+			xsp->dashboard->active_requests = 0;
+			xsp->dashboard->waiting_requests = 0;
+			xsp->dashboard->starting = 0;
+			xsp->dashboard->accepting_requests = 1;
 		}
 	}
 
@@ -489,7 +523,6 @@ ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 	}
 #endif
 }
-#endif
 
 static int
 add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_default, int is_virtual)
@@ -498,16 +531,17 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	xsp_data *servers;
 	int nservers;
 	int i;
-#ifndef APACHE13
 	char num [8];
-#endif
-	
+
+	DEBUG_PRINT (0, "add_xsp_server for alias %s", alias);
 	i = search_for_alias (alias, config);
+	DEBUG_PRINT (0, "index for this server is %d", i);
 	if (i >= 0)
 		return i;
 
+	DEBUG_PRINT (0, "alias not found, continuing");
 	server = apr_pcalloc (pool, sizeof (xsp_data));
-	
+
 	server->is_default = is_default;
 	server->alias = apr_pstrdup (pool, alias);
 	server->filename = NULL;
@@ -531,13 +565,12 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->env_vars = NULL;
 	server->status = FORK_NONE;
 	server->is_virtual = is_virtual;
-	server->start_attempts = "3";
-	server->start_wait_time = "2";
+	server->start_attempts = NULL;
+	server->start_wait_time = NULL;
 	server->no_flush = 1;
-	server->max_active_requests = "20";
-	server->max_waiting_requests = "20";
-	
-#ifndef APACHE13
+	server->max_active_requests = NULL;
+	server->max_waiting_requests = NULL;
+
 	apr_snprintf (num, sizeof (num), "%u", (unsigned)config->nservers + 1);
 	server->dashboard_file = apr_pstrcat (pool,
 					      DASHBOARD_FILE,
@@ -556,8 +589,10 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->restart_time = 0;
 
 	ensure_dashboard_initialized (config, server, pool);
-#endif
-	
+	/* This is needed, because we're being called from the main process and dashboard must NOT */
+	/* be set to any value when start_xsp is called from child init or handler init. */
+	server->dashboard = NULL;
+
 	nservers = config->nservers + 1;
 	servers = config->servers;
 	config->servers = apr_pcalloc (pool, sizeof (xsp_data) * nservers);
@@ -566,7 +601,7 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 
 	memcpy (&config->servers [config->nservers], server, sizeof (xsp_data));
 	config->nservers = nservers;
-  
+
 	return config->nservers - 1;
 }
 
@@ -574,7 +609,7 @@ static int
 handle_restart_config (char *ptr, unsigned long offset, const char *value)
 {
 	xsp_data *xsp = (xsp_data*)ptr;
-	
+
 	if (offset == APR_OFFSETOF (xsp_data, restart_mode)) {
 		if (!strncasecmp (value, "REQUESTS", 8)) {
 			xsp->restart_mode = AUTORESTART_MODE_REQUESTS;
@@ -610,21 +645,21 @@ store_config_xsp (cmd_parms *cmd, void *notused, const char *first, const char *
 	char *ptr;
 	unsigned long offset;
 	int is_default;
-	
+
 	offset = (unsigned long) cmd->info;
-	DEBUG_PRINT (1, "store_config %lu '%s' '%s'", offset, first, second);
+	DEBUG_PRINT (0, "store_config %lu '%s' '%s'", offset, first, second);
 	config = ap_get_module_config (cmd->server->module_config, &mono_module);
 	if (second == NULL) {
 		if (config->auto_app) {
-			idx = search_for_alias ("XXGLOBAL", config);
+			idx = search_for_alias (GLOBAL_SERVER_NAME, config);
 			value = first;
 			ptr = (char *) &config->servers [idx];
-			
+
 			/* special handling for restart fields */
 			if (handle_restart_config (ptr, offset, value))
 				return NULL;
 			ptr += offset;
-			
+
 			/* MonoApplications/AddMonoApplications are accumulative */
 			if (offset == APR_OFFSETOF (xsp_data, applications))
 				prev_value = *((char **) ptr);
@@ -644,7 +679,7 @@ store_config_xsp (cmd_parms *cmd, void *notused, const char *first, const char *
 		value = first;
 		is_default = 1;
 	} else {
-		if (!strcmp (first, "XXGLOBAL"))
+		if (!strcmp (first, GLOBAL_SERVER_NAME))
 			return apr_pstrdup (cmd->pool, "XXGLOBAL is a reserved application identifier.");
 		alias = first;
 		value = second;
@@ -656,15 +691,16 @@ store_config_xsp (cmd_parms *cmd, void *notused, const char *first, const char *
 		config->auto_app = FALSE;
 
 	idx = search_for_alias (alias, config);
-	if (idx == -1)
+	if (idx == -1) {
+		DEBUG_PRINT (0, "Calling add_xsp from %s", __PRETTY_FUNCTION__);
 		idx = add_xsp_server (cmd->pool, alias, config, is_default, cmd->server->is_virtual);
-
+	}
 	ptr = (char *) &config->servers [idx];
-  
+
 	/* special handling for restart fields */
 	if (handle_restart_config (ptr, offset, value))
 		return NULL;
-	
+
 	ptr += offset;
 	/* MonoApplications/AddMonoApplications are accumulative */
 	if (offset == APR_OFFSETOF (xsp_data, applications))
@@ -677,7 +713,7 @@ store_config_xsp (cmd_parms *cmd, void *notused, const char *first, const char *
 	}
 
 	*((char **) ptr) = new_value;
-	DEBUG_PRINT (1, "store_config end: %s", new_value);
+	DEBUG_PRINT (0, "store_config end: %s", new_value);
 	return NULL;
 }
 
@@ -692,7 +728,7 @@ merge_config (apr_pool_t *p, void *base_conf, void *new_conf)
 
 	if (new_module->nservers == 0)
 		return new_module;
-	
+
 	base_config = base_module->servers;
 	new_config = new_module->servers;
 	nservers = base_module->nservers + new_module->nservers;
@@ -702,7 +738,7 @@ merge_config (apr_pool_t *p, void *base_conf, void *new_conf)
 	memcpy (base_module->servers, base_config, sizeof (xsp_data) * base_module->nservers);
 	memcpy (&base_module->servers [base_module->nservers], new_config, new_module->nservers * sizeof (xsp_data));
 	base_module->nservers = nservers;
-	DEBUG_PRINT (1, "Total mod-mono-servers to spawn so far: %d", nservers);
+	DEBUG_PRINT (0, "Total mod-mono-servers to spawn so far: %d", nservers);
 	return new_module;
 }
 
@@ -711,7 +747,7 @@ create_dir_config (apr_pool_t *p, char *dirspec)
 {
 	per_dir_config *cfg;
 
-	DEBUG_PRINT (1, "creating dir config for %s", dirspec);
+	DEBUG_PRINT (0, "creating dir config for %s", dirspec);
 
 	cfg = apr_pcalloc (p, sizeof (per_dir_config));
 	if (dirspec != NULL)
@@ -735,8 +771,7 @@ create_mono_server_config (apr_pool_t *p, server_rec *s)
 	server = apr_pcalloc (p, sizeof (module_cfg));
 	server->auto_app = TRUE;
 	server->auto_app_set = FALSE;
-	
-	add_xsp_server (p, "XXGLOBAL", server, FALSE, FALSE);
+	add_xsp_server (p, GLOBAL_SERVER_NAME, server, FALSE, FALSE);
 	return server;
 }
 
@@ -744,11 +779,6 @@ static void
 request_send_response_from_memory (request_rec *r, char *byteArray, int size, int noFlush)
 {
 	DEBUG_PRINT (0, "sending from memory with%s flush", noFlush ? "out" : "");
-	
-#ifdef APACHE13
-	if (r->sent_bodyct == 0)
-		ap_send_http_header (r);
-#endif
 
 	ap_rwrite (byteArray, size, r);
 	if (!noFlush) {
@@ -772,56 +802,34 @@ request_get_server_port (request_rec *r)
 
 static int
 connection_get_remote_port (conn_rec *c)
-{ 
-#ifdef APACHE13
-	return  ntohs (c->remote_addr.sin_port);
-#elif defined(APACHE22)
+{
+#if defined(APACHE22)
 	return c->remote_addr->port;
 #else
 	apr_port_t port;
 	apr_sockaddr_port_get (&port, c->remote_addr);
 	return port;
 #endif
-  
+
 }
 
 static int
 connection_get_local_port (request_rec *r)
 {
-#ifdef APACHE13  
-	return ap_get_server_port (r);
-#elif defined(APACHE22)
+#if defined(APACHE22)
 	return r->connection->local_addr->port;
 #else
 	apr_port_t port;
 	apr_sockaddr_port_get (&port, r->connection->local_addr);
-	return port;  
+	return port;
 #endif
 }
 
 static const char *
 connection_get_remote_name (request_rec *r)
 {
-#ifdef APACHE13
-	return ap_get_remote_host (r->connection, r->per_dir_config, REMOTE_NAME);
-#else
 	return ap_get_remote_host (r->connection, r->per_dir_config, REMOTE_NAME, NULL);
-#endif
 }
-
-/* Do nothing
- * This does a kind of final flush which is not what we want.
- * It caused bug 60117.
- static void
- connection_flush (request_rec *r)
- {
- #ifdef APACHE13
- ap_rflush (r);
- #else
- ap_flush_conn (r->connection);
- #endif
- }
-*/
 
 static void
 set_response_header (request_rec *r,
@@ -849,12 +857,12 @@ write_data (apr_socket_t *sock, const void *str, apr_size_t size)
 {
 	apr_size_t prevsize = size;
 	apr_status_t statcode;
-  
+
 	if ((statcode = apr_socket_send (sock, str, &size)) != APR_SUCCESS) {
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATCODE_AND_SERVER (statcode), "write_data failed");
 		return -1;
 	}
-  
+
 	return (prevsize == size) ? size : -1;
 }
 
@@ -862,12 +870,12 @@ static int
 read_data (apr_socket_t *sock, void *ptr, apr_size_t size)
 {
 	apr_status_t statcode;
-  
+
 	if ((statcode = apr_socket_recv (sock, ptr, &size)) != APR_SUCCESS) {
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATCODE_AND_SERVER (statcode), "read_data failed");
 		return -1;
 	}
-  
+
 	return size;
 }
 
@@ -904,12 +912,11 @@ read_data_string (apr_pool_t *pool, apr_socket_t *sock, char **ptr, int32_t *siz
 static int
 send_entire_file (request_rec *r, const char *filename, int *result)
 {
-#ifdef APACHE2
-#  ifdef APR_LARGEFILE 
-#      define MODMONO_LARGE APR_LARGEFILE
-#  else
-#      define MODMONO_LARGE 0
-#  endif
+#ifdef APR_LARGEFILE
+# define MODMONO_LARGE APR_LARGEFILE
+#else
+# define MODMONO_LARGE 0
+#endif
 	apr_file_t *file;
 	apr_status_t st;
 	apr_finfo_t info;
@@ -918,46 +925,27 @@ send_entire_file (request_rec *r, const char *filename, int *result)
 
 	st = apr_file_open (&file, filename, flags, APR_OS_DEFAULT, r->pool);
 	if (st != APR_SUCCESS) {
-		DEBUG_PRINT (1, "file_open FAILED");
-		*result = HTTP_FORBIDDEN; 
+		DEBUG_PRINT (2, "file_open FAILED");
+		*result = HTTP_FORBIDDEN;
 		return -1;
 	}
 
 	st = apr_file_info_get (&info, APR_FINFO_SIZE, file);
 	if (st != APR_SUCCESS) {
-		DEBUG_PRINT (1, "info_get FAILED");
-		*result = HTTP_FORBIDDEN; 
+		DEBUG_PRINT (2, "info_get FAILED");
+		*result = HTTP_FORBIDDEN;
 		return -1;
 	}
 
 	st = ap_send_fd (file, r, 0, info.size, &nbytes);
 	apr_file_close (file);
 	if (nbytes < 0) {
-		DEBUG_PRINT (1, "SEND FAILED");
+		DEBUG_PRINT (2, "SEND FAILED");
 		*result = HTTP_INTERNAL_SERVER_ERROR;
 		return -1;
 	}
 
 	return 0;
-#else
-	FILE *fp;
-
-	fp = fopen (filename, "rb");
-	if (fp == NULL) {
-		DEBUG_PRINT (1, "file_open FAILED");
-		*result = HTTP_FORBIDDEN; 
-		return -1;
-	}
-
-	if (ap_send_fd (fp, r) < 0) {
-		fclose (fp);
-		*result = HTTP_INTERNAL_SERVER_ERROR;
-		return -1;
-	}
-		
-	fclose (fp);
-	return 0;
-#endif
 }
 
 static int
@@ -973,8 +961,8 @@ send_response_headers (request_rec *r, apr_socket_t *sock)
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER, "failed to read data string");
 		return -1;
 	}
-  
-	DEBUG_PRINT (2, "Headers length: %d", size);
+
+	DEBUG_PRINT (0, "Headers length: %d", size);
 	pos = 0;
 	while (size > 0) {
 		name = &str [pos];
@@ -1147,7 +1135,7 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result, xsp_da
 				error_message = "failed to set status (data size)";
 				break;
 			}
-    
+
 			if (read_data_string (r->pool, sock, &str, NULL) == NULL) {
 				error_message = "failed to set status (data)";
 				status = -1;
@@ -1186,7 +1174,6 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result, xsp_da
 				error_message = "failed to send file (file data)";
 			break;
 
-
 		case SET_CONFIGURATION: {
 			if (read_data (sock, &xsp->no_flush, sizeof (xsp->no_flush)) == -1) {
 				error_message = "failed to set configuration (output buffering)";
@@ -1195,7 +1182,7 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result, xsp_da
 			}
 			break;
 		}
-			
+
 		default:
 			error_message = "unknown command";
 			status = -1;
@@ -1213,99 +1200,7 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result, xsp_da
 	return TRUE;
 }
 
-#ifndef APACHE2
-static apr_status_t
-apr_sockaddr_info_get (apr_sockaddr_t **sa, const char *hostname,
-		       int family, int port, int flags, apr_pool_t *p)
-{
-	struct addrinfo hints, *list;
-	int error;
-	struct sockaddr_in *addr;
-
-	if (port < 0 || port > 65535)
-		return EINVAL;
-
-	memset (&hints, 0, sizeof (hints));
-	hints.ai_family = family;
-	hints.ai_socktype = SOCK_STREAM;
-	error = getaddrinfo (hostname, NULL, &hints, &list);
-	if (error != 0) {
-		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-			      "mod_mono: getaddrinfo failed (%s) hostname: '%s' port: '%d'.",
-			      strerror (error), hostname, port);
-
-		return error;
-	}
-
-	*sa = apr_pcalloc (p, sizeof (apr_sockaddr_t));
-	(*sa)->pool = p;
-	(*sa)->addrlen = list->ai_addrlen;
-	(*sa)->addr = apr_pcalloc (p, list->ai_addrlen);
-	memcpy ((*sa)->addr, list->ai_addr, list->ai_addrlen);
-	addr = (struct sockaddr_in *) (*sa)->addr;
-	addr->sin_port = htons (port);
-
-	freeaddrinfo (list);
-
-	return APR_SUCCESS;
-}
-
-static apr_status_t
-apr_socket_connect (apr_socket_t *sock, apr_sockaddr_t *sa)
-{
-	int sock_fd;
-
-	apr_os_sock_get (&sock_fd, sock);
-	if (connect (sock_fd, sa->addr, sa->addrlen) != 0)
-		return errno;
-
-	return APR_SUCCESS;
-}
-
-static apr_status_t
-apr_socket_send (apr_socket_t *sock, const char *buf, apr_size_t *len)
-{
-	int result;
-	int total;
-
-	total = 0;
-	do {
-		result = write (sock->fd, buf + total, (*len) - total);
-		if (result >= 0)
-			total += result;
-	} while ((result >= 0 && total < *len) || (result == -1 && errno == EINTR));
-
-	return (total == *len) ? 0 : -1;
-}
-
-static apr_status_t
-apr_socket_recv (apr_socket_t *sock, char *buf, apr_size_t *len)
-{
-	int result;
-	int total;
-	apr_os_sock_t sock_fd;
-
-	apr_os_sock_get (&sock_fd, sock);
-	total = 0;
-	do {
-		result = read (sock_fd, buf + total, (*len) - total);
-		if (result >= 0)
-			total += result;
-	} while ((result > 0 && total < *len) || (result == -1 && errno == EINTR));
-
-	return (total == *len) ? 0 : -1;
-}
-
-static void
-apr_sleep (long t)
-{
-	struct timeval tv;
-
-	tv.tv_usec = t % 1000000;
-	tv.tv_sec = t / 1000000;
-	select (0, NULL, NULL, NULL, &tv);
-}
-#elif !defined (HAVE_APR_SOCKET_CONNECT)
+#if !defined (HAVE_APR_SOCKET_CONNECT)
 /* libapr-0 <= 0.9.3 (or 0.9.2?) */
 #	define apr_socket_connect apr_connect
 #endif
@@ -1313,10 +1208,30 @@ apr_sleep (long t)
 static char *
 get_default_socket_name (apr_pool_t *pool, const char *alias, const char *base)
 {
-	return apr_pstrcat (pool, base, "_", alias == NULL ? "default" : alias, NULL);
+	return apr_pstrcat (pool, base, "_", !alias || !alias [0] ? "default" : alias, NULL);
 }
 
-static apr_status_t 
+static char *
+get_base_socket_path (apr_pool_t *pool, xsp_data *conf)
+{
+	if (conf->filename && conf->filename [0])
+		return conf->filename;
+	else
+		return get_default_socket_name (pool, conf->alias, SOCKET_FILE);
+}
+
+static char *
+get_unix_socket_path (apr_pool_t *pool, xsp_data *conf)
+{
+	DEBUG_PRINT (0, "getting unix socket path");
+	if (IS_MASTER (conf)) {
+		return get_default_global_socket_name (pool, SOCKET_FILE);
+	} else {
+		return get_base_socket_path (pool, conf);
+	}
+}
+
+static apr_status_t
 try_connect (xsp_data *conf, apr_socket_t **sock, apr_int32_t family, apr_pool_t *pool)
 {
 	char *error;
@@ -1331,10 +1246,9 @@ try_connect (xsp_data *conf, apr_socket_t **sock, apr_int32_t family, apr_pool_t
 
 		apr_os_sock_get (&sock_fd, *sock);
 		unix_address.sun_family = PF_UNIX;
-		if (conf->filename != NULL)
-			fn = conf->filename;
-		else
-			fn = get_default_socket_name (pool, conf->alias, SOCKET_FILE);
+		fn = get_unix_socket_path (pool, conf);
+		if (!fn)
+			return -2;
 
 		DEBUG_PRINT (1, "Socket file name %s", fn);
 		memcpy (unix_address.sun_path, fn, strlen (fn) + 1);
@@ -1347,7 +1261,7 @@ try_connect (xsp_data *conf, apr_socket_t **sock, apr_int32_t family, apr_pool_t
 
 		la = conf->listen_address ? conf->listen_address : LISTEN_ADDRESS;
 		rv = apr_sockaddr_info_get (&sa, la, family,
-					    atoi (conf->listen_port), 0, pool);
+					    (apr_port_t)string_to_long (conf->listen_port, "MonoListenPort", 0), 0, pool);
 
 		if (rv != APR_SUCCESS) {
 			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
@@ -1406,7 +1320,7 @@ get_directory (apr_pool_t *pool, const char *filepath)
 	sep = strrchr ((char *) filepath, '/');
 	if (sep == NULL || sep == filepath)
 		return "/";
-	
+
 	result = apr_pcalloc (pool, sep - filepath + 1);
 	strncpy (result, filepath, sep - filepath);
 	return result;
@@ -1498,16 +1412,20 @@ set_process_limits (int max_cpu_time, int max_memory)
 }
 
 static void
-set_null_stdout ()
+configure_stdout (char null_stdout)
 {
 #ifndef WIN32
-       int fd;
+	if (null_stdout) {
 
-       fd = open ("/dev/null", O_WRONLY);
-       if (fd >= 0) {
-               dup2 (fd, 1);
-       }
+		int fd;
+
+		fd = open ("/dev/null", O_WRONLY);
+		if (fd >= 0) {
+			dup2 (fd, 1);
+		}
+	} else
 #endif
+		dup2 (2, 1);
 }
 
 static void
@@ -1539,7 +1457,7 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 		return;
 	}
 #endif
-	is_master = (0 == strcmp ("XXGLOBAL", config->alias));
+	is_master = IS_MASTER (config);
 	if (is_master && config->listen_port == NULL && config->filename == NULL)
 		config->filename = get_default_global_socket_name (pool, SOCKET_FILE);
 
@@ -1587,10 +1505,10 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	}
 
 	if (config->max_memory != NULL)
-		max_memory = atoi (config->max_memory);
+		max_memory = (int)string_to_long (config->max_memory, "MonoMaxMemory", -1);
 
 	if (config->max_cpu_time != NULL)
-		max_cpu_time = atoi (config->max_cpu_time);
+		max_cpu_time = (int)string_to_long (config->max_cpu_time, "MonoMaxCPUTime", -1);
 
 	set_environment_variables (pool, config->env_vars);
 
@@ -1627,7 +1545,7 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 				      (unsigned)apache_get_userid (), strerror (errno));
 	}
 #endif
-  
+
 	if (config->umask_value == NULL)
 		umask (0077);
 	else {
@@ -1641,11 +1559,12 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	}
 	DEBUG_PRINT (1, "child started");
 
-#ifdef DEBUG
-	dup2 (2, 1);
-#else
-	set_null_stdout ();
-#endif
+	if (config->debug && !strcasecmp (config->debug, "True")) {
+		SETENV (pool, "MONO_OPTIONS", "--debug");
+		configure_stdout (0);
+	} else
+		configure_stdout (STDOUT_NULL_DEFAULT);
+
 	for (i = getdtablesize () - 1; i >= 3; i--)
 		close (i);
 
@@ -1674,8 +1593,6 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	}
 
 	SETENV (pool, "MONO_SHARED_DIR", config->wapidir);
-	if (config->debug && !strcasecmp (config->debug, "True"))
-		SETENV (pool, "MONO_OPTIONS", "--debug");
 
 #ifdef REMOVE_DISPLAY
 #warning mod_mono is compiled with support for removing the DISPLAY variable (Bug 464225)
@@ -1698,12 +1615,8 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 		argv [argi++] = "--port";
 		argv [argi++] = config->listen_port;
 	} else {
-		char *fn;
-
-		fn = config->filename;
-		if (fn == NULL)
-			fn = get_default_socket_name (pool, config->alias, SOCKET_FILE);
-
+		char *fn = get_unix_socket_path (pool, config);
+		DEBUG_PRINT (0, "Backend socket path: %s", fn);
 		argv [argi++] = "--filename";
 		argv [argi++] = fn;
 	}
@@ -1737,13 +1650,13 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	 *
 	 * Any new argi++'s that are added here must also increase
 	 * the maxargs argument at the top of this method to prevent
-	 * array out-of-bounds. 
+	 * array out-of-bounds.
 	 */
 
 	ap_log_error (APLOG_MARK, APLOG_DEBUG, STATUS_AND_SERVER,
 		      "running '%s %s %s %s %s %s %s %s %s %s %s %s %s'",
 		      argv [0], argv [1], argv [2], argv [3], argv [4],
-		      argv [5], argv [6], argv [7], argv [8], 
+		      argv [5], argv [6], argv [7], argv [8],
 		      argv [9], argv [10], argv [11], argv [12]);
 
 	/* Unblock signals Mono uses: see bug #472732 */
@@ -1781,7 +1694,7 @@ setup_socket (apr_socket_t **sock, xsp_data *conf, apr_pool_t *pool)
 #if APR_HAVE_IPV6
 		la = conf->listen_address ? conf->listen_address : LISTEN_ADDRESS;
 		rv = apr_sockaddr_info_get (&sa, la, family,
-					    atoi (conf->listen_port), 
+					    (apr_port_t)string_to_long (conf->listen_port, "MonoListenPort", 0),
 					    APR_IPV6_ADDR_OK,
 					    pool);
 
@@ -1799,13 +1712,8 @@ setup_socket (apr_socket_t **sock, xsp_data *conf, apr_pool_t *pool)
 	}
 	/* APR_PROTO_TCP = 6 */
 	proto = (family == AF_UNSPEC) ? 6 : 0;
-#ifdef APACHE2
 	rv = APR_SOCKET_CREATE (sock, family, SOCK_STREAM, proto, pool);
-#else
-	(*sock)->fd = ap_psocket (pool, family, SOCK_STREAM, 0);
-	(*sock)->pool = pool;
-	rv = ((*sock)->fd != -1) ? APR_SUCCESS : -1;
-#endif
+
 	if (rv != APR_SUCCESS) {
 		int err= errno;
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
@@ -1814,7 +1722,7 @@ setup_socket (apr_socket_t **sock, xsp_data *conf, apr_pool_t *pool)
 	}
 
 	rv = try_connect (conf, sock, family, pool);
-	DEBUG_PRINT (1, "try_connect: %d", (int) rv);
+	DEBUG_PRINT (2, "try_connect: %d", (int) rv);
 	return rv;
 }
 
@@ -1823,16 +1731,16 @@ write_string_to_buffer (char *buffer, int offset, const char *str, size_t str_le
 {
 	uint32_t le;
 	uint32_t tmp;
-	
+
 	buffer += offset;
 	if (str && !str_length) {
 		tmp = strlen (str);
 		le = LE_FROM_INT (tmp);
 	} else
 		tmp = (uint32_t)str_length;
-	
+
 	le = LE_FROM_INT (tmp);
-	
+
 	memcpy (buffer, &le, sizeof (uint32_t));
 	if (tmp > 0) {
 		buffer += sizeof (uint32_t);
@@ -1880,7 +1788,7 @@ write_table_to_buffer (char *buffer, apr_table_t *table)
 	int32_t count = 0, size;
 	char *countLocation = buffer + sizeof (int32_t);
 	char *sizeLocation = buffer;
-	
+
 	elts = apr_table_elts (table);
 	if (elts->nelts == 0) { /* size is sizeof (int32_t) */
 		int32_t *i32 = (int32_t *) buffer;
@@ -1894,10 +1802,10 @@ write_table_to_buffer (char *buffer, apr_table_t *table)
 	ptr += sizeof (int32_t) * 2;
 	t_elt = (const apr_table_entry_t *) (elts->elts);
 	t_end = t_elt + elts->nelts;
-	
+
 	do {
 		if (t_elt->val != NULL) {
-			DEBUG_PRINT (3, "%s: %s", t_elt->key, t_elt->val);
+			DEBUG_PRINT (0, "%s: %s", t_elt->key, t_elt->val);
 			ptr += write_string_to_buffer (ptr, 0, t_elt->key, 0);
 			ptr += write_string_to_buffer (ptr, 0, t_elt->val, 0);
 			count++;
@@ -1911,7 +1819,7 @@ write_table_to_buffer (char *buffer, apr_table_t *table)
 	size = (ptr - buffer) - sizeof (int32_t);
 	size = LE_FROM_INT (size);
 	memcpy (sizeLocation, &size, sizeof (int32_t));
-	
+
 	return (ptr - buffer);
 }
 
@@ -1935,8 +1843,8 @@ send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 	uint32_t           size;
 	server_rec        *s = r->server;
 	initial_data_info  info;
-	
-	DEBUG_PRINT (2, "Send init");
+
+	DEBUG_PRINT (1, "Send init");
 	size = 1 + sizeof (size);
 
 	info.method_len = ((r->method != NULL) ? strlen (r->method) : 0);
@@ -1960,21 +1868,21 @@ send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 
 	info.local_ip_len = strlen (r->connection->local_ip);
 	size += info.local_ip_len + sizeof (int32_t);
-	
+
 	size += sizeof (int32_t);
 
 	info.remote_ip_len = strlen (r->connection->remote_ip);
 	size += info.remote_ip_len + sizeof (int32_t);
-	
+
 	size += sizeof (int32_t);
 
 	info.remote_name = connection_get_remote_name (r);
 	info.remote_name_len = strlen (info.remote_name);
-	
+
 	size += info.remote_name_len + sizeof (int32_t);
-	
+
 	size += get_table_send_size (r->headers_in);
-	
+
 	size++; /* byte. TRUE->auto_app, FALSE: configured application */
 	if (auto_app != FALSE) {
 		if (r->filename != NULL) {
@@ -1987,7 +1895,7 @@ send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 	} else
 		info.filename_len = 0;
 
-	DEBUG_PRINT (2, "Initial data size: %u", size);
+	DEBUG_PRINT (1, "Initial data size: %u", size);
 
 	if (size <= INITIAL_DATA_MAX_ALLOCA_SIZE)
 		ptr = str = alloca (size);
@@ -2031,39 +1939,36 @@ send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 static int
 increment_active_requests (xsp_data *conf)
 {
-#ifndef APACHE13
 	/* This function tries to increment the counters that limit
 	 * the number of simultaenous requests being processed. It
 	 * assumes that the mutex is held when the function is called
 	 * and returns with the mutex still held, although it may
 	 * unlock and lock the mutex itself.
 	 */
-
 	apr_status_t rv;
-	
-	int max_active_requests = atoi(conf->max_active_requests);
-	int max_waiting_requests = atoi(conf->max_waiting_requests);
+	int max_active_requests;
+	int max_waiting_requests;
 
 	/* Limit the number of concurrent requests. If no
 	 * limiting is in effect (or can't be done because
-	 * there is no dashboard), return the OK status. 
+	 * there is no dashboard), return the OK status.
 	 * Same test as in the decrement function and the
 	 * control panel. */
-	if (!conf->dashboard_mutex || !conf->dashboard)
-		return 1;
-		
+
+	max_active_requests = (int)string_to_long (conf->max_active_requests, "MonoMaxActiveRequests", MAX_ACTIVE_REQUESTS);
+	max_waiting_requests = (int)string_to_long (conf->max_waiting_requests, "MonoMaxWaitingRequests", MAX_WAITING_REQUESTS);
 	// From here on, rv holds onto whether we still have
 	// the lock acquired, just in case some error ocurrs
 	// acquiring it during the loop.
 	rv = APR_SUCCESS;
-	
+
 	/* If any limiting is in effect, and if there are the maximum
 	 * allowed concurrent requests, then we have to hold the request
 	 * for a bit of time. */
 	if (max_active_requests > 0 && conf->dashboard->active_requests >= max_active_requests) {
 		/* We need to wait until the active requests
 		 * go below the maximum. */
-		 
+
 		/* However, we won't keep more than max_waiting_req requests
 		 * waiting, which means the max number of active Apache
 		 * connections associated with this mod-mono-server
@@ -2071,15 +1976,15 @@ increment_active_requests (xsp_data *conf)
 		 */
 		if (conf->dashboard->waiting_requests >= max_waiting_requests) {
 			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-			      "Maximum number of concurrent mod_mono requests to %s reached (%d active, %d waiting). Request dropped.",
-		    	  conf->dashboard_lock_file, max_active_requests, max_waiting_requests);
+				      "Maximum number of concurrent mod_mono requests to %s reached (%d active, %d waiting). Request dropped.",
+				      conf->dashboard_lock_file, max_active_requests, max_waiting_requests);
 			return 0;
 		}
 
 		ap_log_error (APLOG_MARK, APLOG_INFO, STATUS_AND_SERVER,
-		      "Maximum number of concurrent mod_mono requests to %s reached (%d). Will wait and retry.",
-		      conf->dashboard_lock_file, max_active_requests);
-		      
+			      "Maximum number of concurrent mod_mono requests to %s reached (%d). Will wait and retry.",
+			      conf->dashboard_lock_file, max_active_requests);
+
 		conf->dashboard->waiting_requests++;
 
 		int retries = 20;
@@ -2088,21 +1993,21 @@ increment_active_requests (xsp_data *conf)
 			apr_global_mutex_unlock (conf->dashboard_mutex);
 			apr_sleep (500000); // 0.5 seconds
 			rv = apr_global_mutex_lock (conf->dashboard_mutex);
-		 	if (rv != APR_SUCCESS) break;
-			 	
-		 	// If the number of requests is low enough, we
-		 	// can stop waiting.
+			if (rv != APR_SUCCESS)
+				break;
+			// If the number of requests is low enough, we
+			// can stop waiting.
 			if (conf->dashboard->active_requests < max_active_requests)
-		 		break;
+				break;
 		}
 
 		// Hopefully we haven't lost the lock, but if we have we still
 		// want to at least attempt to decrement the counter.
 		conf->dashboard->waiting_requests--;
 
-	 	// If we got to the end of the loop and still too
-	 	// many requests are going, stop processing the
-	 	// request.
+		// If we got to the end of the loop and still too
+		// many requests are going, stop processing the
+		// request.
 		if (rv == APR_SUCCESS && conf->dashboard->active_requests >= max_active_requests) {
 			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
 				      "Maximum number (%d) of concurrent mod_mono requests to %s reached. Dropping request.",
@@ -2110,7 +2015,7 @@ increment_active_requests (xsp_data *conf)
 			return 0;
 		}
 	}
-		
+
 	/* If we lost the lock during the loop, drop the request
 	 * because we don't want to decrement the counter later
 	 * since we couldn't increment it here. */
@@ -2118,33 +2023,25 @@ increment_active_requests (xsp_data *conf)
 		return 0;
 
 	conf->dashboard->active_requests++;
-	
+
 	return 1;
-#else
-	return 1;
-#endif
 }
 
- static void
+static void
 decrement_active_requests (xsp_data *conf)
 {
-#ifndef APACHE13
 	apr_status_t rv;
 
 	/* Check if limiting is in effect. Same test as in the
 	 * increment function and the control panel. */
-	if (!conf->dashboard_mutex || !conf->dashboard)
-		return;
-		
+
 	rv = apr_global_mutex_lock (conf->dashboard_mutex);
 	// Since we incremented the counter, even if we can't
 	// get a lock, we had better attempt to decrement it.
-		
 	conf->dashboard->active_requests--;
 
 	if (rv == APR_SUCCESS)
 		apr_global_mutex_unlock (conf->dashboard_mutex);
-#endif
 }
 
 static int
@@ -2152,9 +2049,7 @@ mono_execute_request (request_rec *r, char auto_app)
 {
 	apr_socket_t *sock;
 	apr_status_t rv;
-#ifndef APACHE13
 	apr_status_t rv2;
-#endif
 	int command = -1;
 	int result = FALSE;
 	apr_status_t input;
@@ -2163,28 +2058,27 @@ mono_execute_request (request_rec *r, char auto_app)
 	per_dir_config *dir_config = NULL;
 	int idx;
 	xsp_data *conf;
-	int connect_attempts;
-	int start_wait_time;
+	uint32_t connect_attempts;
+	uint32_t start_wait_time;
 	char *socket_name = NULL;
 	int retrying, was_starting;
 
 	config = ap_get_module_config (r->server->module_config, &mono_module);
-	DEBUG_PRINT (2, "config = 0x%p", config);
+	DEBUG_PRINT (1, "config = 0x%lx", (unsigned long)config);
 	if (r->per_dir_config != NULL)
 		dir_config = ap_get_module_config (r->per_dir_config, &mono_module);
 
-	DEBUG_PRINT (2, "dir_config = 0x%p", dir_config);
+	DEBUG_PRINT (1, "dir_config = 0x%lx", (unsigned long)dir_config);
 	if (dir_config != NULL && dir_config->alias != NULL)
 		idx = search_for_alias (dir_config->alias, config);
 	else
 		idx = search_for_alias (NULL, config);
 
-	DEBUG_PRINT (2, "idx = %d", idx);
-	
+	DEBUG_PRINT (0, "idx = %d", idx);
 	if (idx < 0) {
 		DEBUG_PRINT (2, "Alias not found. Checking for auto-applications.");
 		if (config->auto_app)
-			idx = search_for_alias ("XXGLOBAL", config);
+			idx = search_for_alias (GLOBAL_SERVER_NAME, config);
 
 		if (idx == -1) {
 			DEBUG_PRINT (2, "Global config not found. Finishing request.");
@@ -2192,25 +2086,14 @@ mono_execute_request (request_rec *r, char auto_app)
 		}
 	}
 
-#ifdef APACHE13
-	sock = apr_pcalloc (r->pool, sizeof (apr_socket_t));
-#endif
 	conf = &config->servers [idx];
-	
-	if (conf->filename != NULL)
-		socket_name = conf->filename;
-	else
-		socket_name = get_default_socket_name (r->pool, conf->alias, SOCKET_FILE);
-	
-	connect_attempts = atoi (conf->start_attempts);
-	start_wait_time = atoi (conf->start_wait_time);
-	if (connect_attempts < 0)
-		connect_attempts = 3;
+	ensure_dashboard_initialized (config, conf, pconf);
+	socket_name = get_unix_socket_path (r->pool, conf);
+	connect_attempts = (uint32_t)string_to_long (conf->start_attempts, "MonoXSPStartAttempts", START_ATTEMPTS);
+	start_wait_time = (uint32_t)string_to_long (conf->start_wait_time, "MonoXSPStartWaitTime", START_WAIT_TIME);
 	if (start_wait_time < 2)
 		start_wait_time = 2;
 
-#ifndef APACHE13
-	ensure_dashboard_initialized (config, conf, pconf);
 	if (conf->dashboard_mutex && !conf->dashboard_mutex_initialized_in_child) {
 		/* Avoiding to call apr_global_mutex_child_init is a hack since in certain
 		 * conditions it may lead to apache deadlock. Since we don't know the exact cause
@@ -2221,7 +2104,7 @@ mono_execute_request (request_rec *r, char auto_app)
 		if (!getenv ("MOD_MONO_LOCKING_MECHANISM")) {
 			rv = apr_global_mutex_child_init (&conf->dashboard_mutex, conf->dashboard_lock_file, pconf);
 		} else {
-			DEBUG_PRINT (0, "Skipping apr_global_mutex_child_init on '%s'", conf->dashboard_lock_file);
+			DEBUG_PRINT (1, "Skipping apr_global_mutex_child_init on '%s'", conf->dashboard_lock_file);
 			rv = APR_SUCCESS;
 		}
 		if (rv != APR_SUCCESS) {
@@ -2232,27 +2115,23 @@ mono_execute_request (request_rec *r, char auto_app)
 		} else
 			conf->dashboard_mutex_initialized_in_child = 1;
 	}
-	
+
 	if (conf->dashboard_mutex && conf->dashboard) {
 		if (apr_global_mutex_lock (conf->dashboard_mutex) == APR_SUCCESS) {
 			int ok = conf->dashboard->accepting_requests;
 			if (ok)
 				ok = increment_active_requests (conf);
-			
+
 			apr_global_mutex_unlock (conf->dashboard_mutex);
 
 			if (!ok)
 				return HTTP_SERVICE_UNAVAILABLE;
 		}
 	}
-#endif
-	
-	rv = -1; /* avoid a warning about uninitialized value */
 
-#ifndef APACHE13
+	rv = -1; /* avoid a warning about uninitialized value */
 	retrying = connect_attempts;
 	was_starting = 0;
-#endif
 	while (connect_attempts--) {
 		rv = setup_socket (&sock, conf, r->pool);
 		DEBUG_PRINT (2, "After setup_socket");
@@ -2264,13 +2143,11 @@ mono_execute_request (request_rec *r, char auto_app)
 			}
 			DEBUG_PRINT (2, "No backend found, will start a new copy.");
 
-#ifndef APACHE13
 			if (conf->dashboard_mutex)
 				rv2 = apr_global_mutex_lock (conf->dashboard_mutex);
 			else
 				rv2 = APR_SUCCESS;
 			DEBUG_PRINT (1, "Acquiring the %s lock for backend start", conf->dashboard_lock_file);
-      
 			if (rv2 != APR_SUCCESS) {
 				ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv2),
 					      "Failed to acquire %s lock, cannot continue starting new process",
@@ -2279,7 +2156,7 @@ mono_execute_request (request_rec *r, char auto_app)
 				return HTTP_SERVICE_UNAVAILABLE;
 			}
 
-			if (conf->dashboard->starting) {
+			if (conf->dashboard && conf->dashboard->starting) {
 				retrying--;
 				was_starting = 1;
 
@@ -2298,7 +2175,6 @@ mono_execute_request (request_rec *r, char auto_app)
 				apr_sleep (apr_time_from_sec (start_wait_time));
 				continue;
 			}
-#endif
 
 			if (was_starting) {
 				was_starting = 0;
@@ -2310,10 +2186,10 @@ mono_execute_request (request_rec *r, char auto_app)
 			}
 
 			start_xsp (config, 0, conf->alias);
+
 			/* give some time for warm-up */
 			DEBUG_PRINT (2, "Started new backend, sleeping %us to let it configure", (unsigned)start_wait_time);
 			apr_sleep (apr_time_from_sec (start_wait_time));
-#ifndef APACHE13
 			if (conf->dashboard_mutex) {
 				rv2 = apr_global_mutex_unlock (conf->dashboard_mutex);
 				if (rv2 != APR_SUCCESS)
@@ -2322,11 +2198,10 @@ mono_execute_request (request_rec *r, char auto_app)
 						      conf->dashboard_lock_file);
 
 			}
-#endif
 		} else
 			break; /* connected */
 	}
-	
+
 	if (rv != APR_SUCCESS) {
 		/* Failed to connect to mod-mono-server after several attempts. */
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
@@ -2334,8 +2209,8 @@ mono_execute_request (request_rec *r, char auto_app)
 		decrement_active_requests (conf);
 		return HTTP_SERVICE_UNAVAILABLE;
 	}
-  
-	DEBUG_PRINT (2, "Sending init data");
+
+	DEBUG_PRINT (1, "Sending initial data");
 	if (send_initial_data (r, sock, auto_app) != 0) {
 		ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
 			      "Failed to send initial data. %s", strerror (errno));
@@ -2343,8 +2218,8 @@ mono_execute_request (request_rec *r, char auto_app)
 		decrement_active_requests (conf);
 		return HTTP_SERVICE_UNAVAILABLE;
 	}
-	
-	DEBUG_PRINT (2, "Loop");
+
+	DEBUG_PRINT (1, "Loop");
 	do {
 		input = read_data (sock, (char *) &command, sizeof (int32_t));
 		if (input == sizeof (int32_t)) {
@@ -2359,53 +2234,51 @@ mono_execute_request (request_rec *r, char auto_app)
 			      "Command stream corrupted, last command was %d", command);
 		status = HTTP_INTERNAL_SERVER_ERROR;
 	}
-	
+
 	decrement_active_requests (conf);
 
-#ifndef APACHE13
 	if (conf->restart_mode > AUTORESTART_MODE_NONE) {
 		int do_restart = 0;
-		
-		DEBUG_PRINT (2, "Auto-restart enabled for '%s', checking if restart required", conf->alias);
 
+		DEBUG_PRINT (2, "Auto-restart enabled for '%s', checking if restart required", conf->alias);
 		ensure_dashboard_initialized (config, conf, pconf);
 		if (!conf->dashboard_mutex || !conf->dashboard)
 			return status;
 
 		rv = apr_global_mutex_lock (conf->dashboard_mutex);
+
 		DEBUG_PRINT (1, "Acquired the %s lock for backend auto-restart check", conf->dashboard_lock_file);
-		
 		if (rv != APR_SUCCESS) {
 			ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),
 				      "Failed to acquire %s lock, cannot continue auto-restart check",
 				      conf->dashboard_lock_file);
 			return status;
 		}
-		
+
 		if (conf->restart_mode == AUTORESTART_MODE_REQUESTS) {
 			conf->dashboard->handled_requests++;
 			if (conf->dashboard->handled_requests > conf->restart_requests) {
-				DEBUG_PRINT (0, "More than %u requests served (%u), restart required",
+				DEBUG_PRINT (2, "More than %u requests served (%u), restart required",
 					     conf->restart_requests, conf->dashboard->handled_requests);
 				do_restart = 1;
 			} else {
-				DEBUG_PRINT (0, "Backend %s has %u requests left before auto-restart",
+				DEBUG_PRINT (2, "Backend %s has %u requests left before auto-restart",
 					     conf->alias, conf->restart_requests - conf->dashboard->handled_requests);
 			}
 		} else if (conf->restart_mode == AUTORESTART_MODE_TIME) {
 			time_t now = time (NULL);
 			if (now - conf->dashboard->start_time > conf->restart_time) {
-				DEBUG_PRINT (0, "Backend uptime exceeded %us, restart required", conf->restart_time);
+				DEBUG_PRINT (2, "Backend uptime exceeded %us, restart required", conf->restart_time);
 				do_restart = 1;
 			} else {
-				DEBUG_PRINT (0, "Backend %s has %us left before auto-restart",
+				DEBUG_PRINT (2, "Backend %s has %us left before auto-restart",
 					     conf->alias, (uint32_t)(conf->restart_time - (now - conf->dashboard->start_time)));
 			}
 		}
 
 		if (do_restart && !conf->dashboard->restart_issued) {
 			/* we just need to stop it, it will be started at the next request */
-			DEBUG_PRINT (0, "Stopping the backend '%s', it will be started at the next request",
+			DEBUG_PRINT (2, "Stopping the backend '%s', it will be started at the next request",
 				     conf->alias);
 			ap_log_error (APLOG_MARK, APLOG_ALERT, STATCODE_AND_SERVER (rv),
 				      "Requesting termination of %s mod-mono-server for restart...",
@@ -2413,68 +2286,19 @@ mono_execute_request (request_rec *r, char auto_app)
 			conf->dashboard->restart_issued = 1;
 			terminate_xsp2 (r->server, conf->alias, 1, 1);
 		}
-		
+
 		rv = apr_global_mutex_unlock (conf->dashboard_mutex);
 		if (rv != APR_SUCCESS)
 			ap_log_error (APLOG_MARK, APLOG_ALERT, STATCODE_AND_SERVER (rv),
 				      "Failed to release %s lock after auto-restart check, the process may deadlock!",
 				      conf->dashboard_lock_file);
 	}
-#endif
-	
+
 	DEBUG_PRINT (2, "Done. Status: %d", status);
 	return status;
 }
 
 /*
-  static const char *known_extensions4 [] = { "aspx", "asmx", "ashx", "asax", "ascx", "soap", NULL };
-*/
-/*
- * TRUE -> we know about this file
- * FALSE -> decline processing
- */
-/*
-  static int
-  check_file_extension (char *filename)
-  {
-  int len;
-  char *ext;
-  const char **extensions;
-
-  if (filename == NULL)
-  return FALSE;
-
-  len = strlen (filename);
-  if (len <= 4)
-  return FALSE;
-
-  ext = strrchr (filename, '.');
-  if (ext == NULL)
-  return FALSE;
-
-  switch (filename - ext + len - 1) {
-  case 3:
-  * Check for xxx/Trace.axd *
-  if (len >=10 && !strcmp ("axd", ext + 1))
-  return !strncmp ("/Trace", ext - 6, 6);
-  return !strcmp ("rem", ext + 1);
-  case 4:
-  extensions = (const char **) known_extensions4;
-  while (*extensions != NULL) {
-  if (!strcmp (*extensions, ext + 1))
-  return TRUE;
-  extensions++;
-  }
-  break;
-  case 5:
-  return !strcmp ("config", ext + 1);
-  }
-
-  return FALSE;
-  }
-*/
-
-/* 
  * Compute real path directory and all the directories above that up to the first filesystem
  * change */
 
@@ -2482,10 +2306,13 @@ static int
 mono_handler (request_rec *r)
 {
 	module_cfg *config;
+	int retval;
 
 	if (r->handler != NULL && !strcmp (r->handler, "mono")) {
-		DEBUG_PRINT (1, "handler: %s", r->handler);
-		return mono_execute_request (r, FALSE);
+		DEBUG_PRINT (0, "handler: %s", r->handler);
+		retval = mono_execute_request (r, FALSE);
+
+		return retval;
 	}
 
 	if (!r->content_type || strcmp (r->content_type, "application/x-asp-net"))
@@ -2504,6 +2331,32 @@ mono_handler (request_rec *r)
 	return mono_execute_request (r, TRUE);
 }
 
+static apr_status_t
+connect_to_backend (xsp_data *conf, int is_restart)
+{
+	apr_status_t rv;
+	apr_socket_t *socket;
+	char *termstr = "";
+
+	rv = setup_socket (&socket, conf, pconf);
+	if (rv == APR_SUCCESS) {
+		/* connected */
+		DEBUG_PRINT (2, "connected to backend of %s", conf->alias);
+		if (is_restart) {
+			write_data (socket, termstr, 1);
+			apr_socket_close (socket);
+			apr_sleep (apr_time_from_sec (2));
+			return APR_SUCCESS;
+		}
+		apr_socket_close (socket);
+		conf->status = FORK_SUCCEEDED;
+		return APR_SUCCESS;
+	} else {
+		apr_socket_close (socket);
+		return -1;
+	}
+}
+
 /*
  * It is assumed that this function is called with the dashboard mutex held. This is not required when calling it from the module
  * init handler, as there's only one process running at that time.
@@ -2512,74 +2365,76 @@ static void
 start_xsp (module_cfg *config, int is_restart, char *alias)
 {
 	/* 'alias' may be NULL to start all XSPs */
-	apr_socket_t *sock;
-	apr_status_t rv;
-	char *termstr = "";
 	xsp_data *xsp;
 	int i;
+	char do_fork = 0;
 
-	/*****
-	 * NOTE: we might be trying to start the same mod-mono-server in several
-	 * different apache child processes. xsp->status tries to help avoiding this
-	 * and mod-mono-server uses a lock that checks for same command line, same
-	 * user...
-	 *****/
 	for (i = 0; i < config->nservers; i++) {
 		xsp = &config->servers [i];
+		DEBUG_PRINT (0, "config->servers [%u]->dashboard == 0x%lX", i, (unsigned long)xsp->dashboard);
 		if (xsp->run_xsp && !strcasecmp (xsp->run_xsp, "false"))
 			continue;
 
-#ifdef APACHE13
-		if (xsp->status != FORK_NONE)
-			continue;
-#endif
-		
 		/* If alias isn't null, skip XSPs that don't have that alias. */
 		if (alias != NULL && strcmp (xsp->alias, alias))
 			continue;
 
-		if (!strcmp ("XXGLOBAL", xsp->alias) && config->auto_app == FALSE)
+		if (IS_MASTER (xsp) && config->auto_app == FALSE)
 			continue;
 
-#ifdef APACHE13
-		sock = apr_pcalloc (pconf, sizeof (apr_socket_t));
-#else
+		DEBUG_PRINT (1, "xsp address 0x%lx, dashboard 0x%lx", (unsigned long)xsp, (unsigned long)xsp->dashboard);
+		if (!xsp->dashboard)
+			ensure_dashboard_initialized (config, xsp, pconf);
+
 		if (xsp->dashboard)
 			xsp->dashboard->starting = 1;
-#endif
-		rv = setup_socket (&sock, xsp, pconf);
-
-		if (rv == APR_SUCCESS) {
-			/* connected */
-			DEBUG_PRINT (0, "connected %s", xsp->alias);
+		do_fork = 0;
+		if (connect_to_backend (xsp, is_restart) == APR_SUCCESS) {
 			if (is_restart) {
-				write_data (sock, termstr, 1);
-				apr_socket_close (sock);
-				apr_sleep (apr_time_from_sec (2));
 				i--;
-				continue; /* Wait for the previous to die */
+				continue;
 			}
-			apr_socket_close (sock);
-			xsp->status = FORK_SUCCEEDED;
 		} else {
-			apr_socket_close (sock);
-			/* need fork */
-			xsp->status = FORK_INPROCESS;
-			DEBUG_PRINT (0, "forking %s", xsp->alias);
-			fork_mod_mono_server (pconf, xsp);
-			xsp->status = FORK_SUCCEEDED;
-#ifndef APACHE13
-			if (xsp->dashboard) {
-				xsp->dashboard->start_time = time (NULL);
-				xsp->dashboard->handled_requests = 0;
-				xsp->dashboard->restart_issued = 0;
-			}
-#endif
+			DEBUG_PRINT (2, "backend cannot be connected to.");
+			do_fork = 1;
 		}
-#ifndef APACHE13
+
+		if (!do_fork)
+			goto reset_starting;
+
+		DEBUG_PRINT (2, "Starting backend for alias %s", xsp->alias);
+		xsp->status = FORK_INPROCESS;
+		fork_mod_mono_server (pconf, xsp);
+		if (xsp->dashboard) {
+			xsp->dashboard->start_time = time (NULL);
+			xsp->dashboard->handled_requests = 0;
+			xsp->dashboard->restart_issued = 0;
+		}
+		xsp->status = FORK_SUCCEEDED;
+
+	  reset_starting:
 		if (xsp->dashboard)
 			xsp->dashboard->starting = 0;
-#endif
+	}
+}
+
+static void
+stop_xsp (xsp_data *conf)
+{
+	apr_socket_t *sock;
+	apr_status_t rv;
+	char *termstr = "";
+
+	rv = setup_socket (&sock, conf, pconf);
+	if (rv == APR_SUCCESS) {
+		write_data (sock, termstr, 1);
+		apr_socket_close (sock);
+	}
+
+	if (conf->listen_port == NULL) {
+		char *fn = get_unix_socket_path (pconf, conf);
+		if (fn)
+			remove (fn); /* Don't bother checking error */
 	}
 }
 
@@ -2589,15 +2444,11 @@ terminate_xsp2 (void *data, char *alias, int for_restart, int lock_held)
 	/* alias may be NULL to terminate all XSPs */
 	server_rec *server;
 	module_cfg *config;
-	apr_socket_t *sock;
 	apr_status_t rv;
-	char *termstr = "";
 	xsp_data *xsp;
 	int i;
-#ifndef APACHE13
 	int release_lock = 0;
-#endif
-	
+
 	DEBUG_PRINT (0, "Terminate XSP");
 	server = (server_rec *) data;
 	config = ap_get_module_config (server->module_config, &mono_module);
@@ -2610,27 +2461,10 @@ terminate_xsp2 (void *data, char *alias, int for_restart, int lock_held)
 		/* If alias isn't null, skip XSPs that don't have that alias. */
 		if (alias != NULL && strcmp(xsp->alias, alias))
 			continue;
-		
-#ifdef APACHE13
-		sock = apr_pcalloc (pconf, sizeof (apr_socket_t));
-#endif
-		rv = setup_socket (&sock, xsp, pconf);
-		if (rv == APR_SUCCESS) {
-			write_data (sock, termstr, 1);
-			apr_socket_close (sock);
-		}
 
-		if (xsp->listen_port == NULL) {
-			char *fn = xsp->filename;
+		stop_xsp (xsp);
 
-			if (fn == NULL)
-				fn = get_default_socket_name (pconf, xsp->alias, SOCKET_FILE);
-
-			remove (fn); /* Don't bother checking error */
-		}
-
-#ifndef APACHE13
-		/* destroy the dashboard */     
+		/* destroy the dashboard */
 		if (!for_restart && xsp->dashboard_shm) {
 			DEBUG_PRINT (0, "Destroying dashboard for %s", xsp->alias);
 			if (!lock_held && xsp->dashboard_mutex) {
@@ -2641,7 +2475,7 @@ terminate_xsp2 (void *data, char *alias, int for_restart, int lock_held)
 				else
 					release_lock = 1;
 			}
-			
+
 			// No need to detach before destroying, and in that case we must not.
 			// But should we detach instead of destroy if we weren't the creating
 			// process?
@@ -2650,14 +2484,14 @@ terminate_xsp2 (void *data, char *alias, int for_restart, int lock_held)
 				ap_log_error (APLOG_MARK, APLOG_WARNING, STATCODE_AND_SERVER (rv),
 					      "Failed to destroy the '%s' shared memory dashboard",
 					      xsp->dashboard_file);
-			
+
 			if (release_lock) {
 				rv = apr_global_mutex_unlock (xsp->dashboard_mutex);
 				if (rv != APR_SUCCESS)
 					ap_log_error (APLOG_MARK, APLOG_WARNING, STATCODE_AND_SERVER (rv),
 						      "Failed to release dashboard lock after destroying the dashboard");
 			}
-			
+
 			xsp->dashboard_shm = NULL;
 			xsp->dashboard = NULL;
 		}
@@ -2672,11 +2506,10 @@ terminate_xsp2 (void *data, char *alias, int for_restart, int lock_held)
 			else
 				xsp->dashboard_mutex = NULL;
 		}
-		
+
 		xsp->status = FORK_NONE;
-#endif
 	}
-	
+
 	apr_sleep (apr_time_from_sec (1));
 	return APR_SUCCESS;
 }
@@ -2695,7 +2528,7 @@ set_accepting_requests (void *data, char *alias, int accepting_requests)
 	module_cfg *config;
 	xsp_data *xsp;
 	int i;
-	
+
 	server = (server_rec *) data;
 	config = ap_get_module_config (server->module_config, &mono_module);
 
@@ -2705,11 +2538,9 @@ set_accepting_requests (void *data, char *alias, int accepting_requests)
 		/* If alias isn't null, skip XSPs that don't have that alias. */
 		if (alias != NULL && strcmp(xsp->alias, alias))
 			continue;
-		
-#ifndef APACHE13
+
 		if (xsp->dashboard)
 			xsp->dashboard->accepting_requests = accepting_requests;
-#endif
 	}
 }
 
@@ -2721,22 +2552,20 @@ mono_control_panel_handler (request_rec *r)
 	xsp_data *xsp;
 	int i;
 	char *buffer;
-#ifndef APACHE13
 	apr_status_t rv;
-#endif
-	
+
 	if (strcmp (r->handler, "mono-ctrl"))
 		return DECLINED;
 
-	DEBUG_PRINT (1, "control panel handler: %s", r->handler);
+	DEBUG_PRINT (2, "control panel handler: %s", r->handler);
 
 	config = ap_get_module_config (r->server->module_config, &mono_module);
-	
+
 	set_response_header (r, "Content-Type", "text/html");
 
 	request_send_response_string (r, "<html><body>\n");
 	request_send_response_string (r, "<h1 style=\"text-align: center;\">mod_mono Control Panel</h1>\n");
-	
+
 	uri = &r->parsed_uri;
 	if (!uri->query || !strcmp (uri->query, "")) {
 		/* No query string -> Emit links for configuration commands. */
@@ -2758,17 +2587,16 @@ mono_control_panel_handler (request_rec *r)
 			buffer = apr_psprintf (r->pool, "<li><a href=\"?restart=%s\">Restart Server</a></li>\n", xsp->alias);
 			request_send_response_string(r, buffer);
 
-#ifndef APACHE13
 			ensure_dashboard_initialized (config, xsp, pconf);
 			if (xsp->dashboard_mutex && xsp->dashboard
-				&& apr_global_mutex_lock (xsp->dashboard_mutex) == APR_SUCCESS) {
+			    && apr_global_mutex_lock (xsp->dashboard_mutex) == APR_SUCCESS) {
 
 				if (xsp->dashboard->accepting_requests)
 					buffer = apr_psprintf (r->pool, "<li><a href=\"?pause=%s\">Stop Accepting Requests</a></li>\n", xsp->alias);
 				else
 					buffer = apr_psprintf (r->pool, "<li><a href=\"?resume=%s\">Resume Accepting Requests</a></li>\n", xsp->alias);
 				request_send_response_string(r, buffer);
-				
+
 				if (xsp->restart_mode == AUTORESTART_MODE_REQUESTS) {
 					buffer = apr_psprintf (r->pool, "<li>%d requests served; limit: %d</li>\n",
 							       xsp->dashboard->handled_requests, xsp->restart_requests);
@@ -2782,11 +2610,10 @@ mono_control_panel_handler (request_rec *r)
 				buffer = apr_psprintf (r->pool, "<li>%d requests currently being processed; limit: %s</li>\n",
 						       xsp->dashboard->active_requests, xsp->max_active_requests);
 				request_send_response_string(r, buffer);
-				
+
 				buffer = apr_psprintf (r->pool, "<li>%d requests currently waiting to be processed; limit: %s</li>\n",
 						       xsp->dashboard->waiting_requests, xsp->max_waiting_requests);
 				request_send_response_string(r, buffer);
-				
 
 				rv = apr_global_mutex_unlock (xsp->dashboard_mutex);
 				if (rv != APR_SUCCESS)
@@ -2794,11 +2621,8 @@ mono_control_panel_handler (request_rec *r)
 						      "Failed to release %s lock after mono-ctrl output, the process may deadlock!",
 						      xsp->dashboard_lock_file);
 			}
-#endif
-			
 			request_send_response_string(r, "</ul></li>\n");
 		}
-		
 		request_send_response_string (r, "</ul>\n");
 	} else {
 		if (uri->query && !strncmp (uri->query, "restart=", 8)) {
@@ -2807,7 +2631,7 @@ mono_control_panel_handler (request_rec *r)
 			if (!strcmp (alias, "ALL"))
 				alias = NULL;
 			set_accepting_requests (r->server, alias, 0);
-			terminate_xsp2 (r->server, alias, 1, 0); 
+			terminate_xsp2 (r->server, alias, 1, 0);
 			start_xsp (config, 1, alias);
 			set_accepting_requests (r->server, alias, 1);
 			request_send_response_string (r, "<div style=\"text-align: center;\">mod-mono-server processes restarted.</div><br>\n");
@@ -2829,38 +2653,15 @@ mono_control_panel_handler (request_rec *r)
 			/* Invalid command. */
 			request_send_response_string (r, "<div style=\"text-align: center;\">Invalid query string command.</div>\n");
 		}
-	
 		request_send_response_string (r, "<div style=\"text-align: center;\"><a href=\"?\">Return to Control Panel</a></div>\n");
 	}
-	
+
 	request_send_response_string(r, "</body></html>\n");
 
 	DEBUG_PRINT (2, "Done.");
 	return OK;
 }
 
-#ifdef APACHE13
-static void
-mono_init_handler (server_rec *s, pool *p)
-{
-#if defined (APR_HAS_USER) && !defined (WIN32)
-	module_cfg *config;
-#endif
-  
-	if (ap_standalone && ap_restart_time == 0)
-		return;
-
-	DEBUG_PRINT (0, "Initializing handler");
-	ap_add_version_component ("mod_mono/" VERSION);
-	pconf = p;
-	ap_register_cleanup (p, s, (void (*)(void *)) terminate_xsp, ap_null_cleanup);
-  
-#if defined (APR_HAS_USER) && !defined (WIN32)
-	config = ap_get_module_config (s->module_config, &mono_module);
-	start_xsp (config, 0, NULL);
-#endif
-}
-#else
 static int
 mono_init_handler (apr_pool_t *p,
 		   apr_pool_t *plog,
@@ -2872,7 +2673,7 @@ mono_init_handler (apr_pool_t *p,
 #if defined (APR_HAS_USER) && !defined (WIN32)
 	module_cfg *config;
 #endif
-  
+
 	/*
 	 * mono_init_handler() will be called twice, and if it's a DSO then all
 	 * static data from the first call will be lost. Only set up our static
@@ -2894,37 +2695,22 @@ mono_init_handler (apr_pool_t *p,
 	config = ap_get_module_config (s->module_config, &mono_module);
 	start_xsp (config, 0, NULL);
 #endif
-  
+
 	return OK;
 }
-#endif
 
 #if !defined (APR_HAS_USER) || defined (WIN32)
 void
-mono_child_init (
-#ifdef APACHE2
-	apr_pool_t *p, server_rec *s
-#else
-	server_rec *s, apr_pool_t *p
-#endif
-)
+mono_child_init (apr_pool_t *p, server_rec *s)
 {
 	module_cfg *config;
-	
+
 	DEBUG_PRINT (0, "Mono Child Init");
 	config = ap_get_module_config (s->module_config, &mono_module);
 	start_xsp (config, 0, NULL);
 }
 #endif
 
-#ifdef APACHE13
-static const handler_rec mono_handlers [] = {
-	{ "mono", mono_handler },
-	{ "application/x-asp-net", mono_handler },
-	{ "mono-ctrl", mono_control_panel_handler },
-	{ NULL, NULL }
-};
-#else
 static void
 mono_register_hooks (apr_pool_t * p)
 {
@@ -2935,18 +2721,16 @@ mono_register_hooks (apr_pool_t * p)
 	ap_hook_child_init (mono_child_init, NULL, NULL, APR_HOOK_MIDDLE);
 #endif
 }
-#endif
 
 static const command_rec mono_cmds [] = {
 	MAKE_CMD12 (MonoUnixUmask, umask_value,
-		    "Value of the file mode creation mask (see umask(2))"
+		    "Value of the file mode creation mask (see umask(2)) "
 		    "Default: 0077"
 	),
 	MAKE_CMD12 (MonoUnixSocket, filename,
 		    "Named pipe file name. Mutually exclusive with MonoListenPort. "
 		    "Default: /tmp/mod_mono_server"
 	),
-
 	MAKE_CMD12 (MonoListenPort, listen_port,
 		    "TCP port on which mod-mono-server should listen/is listening on. Mutually "
 		    "exclusive with MonoUnixSocket. "
@@ -3094,37 +2878,11 @@ static const command_rec mono_cmds [] = {
 	MAKE_CMD12 (MonoMaxWaitingRequests, max_waiting_requests,
 		    "The maximum number of concurrent requests mod_mono will hold while the ASP.NET backend is busy "
 		    "with the maximum number of requests specified by MonoMaxActiveRequests. "
-		    "Requests that can't be processed or held are dropped with Service Unavailable." 
+		    "Requests that can't be processed or held are dropped with Service Unavailable."
 		    "Default value: 20"),
 	{ NULL }
 };
 
-#ifdef APACHE13
-module MODULE_VAR_EXPORT mono_module =
-{
-	STANDARD_MODULE_STUFF,
-	mono_init_handler,		/* initializer */
-	create_dir_config,		/* dir config creater */
-	NULL,			/* dir merger --- default is to override */
-	create_mono_server_config,	/* server config */
-	merge_config,		/* merge server configs */
-	mono_cmds,			/* command table */
-	mono_handlers,		/* handlers */
-	NULL,                       /* filename translation */
-	NULL,                       /* check_user_id */
-	NULL,                       /* check auth */
-	NULL,                       /* check access */
-	NULL,                       /* type_checker */
-	NULL,			/* fixups */
-	NULL,                       /* logger */
-	NULL,                       /* header parser */
-#if !defined (APR_HAS_USER) || defined (WIN32)
-	mono_child_init,		/* child_init */
-#endif
-	NULL,                       /* child_exit */
-	NULL                        /* post read-request */
-};
-#else
 module AP_MODULE_DECLARE_DATA mono_module = {
 	STANDARD20_MODULE_STUFF,
 	create_dir_config,		/* dir config creater */
@@ -3134,5 +2892,3 @@ module AP_MODULE_DECLARE_DATA mono_module = {
 	mono_cmds,			/* command apr_table_t */
 	mono_register_hooks		/* register hooks */
 };
-#endif
-

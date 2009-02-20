@@ -1,6 +1,6 @@
 mod_mono
 ---------
-mod_mono is an apache module that provides ASP.NET functionality.
+mod_mono is an Apache 2.0+ module that provides ASP.NET functionality.
 
 See INSTALL for installation instructions
 
@@ -10,5 +10,6 @@ You can reach the maintainer at:
 Questions are usually sent to mono-list
 (http://lists.ximian.com/mailman/listinfo/mono-list).
 
-More information at http://www.mono-project.com/
+More information at http://mono-project.com/Mod_mono
+
 

@@ -40,6 +40,20 @@ if test "x$enable_debug" = "xyes" ; then
 fi
 
 #
+# --with-debug-level
+#
+AC_MSG_CHECKING([What level debug messages should be printed at])
+AC_ARG_WITH(debug-level,
+	[ --with-debug-level      set the debug messages level to the specified value (0-9, 0 is the most verbose)],
+	debug_level=$withval, debug_level=0)
+if test "x$enable_debug" = "xyes" ; then
+   	CFLAGS="$CFLAGS -DDEBUG_LEVEL=$debug_level"
+	AC_MSG_RESULT($debug_level)
+else
+	AC_MSG_RESULT([debug output disabled])
+fi
+
+#
 # --with-remove-display
 #
 AC_MSG_CHECKING([whether mod_mono should remove the DISPLAY variable from environment])
@@ -289,17 +303,9 @@ AC_TRY_COMPILE([
 	APACHE_VER=1.3
 ])
 
-# ensure we have apache 1.3
+# We no longer support Apache < 2.0
 if test "$APACHE_VER" = "1.3" ; then
-	AC_TRY_COMPILE([
-		#include <httpd.h>
-	], [
-		char *version = SERVER_BASEREVISION;
-	], [
-		APACHE_VER=1.3
-	], [
-		APACHE_VER=retry
-	])
+   	AC_MSG_ERROR([Apache 1.3 is no longer supported. mod_mono now requires at least Apache 2.0])
 else
 AC_TRY_RUN([
 	#include <ap_release.h>
@@ -335,8 +341,7 @@ if test "$APACHE_VER" = "retry"; then
 fi
 
 if test "$APACHE_VER" = "1.3"; then
-	CFLAGS="$CFLAGS -DAPACHE13 -DEAPI"
-	AC_MSG_RESULT($APACHE_VER)
+	AC_MSG_ERROR([Apache 1.3 is no longer supported. mod_mono now requires at least Apache 2.0])
 fi
 
 #
@@ -371,11 +376,10 @@ AC_ARG_WITH(crosspkgdir, [  --with-crosspkgdir=/path/to/pkg-config/dir],
         fi
 )
 
-AM_CONDITIONAL(APACHE2, test ! "$APACHE_VER" = "1.3")
-if test ! "$APACHE_VER" = "1.3" ; then
+AM_CONDITIONAL(APACHE2, true)
+
 dnl Sources are recompiled if we change the target version
-	AC_DEFINE([APACHE2],,[Compiling for Apache >= 2.0 ])
-fi
+AC_DEFINE([APACHE2],,[Compiling for Apache >= 2.0 ])
 
 if test "$APACHE_VER" = "2.2" ; then
 	AC_DEFINE([APACHE22],,[Compiling for Apache >= 2.2 ])
@@ -395,17 +399,8 @@ AC_ARG_WITH(mono-default-config-dir,
   fi
 ],)
 
-if test ! "$APACHE_VER" = "1.3" ; then
-   found_apr_socket_connect=yes
-   AC_DEFINE([HAVE_APR_SOCKET_CONNECT],,[apr_socket_connect is present])
-else
-   found_apr_socket_connect=no
-   AC_CHECK_LIB(apr-0, apr_socket_connect, found_apr_socket_connect=yes)
-   if test "x$found_apr_socket_connect" = "xyes" ; then
-      AC_DEFINE([HAVE_APR_SOCKET_CONNECT],,[apr_socket_connect is present])
-   fi
-
-fi
+found_apr_socket_connect=yes
+AC_DEFINE([HAVE_APR_SOCKET_CONNECT],,[apr_socket_connect is present])
 
 MONO_PREFIX=`$PKG_CONFIG --silence-errors --variable=prefix mono`
 if test x$MONO_PREFIX = "x" ; then
@@ -461,12 +456,15 @@ echo "   * Apache version = $APACHE_VER"
 echo "   * Apache modules directory = $APXS_LIBEXECDIR"
 test -x "$APXS" && \
 echo "   * apxs = $APXS"
-test ! "$APACHE_VER" = "1.3" -a -x "$APRCONFIG" && \
+test -x "$APRCONFIG" && \
 echo "   * apr-config = $APRCONFIG"
 test "$APUCONFIG" && \
 echo "   * apu-config = $APUCONFIG"
 echo "   * CFLAGS = $CFLAGS"
 echo "   * Verbose logging (debug) = $enable_debug"
+if test "x$enable_debug" = "xyes" ; then
+echo "   * Debug output level = $debug_level"
+fi
 echo "   * GCOV options used = $enable_gcov"
 echo "   * Profiling enabled = $enable_gprof"
 echo "   * mono prefix = $MONO_PREFIX"

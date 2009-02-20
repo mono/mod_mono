@@ -1,4 +1,4 @@
-Last updated: Jul 25, 2005
+Last updated: Jan 28, 2009
 
 Index
 -------
@@ -19,21 +19,21 @@ Installing mod_mono
 --------------------
 
   The following are instructions on getting mod_mono working with
-  Apache, either 1.3 or 2. Once you set it up, Apache will be able to
-  serve ASP.NET pages.
+  Apache 2. Once you set it up, Apache will be able to serve ASP.NET 
+  pages.
 
   * Prerrequisites
   -----------------
   You will need:
 
     * mono (http://www.go-mono.com)
-    * apache 1.3 or 2 and its development package. Usually called
-    apache2-dev, apache-dev...
+    * apache 2.0 or later and its development packages. Usually called
+      apache2-dev, apache2-devel...
     * Latest xsp and mod_mono tarballs (http://go-mono.com/download.html)
 
   * Assumptions
   -------------
-  The next steps assume you have installed mono, xsp and apache in
+  The next steps assume you have installed mono, XSP and Apache in
   /usr. Notice that you will need to be root in order to run 'make
   install'.
 
@@ -54,9 +54,9 @@ Installing mod_mono
 
          ./configure --prefix=/usr --with-apxs=/usr/sbin/apxs
 
-       (Apache 2 only) If you get errors while compiling due to apr.h
-       header not found, you'll need to use the --with-apr-config option
-       and provide the full path to 'apr-config':
+       If you get errors while compiling due to apr.h header not found, 
+       you'll need to use the --with-apr-config option and provide the 
+       full path to 'apr-config':
 
          ./configure --prefix=/usr --with-apr-config=/usr/bin/apr-config
 
@@ -67,13 +67,12 @@ Installing mod_mono
 
          LoadModule mono_module modules/mod_mono.so
 
-    2. Configure apache.
+    2. Configure Apache.
 
-       We're going to configure apache so that we can browse the samples
+       We're going to configure Apache so that we can browse the samples
        installed by XSP under /usr/lib/xsp/test.
 
-       Edit your httpd.conf file, which should be in /etc/httpd,
-       /etc/apache, /etc/apache2...
+       Edit your httpd.conf file, which should be in /etc/httpd, /etc/apache2...
 
        Add the following lines:
 
@@ -84,7 +83,7 @@ Installing mod_mono
        for everything requested as /demo/xxx under
        /usr/lib/xsp/test/xxx.Don't forget the quotes.
 
-       For Apache 1.3 and, optionally, for Apache 2.0, add these lines:
+       Add these lines:
 
             <Directory /usr/lib/xsp/test>
 	           SetHandler mono
@@ -93,8 +92,7 @@ Installing mod_mono
                    </IfModule>
             </Directory>
 
-       If you are using Apache 2.0, you can use get the same results with
-       this:
+       Alternatively, you can use get the same results with this:
 
             <Location /demo>
 	          SetHandler mono
@@ -154,8 +152,6 @@ APPENDIX A: Typical configuration without virtual hosts
 
   Your configuration should be something like:
 
-      LoadModule mono_module /usr/lib/apache/1.3/mod_mono.so
-      AddModule mod_mono.c
       Alias /demo "/usr/lib/xsp/test"
       AddMonoApplications default "/demo:/usr/lib/xsp/test"
       <Directory /usr/lib/xsp/test>
@@ -176,7 +172,7 @@ APPENDIX A: Typical configuration without virtual hosts
       </Location>
 
   If you prefer to .webapp configuration  file(s)  (see  manual  page
-  of xsp), you can change MonoApplications in the above samples by:
+  of XSP), you can change MonoApplications in the above samples by:
 
       MonoApplicationsConfigFile default "/var/www/applications.webapp"
 
@@ -239,3 +235,5 @@ CREDITS
   Gonzalo Paniagua Javier <gonzalo @ ximian.com>
   Maintainer
 
+  Marek Habersack <mhabersack @ novell.com>
+  Maintainer

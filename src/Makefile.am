@@ -8,9 +8,5 @@ mod_mono_la_CFLAGS = -Wall -DDFLT_MONO_CONFIG_DIR=\"$(DFLT_MONO_CONFIG_DIR)\"
 
 install: $(lib_LTLIBRARIES)
 	$(mkinstalldirs) "$(DESTDIR)$(APXS_LIBEXECDIR)"
-if APACHE2
 	$(APXS) -S LIBEXECDIR="$(DESTDIR)$(APXS_LIBEXECDIR)" -i -n mono mod_mono.la
-else
-	$(APXS) -S LIBEXECDIR="$(DESTDIR)$(APXS_LIBEXECDIR)" -i -n mono .libs/mod_mono.so
-endif
 
