@@ -1,0 +1,5 @@
+2009-01-28  Marek Habersack  <mhabersack@novell.com>
+
+	* mod_mono.h, mod_mono.c, Makefile.am: removed all the traces of
+	Apache 1.3 support
+
