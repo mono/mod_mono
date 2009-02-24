@@ -50,4 +50,3 @@ From now on, mod_mono_unix uses content_type to determine if it will
 process a request or not. You *MUST* use the AddType directive in your
 apache configuration file. More info in the INSTALL file.
 
-
