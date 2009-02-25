@@ -97,14 +97,7 @@
 #define SOCKET_FILE		"/tmp/mod_mono_server"
 #define LISTEN_ADDRESS		"127.0.0.1"
 #define DASHBOARD_FILE		"/tmp/mod_mono_dashboard"
-#define BACKEND_PRIMARY		1
-#define BACKEND_SECONDARY	0
-#define FAILOVER_DEFAULT	0
 #define GLOBAL_SERVER_NAME	"XXGLOBAL"
-#define PRIMARY_SUFFIX		"_b1"
-#define SECONDARY_SUFFIX	"_b2"
-#define SECONDARY_START_DELAY	120
-#define SECONDARY_NUM_REQUESTS	100
 #define MAX_ACTIVE_REQUESTS	20
 #define MAX_WAITING_REQUESTS	20
 #define START_ATTEMPTS		3
