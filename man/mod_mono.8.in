@@ -165,6 +165,23 @@ The maximum number of concurrent requests mod_mono will hold while
 the ASP.NET backend is busy with the maximum number of requests
 specified by MonoMaxActiveRequests. Requests that can't be processed
 or held are dropped with Service Unavailable. Default value: 20.
+.TP
+.I "MonoEnableFailOver"
+If set to true, mod_mono will run in the fail-over mode. In this mode two backends are started for each Mono virtual host.
+The secondary backend is "primed" in the way that, after a certain initial delay (see MonoSecondaryStartDelay) it is passed
+a configured number of requests (see MonoSecondaryNumberOfRequests) response to which is ignored. If the primary backend dies
+the secondary one is promoted and starts serving requests, while a new secondary backend is started to replace the previous one.
+That way your application's startup time is mimimized. Note however that it will make your server CPU usage higher during the 
+secondary backend priming period. There also might be side effects to mirroring the requests. Namely, if your application writes
+data to a database, modifies user settings etc. the actions may be performed twice as, even though its responses are ignored, the
+secondary backend executes a full cycle for each request.
+.TP
+.I "MonoSecondaryStartDelay"
+Time, in seconds, to wait before feeding requests to the secondary backend if fail-over mode is enabled. Default value: 120.
+.TP
+.I "MonoSecondaryNumberOfRequests"
+Number of requests passed to the secondary backend in order to prime it. After the specified number of requests the secondary
+backend lies dormant until it needs to replace the primary one.
 .SH SAMPLE VIRTUAL HOST CONFIGURATION
 Note that the configuration below requires the mod_mono module to be 
 loaded by Apache. How it is done is distribution-specific - please check

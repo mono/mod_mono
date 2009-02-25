@@ -74,6 +74,13 @@ typedef struct {
 	int active_requests;
 	int waiting_requests;
 	int accepting_requests;
+
+	/* Fail-over support */
+	time_t secondary_start_at;
+	uint32_t secondary_needs_more_requests;
+	char *primary_suffix;
+	char *secondary_suffix;
+	char first_request;
 } dashboard_data;
 
 #define INITIAL_DATA_MAX_ALLOCA_SIZE 8192
@@ -94,6 +101,9 @@ typedef struct xsp_data {
 	char is_default;
 	char *alias;
 	char *filename; /* Unix socket path */
+	char *failover;
+	char *secondary_start_delay;
+	char *secondary_num_requests;
 	char *umask_value;
 	char *run_xsp;
 	char *executable_path;
@@ -113,6 +123,7 @@ typedef struct xsp_data {
 	char status; /* One of the FORK_* in the enum above.
 		      * Don't care if run_xsp is "false" */
 	char is_virtual; /* is the server virtual? */
+	char failover_enabled;
 	char *start_attempts;
 	char *start_wait_time;
 	char *max_active_requests;
@@ -122,6 +133,10 @@ typedef struct xsp_data {
 	auto_restart_mode restart_mode;
 	uint32_t restart_requests;
 	uint32_t restart_time;
+
+	/* Failover data */
+	char *primary_unix_path;
+	char *secondary_unix_path;
 
 	/* other settings */
 	unsigned char no_flush;
@@ -168,6 +183,7 @@ static lock_mechanism lockMechanisms [] = {
 static int send_table (apr_pool_t *pool, apr_table_t *table, apr_socket_t *sock);
 static void start_xsp (module_cfg *config, int is_restart, char *alias);
 static apr_status_t terminate_xsp2 (void *data, char *alias, int for_restart, int lock_held);
+static void set_secondary_start_time (xsp_data *conf);
 
 #define IS_MASTER(__conf__) (!strcmp (GLOBAL_SERVER_NAME, (__conf__)->alias))
 
@@ -189,6 +205,21 @@ string_to_long (char *str, char *what, long def)
 	}
 
 	return retval;
+}
+
+static const char*
+backend_name (int backend)
+{
+	switch (backend) {
+		case BACKEND_PRIMARY:
+			return "PRIMARY";
+
+		case BACKEND_SECONDARY:
+			return "SECONDARY";
+
+		default:
+			return "UNKNOWN";
+	}
 }
 
 static apr_lockmech_e
@@ -505,6 +536,11 @@ ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 			xsp->dashboard->waiting_requests = 0;
 			xsp->dashboard->starting = 0;
 			xsp->dashboard->accepting_requests = 1;
+			xsp->dashboard->secondary_start_at = 0;
+			xsp->dashboard->secondary_needs_more_requests = 0;
+			xsp->dashboard->first_request = 1;
+			xsp->dashboard->primary_suffix = PRIMARY_SUFFIX;
+			xsp->dashboard->secondary_suffix = SECONDARY_SUFFIX;
 		}
 	}
 
@@ -545,6 +581,10 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->is_default = is_default;
 	server->alias = apr_pstrdup (pool, alias);
 	server->filename = NULL;
+	server->failover = NULL;
+	server->secondary_start_delay = NULL;
+	server->secondary_num_requests = NULL;
+	server->failover_enabled = -1;
 	server->umask_value = NULL;
 	server->run_xsp = "True";
 	/* (Obsolete) server->executable_path = EXECUTABLE_PATH; */
@@ -587,6 +627,9 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->restart_mode = AUTORESTART_MODE_INVALID;
 	server->restart_requests = 0;
 	server->restart_time = 0;
+
+	server->primary_unix_path = NULL;
+	server->secondary_unix_path = NULL;
 
 	ensure_dashboard_initialized (config, server, pool);
 	/* This is needed, because we're being called from the main process and dashboard must NOT */
@@ -1205,6 +1248,28 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result, xsp_da
 #	define apr_socket_connect apr_connect
 #endif
 
+static int
+failover_enabled (xsp_data *conf)
+{
+	if (!conf)
+		return FAILOVER_DEFAULT;
+
+	if (conf->failover_enabled != -1)
+		return conf->failover_enabled;
+
+	if (!conf->failover || !conf->failover [0]) {
+		conf->failover_enabled = FAILOVER_DEFAULT;
+		return FAILOVER_DEFAULT;
+	}
+
+	if (strcasecmp (conf->failover, "true") == 0)
+		conf->failover_enabled = 1;
+	else
+		conf->failover_enabled = 0;
+
+	return conf->failover_enabled;
+}
+
 static char *
 get_default_socket_name (apr_pool_t *pool, const char *alias, const char *base)
 {
@@ -1221,18 +1286,34 @@ get_base_socket_path (apr_pool_t *pool, xsp_data *conf)
 }
 
 static char *
-get_unix_socket_path (apr_pool_t *pool, xsp_data *conf)
+get_unix_socket_path (apr_pool_t *pool, xsp_data *conf, int backend)
 {
 	DEBUG_PRINT (0, "getting unix socket path");
 	if (IS_MASTER (conf)) {
 		return get_default_global_socket_name (pool, SOCKET_FILE);
-	} else {
+	} else if (failover_enabled (conf)) {
+		char *path = NULL;
+		path = get_base_socket_path (pool, conf);
+		switch (backend) {
+			default:
+				ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
+					      "Unknown backend type! Falling back to primary!");
+				/* fall through */
+
+			case BACKEND_PRIMARY:
+				return apr_psprintf (pool, "%s%s", path,
+						     conf->dashboard ? conf->dashboard->primary_suffix : PRIMARY_SUFFIX);;
+
+			case BACKEND_SECONDARY:
+				return apr_psprintf (pool, "%s%s", path,
+						     conf->dashboard ? conf->dashboard->secondary_suffix : SECONDARY_SUFFIX);;
+		}
+	} else
 		return get_base_socket_path (pool, conf);
-	}
 }
 
 static apr_status_t
-try_connect (xsp_data *conf, apr_socket_t **sock, apr_int32_t family, apr_pool_t *pool)
+try_connect (xsp_data *conf, apr_socket_t **sock, apr_int32_t family, apr_pool_t *pool, int backend)
 {
 	char *error;
 	struct sockaddr_un unix_address;
@@ -1246,7 +1327,7 @@ try_connect (xsp_data *conf, apr_socket_t **sock, apr_int32_t family, apr_pool_t
 
 		apr_os_sock_get (&sock_fd, *sock);
 		unix_address.sun_family = PF_UNIX;
-		fn = get_unix_socket_path (pool, conf);
+		fn = get_unix_socket_path (pool, conf, backend);
 		if (!fn)
 			return -2;
 
@@ -1429,7 +1510,7 @@ configure_stdout (char null_stdout)
 }
 
 static void
-fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
+fork_mod_mono_server (apr_pool_t *pool, xsp_data *config, int backend)
 {
 	pid_t pid;
 	int i;
@@ -1615,7 +1696,7 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 		argv [argi++] = "--port";
 		argv [argi++] = config->listen_port;
 	} else {
-		char *fn = get_unix_socket_path (pool, config);
+		char *fn = get_unix_socket_path (pool, config, backend);
 		DEBUG_PRINT (0, "Backend socket path: %s", fn);
 		argv [argi++] = "--filename";
 		argv [argi++] = fn;
@@ -1678,7 +1759,7 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 }
 
 static apr_status_t
-setup_socket (apr_socket_t **sock, xsp_data *conf, apr_pool_t *pool)
+setup_socket (apr_socket_t **sock, xsp_data *conf, apr_pool_t *pool, int backend)
 {
 	apr_status_t rv;
 	int family, proto;
@@ -1721,7 +1802,7 @@ setup_socket (apr_socket_t **sock, xsp_data *conf, apr_pool_t *pool)
 		return rv;
 	}
 
-	rv = try_connect (conf, sock, family, pool);
+	rv = try_connect (conf, sock, family, pool, backend);
 	DEBUG_PRINT (2, "try_connect: %d", (int) rv);
 	return rv;
 }
@@ -1937,7 +2018,7 @@ send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 }
 
 static int
-increment_active_requests (xsp_data *conf)
+increment_active_requests (xsp_data *conf, int backend)
 {
 	/* This function tries to increment the counters that limit
 	 * the number of simultaenous requests being processed. It
@@ -1954,6 +2035,8 @@ increment_active_requests (xsp_data *conf)
 	 * there is no dashboard), return the OK status.
 	 * Same test as in the decrement function and the
 	 * control panel. */
+	if (backend == BACKEND_SECONDARY || !conf->dashboard_mutex || !conf->dashboard)
+		return 1;
 
 	max_active_requests = (int)string_to_long (conf->max_active_requests, "MonoMaxActiveRequests", MAX_ACTIVE_REQUESTS);
 	max_waiting_requests = (int)string_to_long (conf->max_waiting_requests, "MonoMaxWaitingRequests", MAX_WAITING_REQUESTS);
@@ -2028,12 +2111,14 @@ increment_active_requests (xsp_data *conf)
 }
 
 static void
-decrement_active_requests (xsp_data *conf)
+decrement_active_requests (xsp_data *conf, int backend)
 {
 	apr_status_t rv;
 
 	/* Check if limiting is in effect. Same test as in the
 	 * increment function and the control panel. */
+	if (backend == BACKEND_SECONDARY || !conf->dashboard_mutex || !conf->dashboard)
+		return;
 
 	rv = apr_global_mutex_lock (conf->dashboard_mutex);
 	// Since we incremented the counter, even if we can't
@@ -2062,6 +2147,7 @@ mono_execute_request (request_rec *r, char auto_app)
 	uint32_t start_wait_time;
 	char *socket_name = NULL;
 	int retrying, was_starting;
+	int backend = BACKEND_PRIMARY;
 
 	config = ap_get_module_config (r->server->module_config, &mono_module);
 	DEBUG_PRINT (1, "config = 0x%lx", (unsigned long)config);
@@ -2088,7 +2174,36 @@ mono_execute_request (request_rec *r, char auto_app)
 
 	conf = &config->servers [idx];
 	ensure_dashboard_initialized (config, conf, pconf);
-	socket_name = get_unix_socket_path (r->pool, conf);
+	DEBUG_PRINT (1, "config address 0x%lx, dashboard 0x%lx", (unsigned long)conf, (unsigned long)conf->dashboard);
+
+	if (failover_enabled (conf) && conf->dashboard) {
+		DEBUG_PRINT (2, "Failover enabled, checking which backend should service the request.");
+		if (conf->dashboard->secondary_start_at) {
+			time_t now = time (NULL);
+			DEBUG_PRINT (2, "Should start at %u, now is %u", (unsigned)conf->dashboard->secondary_start_at, (unsigned)now);
+			if (conf->dashboard->secondary_start_at > now) {
+				DEBUG_PRINT (2, "The backend still needs to wait for its time (%u seconds remaining)", (unsigned int)(conf->dashboard->secondary_start_at - now));
+			} else {
+				DEBUG_PRINT (2, "%s backend will service the next %u requests",
+					     backend_name (BACKEND_SECONDARY),
+					     conf->dashboard->secondary_needs_more_requests);
+				backend = BACKEND_SECONDARY;
+				conf->dashboard->secondary_start_at = 0;
+			}
+		} else {
+			if (conf->dashboard->secondary_needs_more_requests == 0) {
+				DEBUG_PRINT (2, "The %s backend doesn't need any more requests.", backend_name (BACKEND_SECONDARY));
+				backend = BACKEND_PRIMARY;
+			} else {
+				conf->dashboard->secondary_needs_more_requests--;
+				backend = BACKEND_SECONDARY;
+				DEBUG_PRINT (2, "The backend will service %u more requests.", conf->dashboard->secondary_needs_more_requests);
+			}
+		}
+	}
+
+	DEBUG_PRINT (2, "executing request using the %s backend", backend_name (backend));
+	socket_name = get_unix_socket_path (r->pool, conf, backend);
 	connect_attempts = (uint32_t)string_to_long (conf->start_attempts, "MonoXSPStartAttempts", START_ATTEMPTS);
 	start_wait_time = (uint32_t)string_to_long (conf->start_wait_time, "MonoXSPStartWaitTime", START_WAIT_TIME);
 	if (start_wait_time < 2)
@@ -2120,7 +2235,7 @@ mono_execute_request (request_rec *r, char auto_app)
 		if (apr_global_mutex_lock (conf->dashboard_mutex) == APR_SUCCESS) {
 			int ok = conf->dashboard->accepting_requests;
 			if (ok)
-				ok = increment_active_requests (conf);
+				ok = increment_active_requests (conf, backend);
 
 			apr_global_mutex_unlock (conf->dashboard_mutex);
 
@@ -2133,12 +2248,12 @@ mono_execute_request (request_rec *r, char auto_app)
 	retrying = connect_attempts;
 	was_starting = 0;
 	while (connect_attempts--) {
-		rv = setup_socket (&sock, conf, r->pool);
+		rv = setup_socket (&sock, conf, r->pool, backend);
 		DEBUG_PRINT (2, "After setup_socket");
 		// Note that rv's value after the loop ends is important.
 		if (rv != APR_SUCCESS) {
 			if (rv != -1) {
-				decrement_active_requests (conf);
+				decrement_active_requests (conf, backend);
 				return HTTP_SERVICE_UNAVAILABLE;
 			}
 			DEBUG_PRINT (2, "No backend found, will start a new copy.");
@@ -2152,7 +2267,7 @@ mono_execute_request (request_rec *r, char auto_app)
 				ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv2),
 					      "Failed to acquire %s lock, cannot continue starting new process",
 					      conf->dashboard_lock_file);
-				decrement_active_requests (conf);
+				decrement_active_requests (conf, backend);
 				return HTTP_SERVICE_UNAVAILABLE;
 			}
 
@@ -2168,7 +2283,7 @@ mono_execute_request (request_rec *r, char auto_app)
 				if (retrying < 0) {
 					ap_log_error (APLOG_MARK, APLOG_CRIT, STATUS_AND_SERVER,
 						      "Another process is attempting to start the backend. This request will fail.");
-					decrement_active_requests (conf);
+					decrement_active_requests (conf, backend);
 					return HTTP_SERVICE_UNAVAILABLE;
 				}
 				connect_attempts++; /* keep trying */
@@ -2185,7 +2300,14 @@ mono_execute_request (request_rec *r, char auto_app)
 				continue;
 			}
 
-			start_xsp (config, 0, conf->alias);
+			if (backend == BACKEND_PRIMARY)
+				start_xsp (config, 0, conf->alias);
+			else {
+				ap_log_error (APLOG_MARK, APLOG_WARNING, STATUS_AND_SERVER,
+					      "Failed to connect the %s backend, ignoring the failure and continuing.",
+					      backend_name (backend));
+				return APR_SUCCESS;
+			}
 
 			/* give some time for warm-up */
 			DEBUG_PRINT (2, "Started new backend, sleeping %us to let it configure", (unsigned)start_wait_time);
@@ -2206,7 +2328,7 @@ mono_execute_request (request_rec *r, char auto_app)
 		/* Failed to connect to mod-mono-server after several attempts. */
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
 			      "Failed to connect to mod-mono-server after several attempts to spawn the process.");
-		decrement_active_requests (conf);
+		decrement_active_requests (conf, backend);
 		return HTTP_SERVICE_UNAVAILABLE;
 	}
 
@@ -2215,7 +2337,7 @@ mono_execute_request (request_rec *r, char auto_app)
 		ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
 			      "Failed to send initial data. %s", strerror (errno));
 		apr_socket_close (sock);
-		decrement_active_requests (conf);
+		decrement_active_requests (conf, backend);
 		return HTTP_SERVICE_UNAVAILABLE;
 	}
 
@@ -2228,6 +2350,12 @@ mono_execute_request (request_rec *r, char auto_app)
 		}
 	} while (input == sizeof (int32_t) && result == TRUE);
 
+	if (backend == BACKEND_PRIMARY && conf->dashboard && conf->dashboard->first_request && failover_enabled (conf)) {
+		DEBUG_PRINT (2, "First request, resetting secondary backend start time");
+		conf->dashboard->first_request = 0;
+		set_secondary_start_time (conf);
+	}
+
 	apr_socket_close (sock);
 	if (input != sizeof (int32_t)) {
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
@@ -2235,9 +2363,9 @@ mono_execute_request (request_rec *r, char auto_app)
 		status = HTTP_INTERNAL_SERVER_ERROR;
 	}
 
-	decrement_active_requests (conf);
+	decrement_active_requests (conf, backend);
 
-	if (conf->restart_mode > AUTORESTART_MODE_NONE) {
+	if (backend == BACKEND_PRIMARY && conf->restart_mode > AUTORESTART_MODE_NONE) {
 		int do_restart = 0;
 
 		DEBUG_PRINT (2, "Auto-restart enabled for '%s', checking if restart required", conf->alias);
@@ -2306,21 +2434,25 @@ static int
 mono_handler (request_rec *r)
 {
 	module_cfg *config;
-	int retval;
+	int retval = 0;
 
+	DEBUG_PRINT (9, ">>>>>>>>>>>>>>>>>>>> MOD_MONO REQUEST START >>>>>>>>>>>>>>>>>>>>");
 	if (r->handler != NULL && !strcmp (r->handler, "mono")) {
 		DEBUG_PRINT (0, "handler: %s", r->handler);
 		retval = mono_execute_request (r, FALSE);
-
-		return retval;
+		goto end_request;
 	}
 
-	if (!r->content_type || strcmp (r->content_type, "application/x-asp-net"))
-		return DECLINED;
+	if (!r->content_type || strcmp (r->content_type, "application/x-asp-net")) {
+		retval = DECLINED;
+		goto end_request;
+	}
 
 	config = ap_get_module_config (r->server->module_config, &mono_module);
-	if (!config->auto_app)
-		return DECLINED;
+	if (!config->auto_app) {
+		retval = DECLINED;
+		goto end_request;
+	}
 
 	/*
 	  if (FALSE == check_file_extension (r->filename))
@@ -2328,20 +2460,24 @@ mono_handler (request_rec *r)
 	*/
 
 	/* Handle on-demand created applications */
-	return mono_execute_request (r, TRUE);
+	retval = mono_execute_request (r, TRUE);
+
+  end_request:
+	DEBUG_PRINT (9, "<<<<<<<<<<<<<<<<<<<< MOD_MONO REQUEST END <<<<<<<<<<<<<<<<<<<<");
+	return retval;
 }
 
 static apr_status_t
-connect_to_backend (xsp_data *conf, int is_restart)
+connect_to_backend (xsp_data *conf, int is_restart, int backend)
 {
 	apr_status_t rv;
 	apr_socket_t *socket;
 	char *termstr = "";
 
-	rv = setup_socket (&socket, conf, pconf);
+	rv = setup_socket (&socket, conf, pconf, backend);
 	if (rv == APR_SUCCESS) {
 		/* connected */
-		DEBUG_PRINT (2, "connected to backend of %s", conf->alias);
+		DEBUG_PRINT (2, "connected to %s backend of %s", backend_name (backend), conf->alias);
 		if (is_restart) {
 			write_data (socket, termstr, 1);
 			apr_socket_close (socket);
@@ -2365,9 +2501,10 @@ static void
 start_xsp (module_cfg *config, int is_restart, char *alias)
 {
 	/* 'alias' may be NULL to start all XSPs */
+	char failover;
 	xsp_data *xsp;
 	int i;
-	char do_fork = 0;
+	char fork_primary = 0, fork_secondary = 0;
 
 	for (i = 0; i < config->nservers; i++) {
 		xsp = &config->servers [i];
@@ -2388,27 +2525,73 @@ start_xsp (module_cfg *config, int is_restart, char *alias)
 
 		if (xsp->dashboard)
 			xsp->dashboard->starting = 1;
-		do_fork = 0;
-		if (connect_to_backend (xsp, is_restart) == APR_SUCCESS) {
+		failover = failover_enabled (xsp);
+		fork_primary = fork_secondary = 0;
+		if (connect_to_backend (xsp, is_restart, BACKEND_PRIMARY) == APR_SUCCESS) {
 			if (is_restart) {
 				i--;
 				continue;
 			}
+
+			if (failover) {
+				if (connect_to_backend (xsp, is_restart, BACKEND_SECONDARY) != APR_SUCCESS)
+					fork_secondary = 1;
+				else if (is_restart) {
+					i--;
+					continue;
+				}
+			}
 		} else {
-			DEBUG_PRINT (2, "backend cannot be connected to.");
-			do_fork = 1;
+			DEBUG_PRINT (2, "%s backend cannot be connected to.", backend_name (BACKEND_PRIMARY));
+			if (failover) {
+				DEBUG_PRINT (2, "Fail-over enabled, attempting connect to the %s backend", backend_name (BACKEND_SECONDARY));
+				if (connect_to_backend (xsp, is_restart, BACKEND_SECONDARY) == APR_SUCCESS) {
+					if (is_restart) {
+						i--;
+						continue;
+					}
+
+					// promote secondary to primary and fork old primary
+					if (xsp->dashboard) {
+						char *tmp;
+
+						DEBUG_PRINT (2, "Primary backend for %s not running, found secondary - promoting it to primary.", xsp->alias);
+						DEBUG_PRINT (2, "Suffixes before swap: primary '%s'; secondary '%s'", xsp->dashboard->primary_suffix, xsp->dashboard->secondary_suffix);
+						tmp = xsp->dashboard->primary_suffix;
+						xsp->dashboard->primary_suffix = xsp->dashboard->secondary_suffix;
+						xsp->dashboard->secondary_suffix = tmp;
+						DEBUG_PRINT (2, "Suffixes after swap: primary '%s'; secondary '%s'", xsp->dashboard->primary_suffix, xsp->dashboard->secondary_suffix);
+					} else
+						ap_log_error (APLOG_MARK, APLOG_CRIT, STATUS_AND_SERVER,
+							      "Missing dashboard - fail-over will not be possible. Expect errors.");
+					xsp->primary_unix_path = xsp->secondary_unix_path;
+					xsp->secondary_unix_path = NULL;
+					fork_secondary = 1;
+				} else
+					fork_secondary = fork_primary = 1;
+			} else
+				fork_primary = 1;
 		}
 
-		if (!do_fork)
+		if (!fork_primary && !fork_secondary)
 			goto reset_starting;
 
-		DEBUG_PRINT (2, "Starting backend for alias %s", xsp->alias);
+		DEBUG_PRINT (2, "Starting backend%s for alias %s", failover ? "s" : "", xsp->alias);
 		xsp->status = FORK_INPROCESS;
-		fork_mod_mono_server (pconf, xsp);
-		if (xsp->dashboard) {
-			xsp->dashboard->start_time = time (NULL);
-			xsp->dashboard->handled_requests = 0;
-			xsp->dashboard->restart_issued = 0;
+		if (fork_primary) {
+			DEBUG_PRINT (2, "forking %s backend", backend_name (BACKEND_PRIMARY));
+			fork_mod_mono_server (pconf, xsp, BACKEND_PRIMARY);
+			if (xsp->dashboard) {
+				xsp->dashboard->start_time = time (NULL);
+				xsp->dashboard->handled_requests = 0;
+				xsp->dashboard->restart_issued = 0;
+			}
+		}
+
+		if (fork_secondary) {
+			DEBUG_PRINT (2, "forking %s backend", backend_name (BACKEND_SECONDARY));
+			fork_mod_mono_server (pconf, xsp, BACKEND_SECONDARY);
+			set_secondary_start_time (xsp);
 		}
 		xsp->status = FORK_SUCCEEDED;
 
@@ -2419,20 +2602,36 @@ start_xsp (module_cfg *config, int is_restart, char *alias)
 }
 
 static void
-stop_xsp (xsp_data *conf)
+set_secondary_start_time (xsp_data *xsp)
+{
+	if (xsp->dashboard) {
+		xsp->dashboard->secondary_needs_more_requests = (uint32_t)string_to_long (xsp->secondary_num_requests,
+											  "MonoSecondaryNumberOfRequests",
+											  SECONDARY_NUM_REQUESTS);
+		xsp->dashboard->secondary_start_at = (time_t) string_to_long (xsp->secondary_start_delay,
+									      "MonoSecondaryStartDelay",
+									      SECONDARY_START_DELAY);
+		DEBUG_PRINT (2, "Backend will start receiving requests after %u seconds of delay",
+			     (unsigned)xsp->dashboard->secondary_start_at);
+		xsp->dashboard->secondary_start_at += time (NULL);
+	}
+}
+
+static void
+stop_xsp (xsp_data *conf, int backend)
 {
 	apr_socket_t *sock;
 	apr_status_t rv;
 	char *termstr = "";
 
-	rv = setup_socket (&sock, conf, pconf);
+	rv = setup_socket (&sock, conf, pconf, backend);
 	if (rv == APR_SUCCESS) {
 		write_data (sock, termstr, 1);
 		apr_socket_close (sock);
 	}
 
 	if (conf->listen_port == NULL) {
-		char *fn = get_unix_socket_path (pconf, conf);
+		char *fn = get_unix_socket_path (pconf, conf, backend);
 		if (fn)
 			remove (fn); /* Don't bother checking error */
 	}
@@ -2462,7 +2661,9 @@ terminate_xsp2 (void *data, char *alias, int for_restart, int lock_held)
 		if (alias != NULL && strcmp(xsp->alias, alias))
 			continue;
 
-		stop_xsp (xsp);
+		stop_xsp (xsp, BACKEND_PRIMARY);
+		if (failover_enabled (xsp))
+			stop_xsp (xsp, BACKEND_SECONDARY);
 
 		/* destroy the dashboard */
 		if (!for_restart && xsp->dashboard_shm) {
@@ -2730,6 +2931,24 @@ static const command_rec mono_cmds [] = {
 	MAKE_CMD12 (MonoUnixSocket, filename,
 		    "Named pipe file name. Mutually exclusive with MonoListenPort. "
 		    "Default: /tmp/mod_mono_server"
+	),
+	MAKE_CMD12 (MonoEnableFailOver, failover,
+		    "If set to true, mod_mono will run in the fail-over mode. "
+		    "In this mode two backends are started for each Mono virtual host."
+#if FAILOVER_DEFAULT == 0
+		    "Default: false"
+#else
+		    "Default: true"
+#endif
+	),
+	MAKE_CMD12 (MonoSecondaryStartDelay, secondary_start_delay,
+		    "Time, in seconds, to wait before feeding requests to the secondary backend if "
+		    "fail-over mode is enabled."
+		    "Default: 120"
+	),
+	MAKE_CMD12 (MonoSecondaryNumberOfRequests, secondary_num_requests,
+		    "Number of requests to pass to the secondary server for its \"priming\". "
+		    "Default: 100"
 	),
 	MAKE_CMD12 (MonoListenPort, listen_port,
 		    "TCP port on which mod-mono-server should listen/is listening on. Mutually "
