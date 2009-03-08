@@ -40,6 +40,7 @@
 
 #include <stdlib.h>
 #include "mod_mono.h"
+#include "mono-io-portability.h"
 
 DEFINE_MODULE (mono_module);
 
@@ -110,6 +111,7 @@ typedef struct xsp_data {
 	char *max_memory;
 	char *debug;
 	char *env_vars;
+	char *iomap;
 	char status; /* One of the FORK_* in the enum above.
 		      * Don't care if run_xsp is "false" */
 	char is_virtual; /* is the server virtual? */
@@ -125,6 +127,7 @@ typedef struct xsp_data {
 
 	/* other settings */
 	unsigned char no_flush;
+	int portability_level;
 
 	/* The dashboard */
 	apr_shm_t *dashboard_shm;
@@ -563,6 +566,8 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->max_memory = NULL;
 	server->debug = NULL;
 	server->env_vars = NULL;
+	server->iomap = NULL;
+	server->portability_level = PORTABILITY_UNKNOWN;
 	server->status = FORK_NONE;
 	server->is_virtual = is_virtual;
 	server->start_attempts = NULL;
@@ -910,7 +915,7 @@ read_data_string (apr_pool_t *pool, apr_socket_t *sock, char **ptr, int32_t *siz
 }
 
 static int
-send_entire_file (request_rec *r, const char *filename, int *result)
+send_entire_file (request_rec *r, const char *filename, int *result, xsp_data *xsp)
 {
 #ifdef APR_LARGEFILE
 # define MODMONO_LARGE APR_LARGEFILE
@@ -922,19 +927,23 @@ send_entire_file (request_rec *r, const char *filename, int *result)
 	apr_finfo_t info;
 	apr_size_t nbytes;
 	const apr_int32_t flags = APR_READ | APR_SENDFILE_ENABLED | MODMONO_LARGE;
+	int retval = 0;
+	gchar *file_path = mono_portability_find_file (xsp->portability_level, filename, TRUE);
 
-	st = apr_file_open (&file, filename, flags, APR_OS_DEFAULT, r->pool);
+	st = apr_file_open (&file, file_path ? file_path : filename, flags, APR_OS_DEFAULT, r->pool);
 	if (st != APR_SUCCESS) {
-		DEBUG_PRINT (2, "file_open FAILED");
+		DEBUG_PRINT (2, "file_open FAILED (path: %s)", file_path ? file_path : filename);
 		*result = HTTP_FORBIDDEN;
-		return -1;
+		retval = -1;
+		goto finish;
 	}
 
 	st = apr_file_info_get (&info, APR_FINFO_SIZE, file);
 	if (st != APR_SUCCESS) {
 		DEBUG_PRINT (2, "info_get FAILED");
 		*result = HTTP_FORBIDDEN;
-		return -1;
+		retval = -1;
+		goto finish;
 	}
 
 	st = ap_send_fd (file, r, 0, info.size, &nbytes);
@@ -942,10 +951,15 @@ send_entire_file (request_rec *r, const char *filename, int *result)
 	if (nbytes < 0) {
 		DEBUG_PRINT (2, "SEND FAILED");
 		*result = HTTP_INTERNAL_SERVER_ERROR;
-		return -1;
+		retval = -1;
+		goto finish;
 	}
 
-	return 0;
+  finish:
+	if (file_path)
+		g_free (file_path);
+
+	return retval;
 }
 
 static int
@@ -1169,7 +1183,7 @@ do_command (int command, apr_socket_t *sock, request_rec *r, int *result, xsp_da
 				status = -1;
 				break;
 			}
-			status = send_entire_file (r, str, result);
+			status = send_entire_file (r, str, result, xsp);
 			if (status == -1)
 				error_message = "failed to send file (file data)";
 			break;
@@ -1511,6 +1525,9 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 		max_cpu_time = (int)string_to_long (config->max_cpu_time, "MonoMaxCPUTime", -1);
 
 	set_environment_variables (pool, config->env_vars);
+
+	if (config->iomap && *config->iomap)
+		SETENV (pool, "MONO_IOMAP", config->iomap);
 
 	pid = fork ();
 	if (pid > 0) {
@@ -2128,6 +2145,11 @@ mono_execute_request (request_rec *r, char auto_app)
 				return HTTP_SERVICE_UNAVAILABLE;
 		}
 	}
+
+	if (conf->portability_level > PORTABILITY_MAX)
+		conf->portability_level = PORTABILITY_UNKNOWN;
+
+	mono_portability_helpers_init (&conf->portability_level, conf->iomap);
 
 	rv = -1; /* avoid a warning about uninitialized value */
 	retrying = connect_attempts;
@@ -2846,6 +2868,10 @@ static const command_rec mono_cmds [] = {
 		    "mod-mono-server."
 		    " Default value: Default: \"\""
 	),
+
+	MAKE_CMD12 (MonoIOMAP, iomap,
+		    "A string with format the same as the MONO_IOMAP variable (see mod_mono (1))."
+		    " Default value: none"),
 
 	MAKE_CMD_ITERATE2 (AddMonoApplications, applications,
 			   "Appends an application."
