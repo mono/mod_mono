@@ -156,6 +156,16 @@ Default value: 'default' if the directive is not used.
 Takes a string of 'name=value' pairs separated by semicolons. For each
 pair, it calls setenv (name, value) before running mod-mono-server.
 .TP
+.I "MonoIOMAP"
+Takes alias name and a string of the same format and meaning as the MONO_IOMAP
+environment variable (see the mono(1) manpage). The effect is that mod_mono performs
+the same actions as mono runtime with MONO_IOMAP in effect, as well as that the
+MONO_IOMAP variable with the specified value is exported in the backend environment.
+This option is necessary when you're using MONO_IOMAP in your application and there
+might be static files with mixed case names - in such case mod_mono attempts to open
+the file directly and sends it using apache facilities.
+Default value: none
+.TP
 .I "MonoMaxActiveRequests"
 The maximum number of concurrent requests mod_mono will pass off to
 the ASP.NET backend. Set to zero to turn off the limit. Default value:
