@@ -1,3 +1,17 @@
+2009-03-08  Marek Habersack  <mhabersack@novell.com>
+
+	* mod_mono.c (send_entire_file): attempts to map file name using
+	mono_portability_find_file which is able to find files with the
+	same name but different case if MONO_IOMAP is in effect.
+	Added a new directive, MonoIOMAP which takes two parameters - the
+	alias and MONO_IOMAP-style value (all/case/drive). This directive
+	switches MONO_IOMAP on for that alias within mod_mono as well as
+	exports the MONO_IOMAP environment variable in the backend's
+	environment.
+
+	* mono-io-portability.c, mono-io-portability.h: added. Copied from
+	mono runtime and modified for mod_mono purposes.
+
 2009-02-20  Marek Habersack  <mhabersack@novell.com>
 
 	* mod_mono.h: removed Apache 1.3 support.
