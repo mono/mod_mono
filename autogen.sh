@@ -19,6 +19,23 @@ DIE=0
 	DIE=1
 }
 
+if [ -z "$LIBTOOL" ]; then
+  LIBTOOL=`which glibtool 2>/dev/null` 
+  if [ ! -x "$LIBTOOL" ]; then
+    LIBTOOL=`which libtool`
+  fi
+fi
+
+(grep "^AM_PROG_LIBTOOL" $srcdir/configure.in >/dev/null) && {
+  ($LIBTOOL --version) < /dev/null > /dev/null 2>&1 || {
+    echo
+    echo "**Error**: You must have \`libtool' installed to compile mod_mono."
+    echo "Get ftp://ftp.gnu.org/pub/gnu/libtool-1.2d.tar.gz"
+    echo "(or a newer version if it is available)"
+    DIE=1
+  }
+}
+
 (automake --version) < /dev/null > /dev/null 2>&1 || {
 	echo
 	echo "You must have automake installed to compile $PROJECT."
@@ -47,7 +64,13 @@ esac
 aclocal
 
 (autoheader --version)  < /dev/null > /dev/null 2>&1 && autoheader || exit 1
-libtoolize --force --copy
+
+if grep "^AM_PROG_LIBTOOL" configure.in >/dev/null; then
+  if test -z "$NO_LIBTOOLIZE" ; then 
+    ${LIBTOOL}ize --force --copy
+  fi
+fi
+
 automake -a $am_opt
 autoconf
 cd $ORIGDIR

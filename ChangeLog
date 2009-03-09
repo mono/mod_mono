@@ -1,3 +1,8 @@
+2009-03-09  Marek Habersack  <mhabersack@novell.com>
+
+	* autogen.sh: added support for detecting libtool on Mac, which
+	has it renamed to glibtool in versions 10.5+. Fixes bug #478381
+
 2009-03-08  Marek Habersack  <mhabersack@novell.com>
 
 	* configure.in: added detection of glib
