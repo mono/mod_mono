@@ -398,7 +398,7 @@ apache_get_username ()
 }
 
 static void
-ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
+ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p, int is_global)
 {
 	apr_status_t rv;
 	mode_t old_umask;
@@ -474,9 +474,10 @@ ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 	} else {
 		DEBUG_PRINT (1, "removing dashboard file '%s'", xsp->dashboard_file);
 		if (unlink (xsp->dashboard_file) == -1 && errno != ENOENT) {
-			ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),
-				      "Failed to attach to existing dashboard, and removing dashboard file '%s' failed (%s). Further action impossible.",
-				      xsp->dashboard_file, strerror (errno));
+			if (!is_global)
+				ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),
+					      "Failed to attach to existing dashboard, and removing dashboard file '%s' failed (%s). Further action impossible.",
+					       xsp->dashboard_file, strerror (errno));
 			xsp->dashboard = NULL;
 			goto restore_creds;
 		}
@@ -593,7 +594,7 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->restart_requests = 0;
 	server->restart_time = 0;
 
-	ensure_dashboard_initialized (config, server, pool);
+	ensure_dashboard_initialized (config, server, pool, alias == NULL);
 	/* This is needed, because we're being called from the main process and dashboard must NOT */
 	/* be set to any value when start_xsp is called from child init or handler init. */
 	server->dashboard = NULL;
@@ -2079,7 +2080,8 @@ mono_execute_request (request_rec *r, char auto_app)
 	uint32_t start_wait_time;
 	char *socket_name = NULL;
 	int retrying, was_starting;
-
+	int is_global = 0;
+	
 	config = ap_get_module_config (r->server->module_config, &mono_module);
 	DEBUG_PRINT (1, "config = 0x%lx", (unsigned long)config);
 	if (r->per_dir_config != NULL)
@@ -2094,8 +2096,10 @@ mono_execute_request (request_rec *r, char auto_app)
 	DEBUG_PRINT (0, "idx = %d", idx);
 	if (idx < 0) {
 		DEBUG_PRINT (2, "Alias not found. Checking for auto-applications.");
-		if (config->auto_app)
+		if (config->auto_app) {
 			idx = search_for_alias (GLOBAL_SERVER_NAME, config);
+			is_global = 1;
+		}
 
 		if (idx == -1) {
 			DEBUG_PRINT (2, "Global config not found. Finishing request.");
@@ -2104,7 +2108,7 @@ mono_execute_request (request_rec *r, char auto_app)
 	}
 
 	conf = &config->servers [idx];
-	ensure_dashboard_initialized (config, conf, pconf);
+	ensure_dashboard_initialized (config, conf, pconf, is_global);
 	socket_name = get_unix_socket_path (r->pool, conf);
 	connect_attempts = (uint32_t)string_to_long (conf->start_attempts, "MonoXSPStartAttempts", START_ATTEMPTS);
 	start_wait_time = (uint32_t)string_to_long (conf->start_wait_time, "MonoXSPStartWaitTime", START_WAIT_TIME);
@@ -2263,7 +2267,7 @@ mono_execute_request (request_rec *r, char auto_app)
 		int do_restart = 0;
 
 		DEBUG_PRINT (2, "Auto-restart enabled for '%s', checking if restart required", conf->alias);
-		ensure_dashboard_initialized (config, conf, pconf);
+		ensure_dashboard_initialized (config, conf, pconf, is_global);
 		if (!conf->dashboard_mutex || !conf->dashboard)
 			return status;
 
@@ -2406,7 +2410,7 @@ start_xsp (module_cfg *config, int is_restart, char *alias)
 
 		DEBUG_PRINT (1, "xsp address 0x%lx, dashboard 0x%lx", (unsigned long)xsp, (unsigned long)xsp->dashboard);
 		if (!xsp->dashboard)
-			ensure_dashboard_initialized (config, xsp, pconf);
+			ensure_dashboard_initialized (config, xsp, pconf, alias == NULL);
 
 		if (xsp->dashboard)
 			xsp->dashboard->starting = 1;
@@ -2609,7 +2613,7 @@ mono_control_panel_handler (request_rec *r)
 			buffer = apr_psprintf (r->pool, "<li><a href=\"?restart=%s\">Restart Server</a></li>\n", xsp->alias);
 			request_send_response_string(r, buffer);
 
-			ensure_dashboard_initialized (config, xsp, pconf);
+			ensure_dashboard_initialized (config, xsp, pconf, 0);
 			if (xsp->dashboard_mutex && xsp->dashboard
 			    && apr_global_mutex_lock (xsp->dashboard_mutex) == APR_SUCCESS) {
 
