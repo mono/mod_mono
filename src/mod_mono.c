@@ -372,10 +372,11 @@ apache_get_username ()
 
 #ifndef APACHE13
 static void
-ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p, int is_global)
+ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 {
 	apr_status_t rv;
 	mode_t old_umask;
+	int is_global;
 #if defined (APR_HAS_USER)
 	apr_uid_t cur_uid;
 	apr_gid_t cur_gid;
@@ -389,6 +390,11 @@ ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p, 
 		return;
 	}
 #endif
+
+	if (strcmp ("XXGLOBAL", xsp->alias))
+		is_global = 1;
+	else
+		is_global = 0;
 
 #if defined (APR_HAS_USER)
 	if (apr_uid_current (&cur_uid, &cur_gid, p) == APR_SUCCESS && cur_uid == 0) {
@@ -561,7 +567,7 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->restart_requests = 0;
 	server->restart_time = 0;
 
-	ensure_dashboard_initialized (config, server, pool, alias == NULL);
+	ensure_dashboard_initialized (config, server, pool);
 #endif
 	
 	nservers = config->nservers + 1;
@@ -2231,7 +2237,7 @@ mono_execute_request (request_rec *r, char auto_app)
 		start_wait_time = 2;
 
 #ifndef APACHE13
-	ensure_dashboard_initialized (config, conf, pconf, is_global);
+	ensure_dashboard_initialized (config, conf, pconf);
 	if (conf->dashboard_mutex && !conf->dashboard_mutex_initialized_in_child) {
 		/* Avoiding to call apr_global_mutex_child_init is a hack since in certain
 		 * conditions it may lead to apache deadlock. Since we don't know the exact cause
@@ -2393,7 +2399,7 @@ mono_execute_request (request_rec *r, char auto_app)
 		
 		DEBUG_PRINT (2, "Auto-restart enabled for '%s', checking if restart required", conf->alias);
 
-		ensure_dashboard_initialized (config, conf, pconf, is_global);
+		ensure_dashboard_initialized (config, conf, pconf);
 		if (!conf->dashboard_mutex || !conf->dashboard)
 			return status;
 
@@ -2784,7 +2790,7 @@ mono_control_panel_handler (request_rec *r)
 			request_send_response_string(r, buffer);
 
 #ifndef APACHE13
-			ensure_dashboard_initialized (config, xsp, pconf, 0);
+			ensure_dashboard_initialized (config, xsp, pconf);
 			if (xsp->dashboard_mutex && xsp->dashboard
 				&& apr_global_mutex_lock (xsp->dashboard_mutex) == APR_SUCCESS) {
 
