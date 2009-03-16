@@ -1,7 +1,7 @@
 2009-03-16  Marek Habersack  <mhabersack@novell.com>
 
 	* mod_mono.c (ensure_dashboard_initialized): do the XXGLOBAL
-	detection based on the passed alias.
+	detection based on the passed alias. Better fix for #476289
 
 2009-03-14  Marek Habersack  <mhabersack@novell.com>
 
