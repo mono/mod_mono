@@ -1,3 +1,7 @@
+2009-08-22  Marek Habersack  <mhabersack@novell.com>
+
+	* mod_mono.conf.in: added X-Powered-By header. Fixes bug #400825
+
 2009-03-09  Marek Habersack  <mhabersack@novell.com>
 
 	* autogen.sh: added support for detecting libtool on Mac, which
