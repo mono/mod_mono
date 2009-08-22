@@ -8,6 +8,10 @@
     LoadModule mono_module @APXS_LIBEXECDIR@/mod_mono.so
 </IfModule>
 
+<IfModule mod_headers.c>
+    Header set X-Powered-By "Mono"
+</IfModule>
+
 AddType application/x-asp-net .aspx
 AddType application/x-asp-net .asmx
 AddType application/x-asp-net .ashx
