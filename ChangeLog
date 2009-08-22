@@ -1,3 +1,7 @@
+2009-08-22  Marek Habersack  <mhabersack@novell.com>
+
+	* mod_mono.conf.in: added X-Powered-By header. Fixes bug #400825
+
 2009-03-16  Marek Habersack  <mhabersack@novell.com>
 
 	* mod_mono.c (ensure_dashboard_initialized): do the XXGLOBAL
