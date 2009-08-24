@@ -44,10 +44,6 @@ AC_HEADER_STDC
 AC_FUNC_SELECT_ARGTYPES
 AC_CHECK_FUNCS([memset mkdir unsetenv putenv setenv setrlimit select strcasecmp strerror strrchr dup2])
 
-GLIB_REQUIRED_VERSION=1.3.11
-  
-PKG_CHECK_MODULES(GLIB_DEPENDENCIES, glib-2.0 >= $GLIB_REQUIRED_VERSION)  
-
 #
 # --enable-debug
 #

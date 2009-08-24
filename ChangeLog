@@ -1,3 +1,7 @@
+2009-08-24  Marek Habersack  <mhabersack@novell.com>
+
+	* configure.in: no longer checks for glib
+
 2009-08-22  Marek Habersack  <mhabersack@novell.com>
 
 	* mod_mono.conf.in: added X-Powered-By header. Fixes bug #400825

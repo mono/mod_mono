@@ -1,8 +1,8 @@
 #ifndef __MONO_IO_PORTABILITY_H
 #define __MONO_IO_PORTABILITY_H
 
-#include <glib.h>
 #include "mod_mono.h"
+#include "glib_compat.h"
 
 enum {
         PORTABILITY_NONE        = 0x00,

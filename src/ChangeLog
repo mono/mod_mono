@@ -1,3 +1,10 @@
+2009-08-24  Marek Habersack  <mhabersack@novell.com>
+
+	* Makefile.am (mod_mono_la_CFLAGS): glib is no longer used
+
+	* glib_compat.c, glib_compat.h: added. Compatibility glib
+	functions/macros used in mono-io-portability.c
+
 2009-03-16  Marek Habersack  <mhabersack@novell.com>
 
 	* mod_mono.c (ensure_dashboard_initialized): do the XXGLOBAL
