@@ -176,6 +176,15 @@ The maximum number of concurrent requests mod_mono will hold while
 the ASP.NET backend is busy with the maximum number of requests
 specified by MonoMaxActiveRequests. Requests that can't be processed
 or held are dropped with Service Unavailable. Default value: 20.
+.TP
+.I "MonoCheckHiddenFiles"
+Do not protect hidden files/directories from being accessed by clients. Hidden files/directories are those with 
+Hidden attribute on Windows and whose name starts with a dot on Unix. Any file/directory below a hidden directory
+is inacessible. This option turns the default behavior of protecting such locations off. If your application
+does not contain any hidden files/directories, you might want to use this option as the checking process has a
+per-request cost. Accepts a boolean value - 'true' or 'false'
+Default value: true. 
+AppSettings key name: MonoServerCheckHiddenFiles.
 .SH SAMPLE CONFIGURATION
 This one using <Directory>:
 .nf

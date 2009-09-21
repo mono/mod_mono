@@ -1,3 +1,9 @@
+2009-09-21  Marek Habersack  <mhabersack@novell.com>
+
+	* mod_mono.c: added new directive to disable hidden file/directory
+	protection in the backend (MonoCheckHiddenFiles).
+	* mod_mono.8.in: documented MonoCheckHiddenFiles
+
 2009-08-22  Marek Habersack  <mhabersack@novell.com>
 
 	* mod_mono.conf.in: added X-Powered-By header. Fixes bug #400825

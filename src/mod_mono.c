@@ -105,6 +105,7 @@ typedef struct xsp_data {
 	char *debug;
 	char *env_vars;
 	char *iomap;
+	char *hidden;
 	char status; /* One of the FORK_* in the enum above.
 		      * Don't care if run_xsp is "false" */
 	char is_virtual; /* is the server virtual? */
@@ -1737,6 +1738,11 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 		argv [argi++] = config->applications;
 	}
 
+	if (config->hidden != NULL) {
+		if (strcasecmp (config->hidden, "false"))
+			argv [argi++] = "--no-hidden";
+	}
+	
 	argv [argi++] = "--nonstop";
 	if (config->document_root != NULL) {
 		argv [argi++] = "--root";
@@ -3131,6 +3137,14 @@ static const command_rec mono_cmds [] = {
 		    "with the maximum number of requests specified by MonoMaxActiveRequests. "
 		    "Requests that can't be processed or held are dropped with Service Unavailable." 
 		    "Default value: 20"),
+	MAKE_CMD12 (MonoCheckHiddenFiles, hidden,
+		    "Do not protect hidden files/directories from being accessed by clients. Hidden files/directories are those with "
+		    "Hidden attribute on Windows and whose name starts with a dot on Unix. Any file/directory below a hidden directory "
+		    "is inacessible. This option turns the default behavior of protecting such locations off. If your application "
+		    "does not contain any hidden files/directories, you might want to use this option as the checking process has a "
+		    "per-request cost. Accepts a boolean value - 'true' or 'false'"
+		    "Default value: true. "
+		    "AppSettings key name: MonoServerCheckHiddenFiles. "),
 	{ NULL }
 };
 
