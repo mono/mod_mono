@@ -1,3 +1,8 @@
+2009-09-21  Marek Habersack  <mhabersack@novell.com>
+
+	* mod_mono.c: added new directive to disable hidden file/directory
+	protection in the backend (MonoCheckHiddenFiles).
+
 2009-08-24  Marek Habersack  <mhabersack@novell.com>
 
 	* Makefile.am (mod_mono_la_CFLAGS): glib is no longer used
