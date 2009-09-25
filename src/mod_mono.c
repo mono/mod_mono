@@ -2883,7 +2883,7 @@ static const command_rec mono_cmds [] = {
 	),
 
 	MAKE_CMD12 (MonoIOMAP, iomap,
-		    "A string with format the same as the MONO_IOMAP variable (see mod_mono (1))."
+		    "A string with format the same as the MONO_IOMAP variable (see mod_mono (8))."
 		    " Default value: none"),
 
 	MAKE_CMD_ITERATE2 (AddMonoApplications, applications,

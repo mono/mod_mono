@@ -1,5 +1,5 @@
 AC_INIT(src/mod_mono.c)
-AM_INIT_AUTOMAKE(mod_mono, 1.9)
+AM_INIT_AUTOMAKE(mod_mono, 2.5.99)
 AM_CONFIG_HEADER(include/mod_mono_config.h:config.in)
 
 AC_PROG_CC
