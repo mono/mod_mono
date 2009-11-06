@@ -1563,6 +1563,13 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 				      "setgid: unable to set group id to %u. %s",
 				      (unsigned)apache_get_groupid (), strerror (errno));
 
+		DEBUG_PRINT (2, "initializing groups for forked process user %s", apache_get_username ());
+		if (initgroups (apache_get_username (), apache_get_groupid ()) == -1)
+			ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+				      "initgroups: unable to initialize supplementary group list for user %s: %s",
+				      apache_get_username (),
+				      strerror (errno));
+
 		DEBUG_PRINT (2, "switching forked process user to %s", apache_get_username ());
 		if (setuid (apache_get_userid ()) == -1)
 			ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
