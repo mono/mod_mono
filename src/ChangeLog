@@ -1,3 +1,9 @@
+2009-11-09  Marek Habersack  <mhabersack@novell.com>
+
+	* mod_mono.c: implemented a list of URLs in the control panel,
+	based on patch from Heiner Wolf <wolf.heiner@googlemail.com>,
+	thanks!
+
 2009-11-06  Marek Habersack  <mhabersack@novell.com>
 
 	* mod_mono.c (fork_mod_mono_server): initialize supplementary
