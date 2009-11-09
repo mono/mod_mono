@@ -67,7 +67,18 @@ typedef enum {
 	AUTORESTART_MODE_REQUESTS,
 } auto_restart_mode;
 
+#define URI_LIST_ITEM_SIZE 256
+#define ACTIVE_URI_LIST_ITEM_COUNT 100
+#define WAITING_URI_LIST_ITEM_COUNT 100
+
 typedef struct {
+	int32_t id;
+	time_t start_time;
+	char uri[URI_LIST_ITEM_SIZE];
+} uri_item;
+
+typedef struct {
+	uint32_t requests_counter;
 	uint32_t handled_requests;
 	time_t start_time;
 	char restart_issued;
@@ -75,6 +86,8 @@ typedef struct {
 	int active_requests;
 	int waiting_requests;
 	int accepting_requests;
+	uri_item active_uri_list[ACTIVE_URI_LIST_ITEM_COUNT];
+	uri_item waiting_uri_list[WAITING_URI_LIST_ITEM_COUNT];
 } dashboard_data;
 
 #define INITIAL_DATA_MAX_ALLOCA_SIZE 8192
@@ -398,6 +411,17 @@ apache_get_username ()
 #endif
 }
 
+inline static void
+initialize_uri_list (uri_item* list, int nitems)
+{
+	int i;
+	for (i = 0; i < nitems; i++) {
+		memset (&list [i], 0, sizeof (uri_item));
+		list [i].id = -1;
+		list [i].start_time = -1;
+	}
+}
+
 static void
 ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 {
@@ -510,12 +534,16 @@ ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 
 			xsp->dashboard = apr_shm_baseaddr_get (xsp->dashboard_shm);
 			xsp->dashboard->start_time = time (NULL);
+			xsp->dashboard->requests_counter = 0;
 			xsp->dashboard->handled_requests = 0;
 			xsp->dashboard->restart_issued = 0;
 			xsp->dashboard->active_requests = 0;
 			xsp->dashboard->waiting_requests = 0;
 			xsp->dashboard->starting = 0;
 			xsp->dashboard->accepting_requests = 1;
+
+			initialize_uri_list (xsp->dashboard->active_uri_list, ACTIVE_URI_LIST_ITEM_COUNT);
+			initialize_uri_list (xsp->dashboard->waiting_uri_list, WAITING_URI_LIST_ITEM_COUNT);
 		}
 	}
 
@@ -1973,8 +2001,54 @@ send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 	return 0;
 }
 
+inline static void clear_uri_item (uri_item* list, int nitems, int32_t id)
+{
+	int i;
+
+	for (i = 0; i < nitems; i++) {
+		if (list [i].id != id)
+			continue;
+		list [i].id = -1;
+		list [i].start_time = -1;
+		return;
+	}
+}
+
+inline static void set_uri_item (uri_item* list, int nitems, request_rec* r, int32_t id)
+{
+	int i;
+	int uri_len;
+	int args_len;
+
+	for (i = 0; i < nitems; i++) {
+		if (list [i].id != -1)
+			continue;
+		list [i].id = id;
+		list [i].start_time = id == -1 ? -1 : time (NULL);
+		if (r->uri) {
+			uri_len = strlen (r->uri);
+			if (uri_len > URI_LIST_ITEM_SIZE)
+				uri_len = URI_LIST_ITEM_SIZE;
+			memcpy (list [i].uri, r->uri, uri_len);
+			list [i].uri [uri_len] = '\0';
+		}
+
+		if (r->args) {
+			args_len = strlen (r->args);
+			if (args_len + uri_len + 1 > URI_LIST_ITEM_SIZE)
+				args_len = URI_LIST_ITEM_SIZE - uri_len - 1;
+			if (args_len > 0) {
+				list [i].uri [uri_len] = '?';
+				memcpy (&list [i].uri [uri_len + 1], r->args, args_len);
+				list [i].uri [args_len + uri_len + 1] = '\0';
+			}
+		}
+		break;
+	}
+}
+
 static int
-increment_active_requests (xsp_data *conf)
+increment_active_requests (xsp_data *conf, request_rec *r, int32_t id)
 {
 	/* This function tries to increment the counters that limit
 	 * the number of simultaenous requests being processed. It
@@ -2023,6 +2097,7 @@ increment_active_requests (xsp_data *conf)
 			      conf->dashboard_lock_file, max_active_requests);
 
 		conf->dashboard->waiting_requests++;
+		set_uri_item (conf->dashboard->waiting_uri_list, WAITING_URI_LIST_ITEM_COUNT, r, id);
 
 		int retries = 20;
 		while (retries-- > 0) {
@@ -2041,6 +2116,7 @@ increment_active_requests (xsp_data *conf)
 		// Hopefully we haven't lost the lock, but if we have we still
 		// want to at least attempt to decrement the counter.
 		conf->dashboard->waiting_requests--;
+		clear_uri_item (conf->dashboard->waiting_uri_list, WAITING_URI_LIST_ITEM_COUNT, id);
 
 		// If we got to the end of the loop and still too
 		// many requests are going, stop processing the
@@ -2060,12 +2136,13 @@ increment_active_requests (xsp_data *conf)
 		return 0;
 
 	conf->dashboard->active_requests++;
+	set_uri_item (conf->dashboard->active_uri_list, ACTIVE_URI_LIST_ITEM_COUNT, r, id);
 
 	return 1;
 }
 
 static void
-decrement_active_requests (xsp_data *conf)
+decrement_active_requests (xsp_data *conf, int32_t id)
 {
 	apr_status_t rv;
 
@@ -2077,6 +2154,7 @@ decrement_active_requests (xsp_data *conf)
 	// get a lock, we had better attempt to decrement it.
 	conf->dashboard->active_requests--;
 
+	clear_uri_item (conf->dashboard->active_uri_list, ACTIVE_URI_LIST_ITEM_COUNT, id);
 	if (rv == APR_SUCCESS)
 		apr_global_mutex_unlock (conf->dashboard_mutex);
 }
@@ -2099,6 +2177,7 @@ mono_execute_request (request_rec *r, char auto_app)
 	uint32_t start_wait_time;
 	char *socket_name = NULL;
 	int retrying, was_starting;
+	int32_t id = -1;
 
 	config = ap_get_module_config (r->server->module_config, &mono_module);
 	DEBUG_PRINT (1, "config = 0x%lx", (unsigned long)config);
@@ -2156,8 +2235,10 @@ mono_execute_request (request_rec *r, char auto_app)
 	if (conf->dashboard_mutex && conf->dashboard) {
 		if (apr_global_mutex_lock (conf->dashboard_mutex) == APR_SUCCESS) {
 			int ok = conf->dashboard->accepting_requests;
-			if (ok)
-				ok = increment_active_requests (conf);
+			if (ok) {
+				id = (int32_t)conf->dashboard->requests_counter++;
+				ok = increment_active_requests (conf, r, id);
+			}
 
 			apr_global_mutex_unlock (conf->dashboard_mutex);
 
@@ -2180,7 +2261,7 @@ mono_execute_request (request_rec *r, char auto_app)
 		// Note that rv's value after the loop ends is important.
 		if (rv != APR_SUCCESS) {
 			if (rv != -1) {
-				decrement_active_requests (conf);
+				decrement_active_requests (conf, id);
 				return HTTP_SERVICE_UNAVAILABLE;
 			}
 			DEBUG_PRINT (2, "No backend found, will start a new copy.");
@@ -2194,7 +2275,7 @@ mono_execute_request (request_rec *r, char auto_app)
 				ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv2),
 					      "Failed to acquire %s lock, cannot continue starting new process",
 					      conf->dashboard_lock_file);
-				decrement_active_requests (conf);
+				decrement_active_requests (conf, id);
 				return HTTP_SERVICE_UNAVAILABLE;
 			}
 
@@ -2210,7 +2291,7 @@ mono_execute_request (request_rec *r, char auto_app)
 				if (retrying < 0) {
 					ap_log_error (APLOG_MARK, APLOG_CRIT, STATUS_AND_SERVER,
 						      "Another process is attempting to start the backend. This request will fail.");
-					decrement_active_requests (conf);
+					decrement_active_requests (conf, id);
 					return HTTP_SERVICE_UNAVAILABLE;
 				}
 				connect_attempts++; /* keep trying */
@@ -2248,7 +2329,7 @@ mono_execute_request (request_rec *r, char auto_app)
 		/* Failed to connect to mod-mono-server after several attempts. */
 		ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
 			      "Failed to connect to mod-mono-server after several attempts to spawn the process.");
-		decrement_active_requests (conf);
+		decrement_active_requests (conf, id);
 		return HTTP_SERVICE_UNAVAILABLE;
 	}
 
@@ -2257,7 +2338,7 @@ mono_execute_request (request_rec *r, char auto_app)
 		ap_log_error (APLOG_MARK, APLOG_ALERT, STATUS_AND_SERVER,
 			      "Failed to send initial data. %s", strerror (errno));
 		apr_socket_close (sock);
-		decrement_active_requests (conf);
+		decrement_active_requests (conf, id);
 		return HTTP_SERVICE_UNAVAILABLE;
 	}
 
@@ -2277,7 +2358,7 @@ mono_execute_request (request_rec *r, char auto_app)
 		status = HTTP_INTERNAL_SERVER_ERROR;
 	}
 
-	decrement_active_requests (conf);
+	decrement_active_requests (conf, id);
 
 	if (conf->restart_mode > AUTORESTART_MODE_NONE) {
 		int do_restart = 0;
@@ -2586,6 +2667,22 @@ set_accepting_requests (void *data, char *alias, int accepting_requests)
 	}
 }
 
+inline static void
+send_uri_list (uri_item* list, int nitems, request_rec *r)
+{
+	int i;
+	char *buffer;
+
+	request_send_response_string (r, "<dl>\n");
+	for (i = 0; i < nitems; i++) {
+		if (list [i].id != -1) {
+			buffer = apr_psprintf (r->pool, "<dd>%d %ds %s</dd>\n", list [i].id, (int)(time (NULL) - list [i].start_time), list [i].uri);
+			request_send_response_string (r, buffer);
+		}
+	}
+	request_send_response_string (r, "</dl></li>");
+}
+
 static int
 mono_control_panel_handler (request_rec *r)
 {
@@ -2649,13 +2746,18 @@ mono_control_panel_handler (request_rec *r)
 					request_send_response_string(r, buffer);
 				}
 
-				buffer = apr_psprintf (r->pool, "<li>%d requests currently being processed; limit: %s</li>\n",
-						       xsp->dashboard->active_requests, xsp->max_active_requests);
-				request_send_response_string(r, buffer);
+				buffer = apr_psprintf (r->pool, "<li>%d requests currently being processed; limit: %s; total: %d\n",
+						       xsp->dashboard->active_requests,
+						       xsp->max_active_requests ? xsp->max_active_requests : "unlimited",
+						       xsp->dashboard->requests_counter);
+				request_send_response_string (r, buffer);
+				send_uri_list (xsp->dashboard->active_uri_list, ACTIVE_URI_LIST_ITEM_COUNT, r);
 
-				buffer = apr_psprintf (r->pool, "<li>%d requests currently waiting to be processed; limit: %s</li>\n",
-						       xsp->dashboard->waiting_requests, xsp->max_waiting_requests);
+				buffer = apr_psprintf (r->pool, "<li>%d requests currently waiting to be processed; limit: %s\n",
+						       xsp->dashboard->waiting_requests,
+						       xsp->max_waiting_requests ? xsp->max_active_requests : "unlimited");
 				request_send_response_string(r, buffer);
+				send_uri_list (xsp->dashboard->waiting_uri_list, WAITING_URI_LIST_ITEM_COUNT, r);
 
 				rv = apr_global_mutex_unlock (xsp->dashboard_mutex);
 				if (rv != APR_SUCCESS)
