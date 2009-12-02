@@ -715,7 +715,7 @@ store_config_xsp (cmd_parms *cmd, void *notused, const char *first, const char *
 			return NULL;
 		}
 		alias = "default";
-		if (cmd->server->is_virtual)
+		if (cmd->server->is_virtual && cmd->server->server_hostname)
 			alias = cmd->server->server_hostname;
 		value = first;
 		is_default = 1;
