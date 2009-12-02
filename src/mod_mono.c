@@ -113,6 +113,7 @@ typedef struct xsp_data {
 	char *executable_path;
 	char *path;
 	char *server_path;
+	char *target_framework;
 	char *applications;
 	char *wapidir;
 	char *document_root;
@@ -588,7 +589,8 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 	server->run_xsp = "True";
 	/* (Obsolete) server->executable_path = EXECUTABLE_PATH; */
 	server->path = NULL;
-	server->server_path = MODMONO_SERVER_PATH;
+	server->server_path = NULL;
+	server->target_framework = NULL;
 	server->applications = NULL;
 	server->wapidir = WAPIDIR;
 	server->document_root = DOCUMENT_ROOT;
@@ -715,8 +717,9 @@ store_config_xsp (cmd_parms *cmd, void *notused, const char *first, const char *
 			return NULL;
 		}
 		alias = "default";
-		if (cmd->server->is_virtual)
+		if (cmd->server->is_virtual && cmd->server->server_hostname)
 			alias = cmd->server->server_hostname;
+
 		value = first;
 		is_default = 1;
 	} else {
@@ -726,7 +729,7 @@ store_config_xsp (cmd_parms *cmd, void *notused, const char *first, const char *
 		value = second;
 		is_default = (!strcmp (alias, "default"));
 	}
-
+	
 	/* Disable autoapp if there's any other application. MonoDebug is excluded. */
 	if (!config->auto_app_set)
 		config->auto_app = FALSE;
@@ -1489,6 +1492,7 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	char *path;
 	char *tmp;
 	char *serverdir;
+	char *server_path;
 	char *wapidir;
 	int max_memory = 0;
 	int max_cpu_time = 0;
@@ -1634,7 +1638,30 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	if (tmp == NULL)
 		tmp = "";
 
-	serverdir = get_directory (pool, config->server_path);
+	if (config->server_path && config->server_path [0])
+		server_path = config->server_path;
+	else if (config->target_framework && config->target_framework [0]) {
+		switch (config->target_framework [0]) {
+			case '2':
+			case '3':
+				server_path = MODMONO_SERVER_PATH;
+			break;
+
+			case '4':
+				server_path = MODMONO_SERVER_BASEPATH "4";
+				break;
+
+			default:
+				ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
+					      "Unsupported target framework version: %s",
+					      config->target_framework);
+				exit (1);
+		}
+
+	} else
+		server_path = MODMONO_SERVER_PATH;
+
+	serverdir = get_directory (pool, server_path);
 	DEBUG_PRINT (1, "serverdir: %s", serverdir);
 	path = apr_pcalloc (pool, strlen (tmp) + strlen (serverdir) + 2);
 	sprintf (path, "%s:%s", serverdir, tmp);
@@ -1664,7 +1691,7 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 #endif
 	memset (argv, 0, sizeof (char *) * MAXARGS);
 	argi = 0;
-	argv [argi++] = config->server_path;
+	argv [argi++] = server_path;
 	if (config->listen_port != NULL) {
 		char *la;
 
@@ -2915,6 +2942,12 @@ static const command_rec mono_cmds [] = {
 	MAKE_CMD12 (MonoServerPath, server_path,
 		    "If MonoRunXSP is True, this is the full path to the mod-mono-server script. "
 		    "Default: " MODMONO_SERVER_PATH
+	),
+
+	MAKE_CMD12 (MonoTargetFramework, target_framework,
+		    "If MonoRunXSP is True, this option selects the .NET framework version to use. This "
+		    "affects the backend that is started to service the requests. The MonoServerPath option "
+		    "takes precedence over this setting. Default: " MONO_DEFAULT_FRAMEWORK
 	),
 
 	MAKE_CMD12 (MonoApplications, applications,

@@ -89,7 +89,9 @@
 #define DIRECTORY_SEPARATOR	"/"
 #endif
 
-#define MODMONO_SERVER_PATH	MONO_PREFIX "/bin/mod-mono-server"
+#define MODMONO_SERVER_BASEPATH MONO_PREFIX "/bin/mod-mono-server"
+#define MONO_DEFAULT_FRAMEWORK  "2.0"
+#define MODMONO_SERVER_PATH	MODMONO_SERVER_BASEPATH "2"
 #define WAPIDIR			"/tmp"
 #define DOCUMENT_ROOT		NULL
 #define APPCONFIG_FILE		NULL

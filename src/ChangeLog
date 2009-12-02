@@ -1,3 +1,9 @@
+2009-12-02  Marek Habersack  <mhabersack@novell.com>
+
+	* mod_mono.c: added new directive MonoTargetFramework which allows
+	one to select which framework backend to start (2.0, 3.5 and 4.0
+	with the first two being aliases).
+
 2009-11-09  Marek Habersack  <mhabersack@novell.com>
 
 	* mod_mono.c: implemented a list of URLs in the control panel,
