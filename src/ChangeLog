@@ -1,3 +1,7 @@
+2009-12-07 Gonzalo Paniagua Javier <gonzalo@novell.com>
+
+	* mod_mono.c: fix compilation on systems that don't define SIGPWR.
+
 2009-11-09  Marek Habersack  <mhabersack@novell.com>
 
 	* mod_mono.c: implemented a list of URLs in the control panel,
