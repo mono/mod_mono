@@ -1752,9 +1752,14 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 		      argv [9], argv [10], argv [11], argv [12]);
 
 	/* Unblock signals Mono uses: see bug #472732 */
+	/* TODO: are PWR and XCPU used in non-linux systems too? What about 33 and 35? */
 	sigemptyset (&sigset);
+#ifdef SIGPWR
 	sigaddset (&sigset, SIGPWR);
+#endif
+#ifdef SIGXCPU
 	sigaddset (&sigset, SIGXCPU);
+#endif
 	sigaddset (&sigset, 33);
 	sigaddset (&sigset, 35);
 	sigprocmask (SIG_UNBLOCK, &sigset, NULL);
