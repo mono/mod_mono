@@ -1,3 +1,10 @@
+2010-01-11  Marek Habersack  <mhabersack@novell.com>
+
+	* mod_mono.c (increment_active_requests): moved variable
+	declaration to the top of a block so that code doesn't require a
+	C99-compliant compiler. Fixes bug #569794. Patch from John
+	Lightsey <jd@cpanel.net>, thanks!
+
 2009-11-09  Marek Habersack  <mhabersack@novell.com>
 
 	* mod_mono.c: implemented a list of URLs in the control panel,
