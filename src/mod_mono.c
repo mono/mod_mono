@@ -2109,6 +2109,8 @@ increment_active_requests (xsp_data *conf, request_rec *r, int32_t id)
 	 * allowed concurrent requests, then we have to hold the request
 	 * for a bit of time. */
 	if (max_active_requests > 0 && conf->dashboard->active_requests >= max_active_requests) {
+		int retries = 20;
+
 		/* We need to wait until the active requests
 		 * go below the maximum. */
 
@@ -2131,7 +2133,6 @@ increment_active_requests (xsp_data *conf, request_rec *r, int32_t id)
 		conf->dashboard->waiting_requests++;
 		set_uri_item (conf->dashboard->waiting_uri_list, WAITING_URI_LIST_ITEM_COUNT, r, id);
 
-		int retries = 20;
 		while (retries-- > 0) {
 			// Release the lock, wait some time, and then re-acquire.
 			apr_global_mutex_unlock (conf->dashboard_mutex);
