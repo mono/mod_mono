@@ -1649,7 +1649,7 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 
 	pid = fork ();
 	if (pid > 0) {
-		wait (&status);
+		waitpid (pid, &status, 0);
 		return;
 	}
 
