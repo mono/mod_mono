@@ -1,3 +1,9 @@
+2010-01-18  Marek Habersack  <mhabersack@novell.com>
+
+	* mod_mono.c (fork_mod_mono_server): use waitpid to wait for the
+	1st child during the double fork. Fixes bug #569789. Patch from
+	John Lightsey <jd@cpanel.net>, thanks!
+
 2010-01-11  Marek Habersack  <mhabersack@novell.com>
 
 	* mod_mono.c (increment_active_requests): moved variable
