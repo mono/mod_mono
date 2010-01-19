@@ -1,3 +1,9 @@
+2010-01-19  Marek Habersack  <mhabersack@novell.com>
+
+	* mod_mono.c (set_process_limits): if RLIMIT_AS is defined, set it
+	in addition to RLIMIT_DATA. Fixes bug #568843. Patch from Brett
+	Kiefer <brett@fogcreek.com>, thanks!
+
 2010-01-18  Marek Habersack  <mhabersack@novell.com>
 
 	* mod_mono.c (fork_mod_mono_server): use waitpid to wait for the
