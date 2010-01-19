@@ -1462,6 +1462,13 @@ set_process_limits (int max_cpu_time, int max_memory)
 #endif
 	set_process_limits2 (RLIMIT_CPU, max_cpu_time, "CPU time");
 	set_process_limits2 (RLIMIT_DATA, max_memory, "memory (data segment)");
+#ifdef RLIMIT_AS
+	// RLIMIT_AS may not be defined on some systems (e.g. BSD)
+	// If it is defined, it is almost certainly more correct than RLIMIT_DATA, as it
+	// will cause mmap to return null.
+	set_process_limits2 (RLIMIT_AS, max_memory, "memory (virtual memory)");
+#endif
+
 }
 
 static void
