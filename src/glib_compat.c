@@ -8,6 +8,22 @@
 
 #define ASCII_TOLOWER(_ch_) (isascii ((int)(_ch_)) && isalpha ((int)(_ch_))) ? tolower ((_ch_)) : (_ch_)
 
+static gchar *
+g_strndup (const char *str, int n)
+{
+#ifdef HAVE_STRNDUP
+	return strndup (str, n);
+#else
+	if (str) {
+		char *retval = malloc (n + 1);
+		if (retval)
+			strncpy (retval, str, n)[n] = 0;
+		return retval;
+	}
+	return NULL;
+#endif
+}
+
 static void add_to_vector (gchar ***vector, int size, gchar *token)
 {
         *vector = *vector == NULL ? 
@@ -60,7 +76,7 @@ gchar **g_strsplit (const gchar *string, const gchar *delimiter, int max_tokens)
 
 			if (*string) {
 				size_t toklen = (size_t)(string - c);
-				token = strndup (c, toklen);
+				token = g_strndup (c, toklen);
 
 				if (strcmp (string, delimiter) != 0)
 					string += delimiter_len;

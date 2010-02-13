@@ -42,7 +42,7 @@ AC_HEADER_TIME
 AC_FUNC_FORK
 AC_HEADER_STDC
 AC_FUNC_SELECT_ARGTYPES
-AC_CHECK_FUNCS([memset mkdir unsetenv putenv setenv setrlimit select strcasecmp strerror strrchr dup2])
+AC_CHECK_FUNCS([memset mkdir unsetenv putenv setenv setrlimit select strcasecmp strerror strrchr dup2 strndup])
 
 #
 # --enable-debug
