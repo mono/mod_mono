@@ -1,3 +1,9 @@
+2010-02-13 Gonzalo Paniagua Javier <gonzalo@novell.com>
+
+	* configure.in: check for strndup().
+	* src/glib_compat.c: added g_strndup() from eglib.
+	Fixes the compilation for systems without strndup().
+
 2009-08-24  Marek Habersack  <mhabersack@novell.com>
 
 	* configure.in: no longer checks for glib
