@@ -174,13 +174,13 @@ Default value: none
 .I "MonoMaxActiveRequests"
 The maximum number of concurrent requests mod_mono will pass off to
 the ASP.NET backend. Set to zero to turn off the limit. Default value:
-20.
+150.
 .TP
 .I "MonoMaxWaitingRequests"
 The maximum number of concurrent requests mod_mono will hold while
 the ASP.NET backend is busy with the maximum number of requests
 specified by MonoMaxActiveRequests. Requests that can't be processed
-or held are dropped with Service Unavailable. Default value: 20.
+or held are dropped with Service Unavailable. Default value: 150.
 .TP
 .I "MonoCheckHiddenFiles"
 Do not protect hidden files/directories from being accessed by clients. Hidden files/directories are those with 

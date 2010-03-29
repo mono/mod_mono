@@ -3068,12 +3068,12 @@ static const command_rec mono_cmds [] = {
 
 	MAKE_CMD12 (MonoMaxActiveRequests, max_active_requests,
 		    "The maximum number of concurrent requests mod_mono will pass off to the ASP.NET backend. "
-		    "Set to zero to turn off the limit. Default value: 20"),
+		    "Set to zero to turn off the limit. Default value: 150"),
 	MAKE_CMD12 (MonoMaxWaitingRequests, max_waiting_requests,
 		    "The maximum number of concurrent requests mod_mono will hold while the ASP.NET backend is busy "
 		    "with the maximum number of requests specified by MonoMaxActiveRequests. "
 		    "Requests that can't be processed or held are dropped with Service Unavailable."
-		    "Default value: 20"),
+		    "Default value: 150"),
 	MAKE_CMD12 (MonoCheckHiddenFiles, hidden,
 		    "Do not protect hidden files/directories from being accessed by clients. Hidden files/directories are those with "
 		    "Hidden attribute on Windows and whose name starts with a dot on Unix. Any file/directory below a hidden directory "
