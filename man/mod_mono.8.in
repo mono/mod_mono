@@ -174,7 +174,7 @@ Default value: none
 .I "MonoMaxActiveRequests"
 The maximum number of concurrent requests mod_mono will pass off to
 the ASP.NET backend. Set to zero to turn off the limit. Default value:
-150.
+0.
 .TP
 .I "MonoMaxWaitingRequests"
 The maximum number of concurrent requests mod_mono will hold while
