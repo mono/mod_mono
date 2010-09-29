@@ -2006,7 +2006,7 @@ send_initial_data (request_rec *r, apr_socket_t *sock, char auto_app)
 	else
 		ptr = str = apr_pcalloc (r->pool, size);
 	*ptr++ = (char)PROTOCOL_VERSION; /* version. Keep in sync with ModMonoRequest. */
-	i = LE_FROM_INT (size);
+	i = LE_FROM_INT (size) - (1 + sizeof (size)); /* Subtract the command the data size from the buffer size */
 	memcpy (ptr, &i, sizeof (i));
 	ptr += sizeof (int32_t);
 	ptr += write_string_to_buffer (ptr, 0, r->method, info.method_len);
