@@ -1571,11 +1571,6 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	if (config->max_cpu_time != NULL)
 		max_cpu_time = (int)string_to_long (config->max_cpu_time, "MonoMaxCPUTime", -1);
 
-	set_environment_variables (pool, config->env_vars);
-
-	if (config->iomap && *config->iomap)
-		SETENV (pool, "MONO_IOMAP", config->iomap);
-
 	pid = fork ();
 	if (pid > 0) {
 		waitpid (pid, &status, 0);
@@ -1588,6 +1583,11 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 		exit (0);
 
 	setsid ();
+	set_environment_variables (pool, config->env_vars);
+
+	if (config->iomap && *config->iomap)
+		SETENV (pool, "MONO_IOMAP", config->iomap);
+
 	status = chdir ("/");
 
 #if defined (APR_HAS_USER)
