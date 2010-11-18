@@ -202,7 +202,7 @@ static char UNUSED *cmdNames [] = {
 	}
 #else
 #define DEBUG_PRINT dummy_print
-static void
+static void UNUSED
 dummy_print (int a, ...)
 {
 }
