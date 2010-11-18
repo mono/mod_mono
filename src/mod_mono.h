@@ -147,7 +147,13 @@ enum Cmd {
 	LAST_COMMAND
 };
 
-static char *cmdNames [] = {
+#ifdef __GNUC__
+#define UNUSED __attribute__ ((unused))
+#else
+#define UNUSED
+#endif
+
+static char UNUSED *cmdNames [] = {
 	"SEND_FROM_MEMORY",
 	"GET_SERVER_VARIABLES",
 	"SET_RESPONSE_HEADERS",
