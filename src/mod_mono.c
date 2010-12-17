@@ -987,7 +987,7 @@ send_entire_file (request_rec *r, const char *filename, int *result, xsp_data *x
 
 	st = ap_send_fd (file, r, 0, info.size, &nbytes);
 	apr_file_close (file);
-	if (nbytes < 0) {
+	if (nbytes < 0 || st != APR_SUCCESS) {
 		DEBUG_PRINT (2, "SEND FAILED");
 		*result = HTTP_INTERNAL_SERVER_ERROR;
 		retval = -1;
@@ -1338,11 +1338,11 @@ try_connect (xsp_data *conf, apr_socket_t **sock, apr_int32_t family, apr_pool_t
 			error = strerror (err);
 			if (conf->listen_port == NULL)
 				ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-					      "mod_mono: file %s exists, but wrong permissions.", fn);
+					      "mod_mono: file %s exists, but wrong permissions. %s", fn, error);
 			else
 				ap_log_error (APLOG_MARK, APLOG_ERR, STATUS_AND_SERVER,
-					      "mod_mono: no permission to listen on %s.",
-					      conf->listen_port);
+					      "mod_mono: no permission to listen on %s. %s",
+					      conf->listen_port, error);
 
 
 			apr_socket_close (*sock);
@@ -1836,6 +1836,9 @@ write_string_to_buffer (char *buffer, int offset, const char *str, size_t str_le
 	uint32_t le;
 	uint32_t tmp;
 
+	if (!str && str_length > 0)
+		str_length = 0;
+
 	buffer += offset;
 	if (str && !str_length) {
 		tmp = strlen (str);
@@ -2056,7 +2059,7 @@ inline static void clear_uri_item (uri_item* list, int nitems, int32_t id)
 inline static void set_uri_item (uri_item* list, int nitems, request_rec* r, int32_t id)
 {
 	int i;
-	int uri_len;
+	int uri_len = 0;
 	int args_len;
 
 	for (i = 0; i < nitems; i++) {
@@ -2215,7 +2218,6 @@ mono_execute_request (request_rec *r, char auto_app)
 	xsp_data *conf;
 	uint32_t connect_attempts;
 	uint32_t start_wait_time;
-	char *socket_name = NULL;
 	int retrying, was_starting;
 	int32_t id = -1;
 
@@ -2244,7 +2246,6 @@ mono_execute_request (request_rec *r, char auto_app)
 
 	conf = &config->servers [idx];
 	ensure_dashboard_initialized (config, conf, pconf);
-	socket_name = get_unix_socket_path (r->pool, conf);
 	connect_attempts = (uint32_t)string_to_long (conf->start_attempts, "MonoXSPStartAttempts", START_ATTEMPTS);
 	start_wait_time = (uint32_t)string_to_long (conf->start_wait_time, "MonoXSPStartWaitTime", START_WAIT_TIME);
 	if (start_wait_time < 2)
