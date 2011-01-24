@@ -446,6 +446,7 @@ if test x$enable_quiet_build = xyes; then
 fi
 
 AC_OUTPUT(
+apache2-mod_mono.spec
 Makefile
 mod_mono.conf
 src/Makefile
