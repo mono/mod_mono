@@ -45,6 +45,15 @@ exclusive with MonoUnixSocket. When this options is specified,
 mod-mono-server and mod_mono will use a TCP socket for communication.
 Default value: none
 .TP
+.I "MonoListenBacklog" N
+The backlog of connections to set on the listener socket in mod-mono-server.
+By default the value is set to 500.
+.TP
+.I "MonoMinThreads" N
+The minimum number of threads the threadpool allocates in mod-mono-server.
+Increase this value to better handle the sudden arrival of connections.
+The default value is determined by the mono runtime.
+.TP
 .I "MonoListenAddress"
 IP address where mod-mono-server should listen/is listening on. Can only be
 used when MonoListenPort is specified.
