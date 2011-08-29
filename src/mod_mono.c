@@ -121,6 +121,8 @@ typedef struct xsp_data {
 	char *appconfig_dir;
 	char *listen_port;
 	char *listen_address;
+	char *listen_backlog;
+	char *minthreads;
 	char *max_cpu_time;
 	char *max_memory;
 	char *debug;
@@ -600,6 +602,8 @@ add_xsp_server (apr_pool_t *pool, const char *alias, module_cfg *config, int is_
 
 	server->listen_port = NULL;
 	server->listen_address = NULL;
+	server->listen_backlog = NULL;
+	server->minthreads = NULL;
 	server->max_cpu_time = NULL;
 	server->max_memory = NULL;
 	server->debug = NULL;
@@ -1565,6 +1569,7 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 		return;
 	}
 
+
 	if (config->max_memory != NULL)
 		max_memory = (int)string_to_long (config->max_memory, "MonoMaxMemory", -1);
 
@@ -1713,6 +1718,16 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 		DEBUG_PRINT (0, "Backend socket path: %s", fn);
 		argv [argi++] = "--filename";
 		argv [argi++] = fn;
+	}
+
+	if (config->listen_backlog != NULL) {
+		argv [argi++] = "--backlog";
+		argv [argi++] = config->listen_backlog;
+	}
+
+	if (config->minthreads != NULL) {
+		argv [argi++] = "--minThreads";
+		argv [argi++] = config->minthreads;
 	}
 
 	if (config->applications != NULL) {
@@ -2928,6 +2943,14 @@ static const command_rec mono_cmds [] = {
 		    "IP address where mod-mono-server should listen/is listening on. Can "
 		    "only be used when MonoListenPort is specified."
 		    "Default: \"127.0.0.1\""
+	),
+	MAKE_CMD12 (MonoListenBacklog, listen_backlog,
+		    "The socket listen backlog to set on mod-mono-server."
+		    "Default: 500"
+	),
+	MAKE_CMD12 (MonoMinThreads, minthreads,
+		    "The minimum number of threads the thread pool allocates in mod-mono-server."
+		    "Default: (mono runtime default)"
 	),
 
 	MAKE_CMD12 (MonoRunXSP, run_xsp,
