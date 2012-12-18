@@ -499,8 +499,12 @@ ensure_dashboard_initialized (module_cfg *config, xsp_data *xsp, apr_pool_t *p)
 
 #if defined (AP_NEED_SET_MUTEX_PERMS) && defined (HAVE_UNIXD)
 		DEBUG_PRINT (1, "Setting mutex permissions for %s", xsp->dashboard_lock_file);
+#if defined(APACHE24)
 		rv = ap_unixd_set_global_mutex_perms (xsp->dashboard_mutex);
-		if (rv != APR_SUCCESS) {
+#else 
+		rv = unixd_set_global_mutex_perms (xsp->dashboard_mutex);
+#endif
+    if (rv != APR_SUCCESS) {
 			ap_log_error (APLOG_MARK, APLOG_CRIT, STATCODE_AND_SERVER (rv),
 				      "Failed to set mutex permissions for %s",
 				      xsp->dashboard_lock_file);
