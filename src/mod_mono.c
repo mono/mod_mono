@@ -870,12 +870,12 @@ connection_get_remote_port (conn_rec *c)
 #if defined(APACHE22)
 	return c->remote_addr->port;
 #else
-#if defined(APACHE20)
+#if defined(APACHE24)
+  return c->client_addr->port;
+#else 
 	apr_port_t port;
 	apr_sockaddr_port_get (&port, c->remote_addr);
 	return port;
-#else 
-  return c->client_addr->port;
 #endif
 #endif
 
@@ -887,12 +887,12 @@ connection_get_local_port (request_rec *r)
 #if defined(APACHE22)
 	return r->connection->local_addr->port;
 #else
-#if defined(APACHE20)
+#if defined(APACHE24)
+	return r->connection->local_addr->port;
+#else
 	apr_port_t port;
 	apr_sockaddr_port_get (&port, r->connection->local_addr);
 	return port;
-#else
-	return r->connection->local_addr->port;
 #endif
 #endif
 }
