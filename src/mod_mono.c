@@ -403,9 +403,9 @@ apache_get_groupid ()
 {
 #ifdef HAVE_UNIXD
 #if defined(APACHE24)
-	return ap_unixd_config.user_id;
+	return ap_unixd_config.group_id;
 #else
-  return unixd_config.user_id;
+  return unixd_config.group_id;
 #endif
 #else
 	return ap_group_id;
