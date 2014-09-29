@@ -1,5 +1,9 @@
 Name:           apache2-mod_mono
+%if 0%{?suse_version}
 %define apxs /usr/sbin/apxs2
+%else
+%define apxs /usr/sbin/apxs
+%endif
 %define apache2_sysconfdir %(%{apxs} -q SYSCONFDIR)/conf.d
 Obsoletes:      mod_mono
 %define modname mod_mono
