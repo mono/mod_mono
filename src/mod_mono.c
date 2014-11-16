@@ -2842,7 +2842,7 @@ mono_control_panel_handler (request_rec *r)
 
 				buffer = apr_psprintf (r->pool, "<li>%d requests currently waiting to be processed; limit: %s\n",
 						       xsp->dashboard->waiting_requests,
-						       xsp->max_waiting_requests ? xsp->max_active_requests : "unlimited");
+						       xsp->max_waiting_requests ? xsp->max_waiting_requests : "unlimited");
 				request_send_response_string(r, buffer);
 				send_uri_list (xsp->dashboard->waiting_uri_list, WAITING_URI_LIST_ITEM_COUNT, r);
 
