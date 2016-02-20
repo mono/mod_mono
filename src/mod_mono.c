@@ -2115,16 +2115,16 @@ inline static void set_uri_item (uri_item* list, int nitems, request_rec* r, int
 		list [i].start_time = id == -1 ? -1 : time (NULL);
 		if (r->uri) {
 			uri_len = strlen (r->uri);
-			if (uri_len > URI_LIST_ITEM_SIZE)
-				uri_len = URI_LIST_ITEM_SIZE;
+			if (uri_len >= URI_LIST_ITEM_SIZE)
+				uri_len = URI_LIST_ITEM_SIZE - 1;
 			memcpy (list [i].uri, r->uri, uri_len);
 			list [i].uri [uri_len] = '\0';
 		}
 
 		if (r->args) {
 			args_len = strlen (r->args);
-			if (args_len + uri_len + 1 > URI_LIST_ITEM_SIZE)
-				args_len = URI_LIST_ITEM_SIZE - uri_len - 1;
+			if (args_len + uri_len + 1 >= URI_LIST_ITEM_SIZE)
+				args_len = URI_LIST_ITEM_SIZE - uri_len - 1 - 1;
 			if (args_len > 0) {
 				list [i].uri [uri_len] = '?';
 				memcpy (&list [i].uri [uri_len + 1], r->args, args_len);
