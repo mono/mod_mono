@@ -136,7 +136,7 @@ gchar *mono_portability_find_file (int portability_level, const gchar *pathname,
 	}
 
 
-	new_components = (gchar **)g_new0 (gchar **, num_components + 1);
+	new_components = g_new0 (gchar *, num_components + 1);
 
 	if (num_components > 1) {
 		if (strcmp (components[0], "") == 0) {

@@ -27,15 +27,15 @@ g_strndup (const char *str, int n)
 static void add_to_vector (gchar ***vector, int size, gchar *token)
 {
         *vector = *vector == NULL ? 
-                (gchar **) malloc (2 * sizeof (*vector)) :
-                (gchar **) realloc (*vector, (size + 1) * sizeof (*vector));
+                (gchar **) malloc (2 * sizeof (**vector)) :
+                (gchar **) realloc (*vector, (size + 1) * sizeof (**vector));
                 
         (*vector)[size - 1] = token;
 }
 
 static gchar **make_empty_vector ()
 {
-	gchar **vector = (gchar**)malloc (2 * sizeof (vector));
+	gchar **vector = (gchar**)malloc (2 * sizeof (*vector));
 	vector [0] = NULL;
 
 	return vector;
