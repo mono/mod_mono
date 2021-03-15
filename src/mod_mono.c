@@ -1760,7 +1760,7 @@ fork_mod_mono_server (apr_pool_t *pool, xsp_data *config)
 	}
 
 	if (config->hidden != NULL) {
-		if (strcasecmp (config->hidden, "false"))
+		if (!strcasecmp (config->hidden, "false"))
 			argv [argi++] = "--no-hidden";
 	}
 	
